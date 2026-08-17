@@ -9,17 +9,17 @@ class CredentialRequirementPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->hasAnyRole(['director', 'coordinator', 'secretary']);
+        return $user->hasAnyRole(['admin', 'director', 'coordinator', 'secretary']);
     }
 
     public function create(User $user): bool
     {
-        return $user->hasAnyRole(['director', 'coordinator']);
+        return $user->hasAnyRole(['admin', 'director', 'coordinator']);
     }
 
     public function update(User $user, CredentialRequirement $requirement): bool
     {
-        return $user->hasAnyRole(['director', 'coordinator']);
+        return $user->hasAnyRole(['admin', 'director', 'coordinator']);
     }
 
     /**

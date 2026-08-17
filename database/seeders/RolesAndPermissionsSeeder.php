@@ -40,6 +40,13 @@ class RolesAndPermissionsSeeder extends Seeder
             'reports.view.full',
             'audit-logs.view',
             'accounts.manage',
+            // Operational permissions so Admin can cover Secretary-level
+            // day-to-day work (applications, credentials, enrollment)
+            // without waiting on Super Admin — the point of this role.
+            'applications.review',
+            'credentials.verify',
+            'students.manage',
+            'students.enroll',
         ],
         'director' => [
             'dashboard.view.institutional',

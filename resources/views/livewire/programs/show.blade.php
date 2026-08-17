@@ -94,91 +94,95 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="py-12">
-    <div class="max-w-5xl mx-auto sm:px-6 lg:px-8 space-y-6">
-        <div>
-            <a href="{{ route('programs.index') }}" wire:navigate class="text-sm text-indigo-600 hover:underline">&larr; Programs</a>
-            <div class="flex items-center justify-between mt-1">
-                <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200">
-                    {{ $program->name }}
-                    <span class="text-sm font-normal text-gray-500">({{ $program->code }})</span>
-                </h2>
+<div class="space-y-6">
+    <div>
+        <a href="{{ route('programs.index') }}" wire:navigate class="inline-flex items-center gap-1 text-sm font-medium text-indigo-600 hover:text-indigo-700">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>
+            Programs
+        </a>
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mt-2">
+            <h1 class="text-2xl font-semibold text-navy-900">
+                {{ $program->name }}
+                <span class="text-base font-normal text-slate-500">({{ $program->code }})</span>
+            </h1>
 
-                @can('create', \App\Models\Curriculum::class)
-                    @unless ($showForm)
-                        <x-primary-button wire:click="create">New Curriculum Version</x-primary-button>
-                    @endunless
-                @endcan
-            </div>
-            @if ($program->description)
-                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-2xl">{{ $program->description }}</p>
-            @endif
+            @can('create', \App\Models\Curriculum::class)
+                @unless ($showForm)
+                    <x-primary-button wire:click="create">
+                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                        New Curriculum Version
+                    </x-primary-button>
+                @endunless
+            @endcan
         </div>
-
-        @if ($showForm)
-            <div class="bg-white dark:bg-gray-800 shadow-sm sm:rounded-lg p-6">
-                <h3 class="font-medium text-gray-900 dark:text-gray-100 mb-4">
-                    {{ $editing ? 'Edit Curriculum Version' : 'New Curriculum Version' }}
-                </h3>
-
-                <form wire:submit="save" class="space-y-4">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <x-input-label for="version_label" value="Version label" />
-                            <x-text-input wire:model="version_label" id="version_label" class="block mt-1 w-full" placeholder="e.g. 2026" />
-                            <x-input-error :messages="$errors->get('version_label')" class="mt-2" />
-                        </div>
-
-                        <div>
-                            <x-input-label for="effective_school_year" value="Effective school year" />
-                            <x-text-input wire:model="effective_school_year" id="effective_school_year" class="block mt-1 w-full" placeholder="e.g. 2026-2027" />
-                            <x-input-error :messages="$errors->get('effective_school_year')" class="mt-2" />
-                        </div>
-                    </div>
-
-                    <label class="inline-flex items-center">
-                        <input type="checkbox" wire:model="is_active" class="rounded border-gray-300 text-indigo-600 shadow-sm">
-                        <span class="ms-2 text-sm text-gray-600 dark:text-gray-400">Active</span>
-                    </label>
-
-                    <div class="flex items-center gap-3">
-                        <x-primary-button type="submit">Save</x-primary-button>
-                        <x-secondary-button type="button" wire:click="cancel">Cancel</x-secondary-button>
-                    </div>
-                </form>
-            </div>
+        @if ($program->description)
+            <p class="mt-2 text-sm text-slate-500 max-w-2xl">{{ $program->description }}</p>
         @endif
+    </div>
 
-        <div class="bg-white dark:bg-gray-800 shadow-sm sm:rounded-lg overflow-hidden">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gray-50 dark:bg-gray-900">
+    @if ($showForm)
+        <x-card>
+            <h3 class="font-semibold text-navy-900 mb-4">
+                {{ $editing ? 'Edit Curriculum Version' : 'New Curriculum Version' }}
+            </h3>
+
+            <form wire:submit="save" class="space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <x-input-label for="version_label" value="Version label" />
+                        <x-text-input wire:model="version_label" id="version_label" class="block mt-1 w-full" placeholder="e.g. 2026" />
+                        <x-input-error :messages="$errors->get('version_label')" class="mt-2" />
+                    </div>
+
+                    <div>
+                        <x-input-label for="effective_school_year" value="Effective school year" />
+                        <x-text-input wire:model="effective_school_year" id="effective_school_year" class="block mt-1 w-full" placeholder="e.g. 2026-2027" />
+                        <x-input-error :messages="$errors->get('effective_school_year')" class="mt-2" />
+                    </div>
+                </div>
+
+                <label class="inline-flex items-center">
+                    <input type="checkbox" wire:model="is_active" class="rounded border-slate-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
+                    <span class="ms-2 text-sm text-slate-600">Active</span>
+                </label>
+
+                <div class="flex items-center gap-3">
+                    <x-primary-button type="submit">Save</x-primary-button>
+                    <x-secondary-button type="button" wire:click="cancel">Cancel</x-secondary-button>
+                </div>
+            </form>
+        </x-card>
+    @endif
+
+    <x-card padding="p-0">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-border">
+                <thead class="bg-slate-50">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Version</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">School year</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Subjects</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Version</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">School year</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Subjects</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
                         <th class="px-6 py-3"></th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody class="divide-y divide-border">
                     @forelse ($curricula as $curriculum)
-                        <tr wire:key="curriculum-{{ $curriculum->id }}">
-                            <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">
-                                <a href="{{ route('curricula.show', $curriculum) }}" wire:navigate class="text-indigo-600 hover:underline">
+                        <tr wire:key="curriculum-{{ $curriculum->id }}" class="hover:bg-slate-50">
+                            <td class="px-6 py-4 text-sm font-medium">
+                                <a href="{{ route('curricula.show', $curriculum) }}" wire:navigate class="text-indigo-600 hover:text-indigo-700">
                                     {{ $curriculum->version_label }}
                                 </a>
                             </td>
-                            <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{{ $curriculum->effective_school_year }}</td>
-                            <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{{ $curriculum->curriculum_subjects_count }}</td>
+                            <td class="px-6 py-4 text-sm text-slate-500">{{ $curriculum->effective_school_year }}</td>
+                            <td class="px-6 py-4 text-sm text-slate-500">{{ $curriculum->curriculum_subjects_count }}</td>
                             <td class="px-6 py-4 text-sm">
-                                <span class="px-2 py-1 text-xs rounded-full {{ $curriculum->is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600' }}">
-                                    {{ $curriculum->is_active ? 'Active' : 'Inactive' }}
-                                </span>
+                                <x-badge :status="$curriculum->is_active ? 'active' : 'inactive'" />
                             </td>
-                            <td class="px-6 py-4 text-sm text-right space-x-3">
+                            <td class="px-6 py-4 text-sm text-right space-x-3 whitespace-nowrap">
                                 @can('update', $curriculum)
-                                    <button wire:click="edit({{ $curriculum->id }})" class="text-indigo-600 hover:underline">Edit</button>
-                                    <button wire:click="toggleActive({{ $curriculum->id }})" class="text-gray-500 hover:underline">
+                                    <button wire:click="edit({{ $curriculum->id }})" class="text-indigo-600 hover:text-indigo-700 font-medium">Edit</button>
+                                    <button wire:click="toggleActive({{ $curriculum->id }})" class="text-slate-500 hover:text-slate-700 font-medium">
                                         {{ $curriculum->is_active ? 'Deactivate' : 'Activate' }}
                                     </button>
                                 @endcan
@@ -186,13 +190,13 @@ new #[Layout('layouts.app')] class extends Component
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="5" class="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                                No curriculum versions yet.
+                            <td colspan="5">
+                                <x-empty-state title="No curriculum versions yet" description="Add a curriculum version to start building this program's subject plan." />
                             </td>
                         </tr>
                     @endforelse
                 </tbody>
             </table>
         </div>
-    </div>
+    </x-card>
 </div>

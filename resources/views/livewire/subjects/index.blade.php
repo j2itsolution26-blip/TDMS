@@ -100,106 +100,107 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="py-12">
-    <div class="max-w-5xl mx-auto sm:px-6 lg:px-8 space-y-6">
-        <div class="flex items-center justify-between">
-            <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200">Subject Catalog</h2>
-
-            @can('create', Subject::class)
+<div class="space-y-6">
+    <x-page-header title="Subject Catalog" subtitle="Manage the master list of subjects offered across programs.">
+        @can('create', Subject::class)
+            <x-slot name="actions">
                 @unless ($showForm)
-                    <x-primary-button wire:click="create">New Subject</x-primary-button>
+                    <x-primary-button wire:click="create">
+                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                        New Subject
+                    </x-primary-button>
                 @endunless
-            @endcan
-        </div>
+            </x-slot>
+        @endcan
+    </x-page-header>
 
-        @if ($showForm)
-            <div class="bg-white dark:bg-gray-800 shadow-sm sm:rounded-lg p-6">
-                <h3 class="font-medium text-gray-900 dark:text-gray-100 mb-4">
-                    {{ $editing ? 'Edit Subject' : 'New Subject' }}
-                </h3>
+    @if ($showForm)
+        <x-card>
+            <h3 class="font-semibold text-navy-900 mb-4">
+                {{ $editing ? 'Edit Subject' : 'New Subject' }}
+            </h3>
 
-                <form wire:submit="save" class="space-y-4">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <x-input-label for="code" value="Code" />
-                            <x-text-input wire:model="code" id="code" class="block mt-1 w-full" placeholder="e.g. IT101" />
-                            <x-input-error :messages="$errors->get('code')" class="mt-2" />
-                        </div>
-
-                        <div>
-                            <x-input-label for="title" value="Title" />
-                            <x-text-input wire:model="title" id="title" class="block mt-1 w-full" placeholder="e.g. Introduction to Programming" />
-                            <x-input-error :messages="$errors->get('title')" class="mt-2" />
-                        </div>
-
-                        <div>
-                            <x-input-label for="subject_type" value="Type" />
-                            <select wire:model="subject_type" id="subject_type"
-                                class="block mt-1 w-full border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 rounded-md shadow-sm">
-                                <option value="lecture">Lecture</option>
-                                <option value="laboratory">Laboratory</option>
-                                <option value="practical">Practical</option>
-                                <option value="capstone">Capstone</option>
-                                <option value="ojt">OJT / Practicum</option>
-                            </select>
-                            <x-input-error :messages="$errors->get('subject_type')" class="mt-2" />
-                        </div>
-
-                        <div>
-                            <x-input-label for="default_units" value="Default units" />
-                            <x-text-input wire:model="default_units" id="default_units" class="block mt-1 w-full" placeholder="e.g. 3.0" />
-                            <x-input-error :messages="$errors->get('default_units')" class="mt-2" />
-                        </div>
+            <form wire:submit="save" class="space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <x-input-label for="code" value="Code" />
+                        <x-text-input wire:model="code" id="code" class="block mt-1 w-full" placeholder="e.g. IT101" />
+                        <x-input-error :messages="$errors->get('code')" class="mt-2" />
                     </div>
 
                     <div>
-                        <x-input-label for="description" value="Description" />
-                        <textarea wire:model="description" id="description" rows="3"
-                            class="block mt-1 w-full border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 rounded-md shadow-sm"></textarea>
-                        <x-input-error :messages="$errors->get('description')" class="mt-2" />
+                        <x-input-label for="title" value="Title" />
+                        <x-text-input wire:model="title" id="title" class="block mt-1 w-full" placeholder="e.g. Introduction to Programming" />
+                        <x-input-error :messages="$errors->get('title')" class="mt-2" />
                     </div>
 
-                    <label class="inline-flex items-center">
-                        <input type="checkbox" wire:model="is_active" class="rounded border-gray-300 text-indigo-600 shadow-sm">
-                        <span class="ms-2 text-sm text-gray-600 dark:text-gray-400">Active</span>
-                    </label>
-
-                    <div class="flex items-center gap-3">
-                        <x-primary-button type="submit">Save</x-primary-button>
-                        <x-secondary-button type="button" wire:click="cancel">Cancel</x-secondary-button>
+                    <div>
+                        <x-input-label for="subject_type" value="Type" />
+                        <select wire:model="subject_type" id="subject_type"
+                            class="block mt-1 w-full border-slate-300 rounded-lg shadow-sm text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <option value="lecture">Lecture</option>
+                            <option value="laboratory">Laboratory</option>
+                            <option value="practical">Practical</option>
+                            <option value="capstone">Capstone</option>
+                            <option value="ojt">OJT / Practicum</option>
+                        </select>
+                        <x-input-error :messages="$errors->get('subject_type')" class="mt-2" />
                     </div>
-                </form>
-            </div>
-        @endif
 
-        <div class="bg-white dark:bg-gray-800 shadow-sm sm:rounded-lg overflow-hidden">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gray-50 dark:bg-gray-900">
+                    <div>
+                        <x-input-label for="default_units" value="Default units" />
+                        <x-text-input wire:model="default_units" id="default_units" class="block mt-1 w-full" placeholder="e.g. 3.0" />
+                        <x-input-error :messages="$errors->get('default_units')" class="mt-2" />
+                    </div>
+                </div>
+
+                <div>
+                    <x-input-label for="description" value="Description" />
+                    <textarea wire:model="description" id="description" rows="3"
+                        class="block mt-1 w-full border-slate-300 rounded-lg shadow-sm text-sm focus:border-indigo-500 focus:ring-indigo-500"></textarea>
+                    <x-input-error :messages="$errors->get('description')" class="mt-2" />
+                </div>
+
+                <label class="inline-flex items-center">
+                    <input type="checkbox" wire:model="is_active" class="rounded border-slate-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
+                    <span class="ms-2 text-sm text-slate-600">Active</span>
+                </label>
+
+                <div class="flex items-center gap-3">
+                    <x-primary-button type="submit">Save</x-primary-button>
+                    <x-secondary-button type="button" wire:click="cancel">Cancel</x-secondary-button>
+                </div>
+            </form>
+        </x-card>
+    @endif
+
+    <x-card padding="p-0">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-border">
+                <thead class="bg-slate-50">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Code</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Title</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Type</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Units</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Code</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Title</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Type</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Units</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
                         <th class="px-6 py-3"></th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody class="divide-y divide-border">
                     @forelse ($subjects as $subject)
-                        <tr wire:key="subject-{{ $subject->id }}">
-                            <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">{{ $subject->code }}</td>
-                            <td class="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">{{ $subject->title }}</td>
-                            <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 capitalize">{{ $subject->subject_type }}</td>
-                            <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{{ $subject->default_units }}</td>
+                        <tr wire:key="subject-{{ $subject->id }}" class="hover:bg-slate-50">
+                            <td class="px-6 py-4 text-sm font-medium text-navy-900">{{ $subject->code }}</td>
+                            <td class="px-6 py-4 text-sm text-slate-700">{{ $subject->title }}</td>
+                            <td class="px-6 py-4 text-sm text-slate-500 capitalize">{{ $subject->subject_type }}</td>
+                            <td class="px-6 py-4 text-sm text-slate-500">{{ $subject->default_units }}</td>
                             <td class="px-6 py-4 text-sm">
-                                <span class="px-2 py-1 text-xs rounded-full {{ $subject->is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600' }}">
-                                    {{ $subject->is_active ? 'Active' : 'Inactive' }}
-                                </span>
+                                <x-badge :status="$subject->is_active ? 'active' : 'inactive'" />
                             </td>
-                            <td class="px-6 py-4 text-sm text-right space-x-3">
+                            <td class="px-6 py-4 text-sm text-right space-x-3 whitespace-nowrap">
                                 @can('update', $subject)
-                                    <button wire:click="edit({{ $subject->id }})" class="text-indigo-600 hover:underline">Edit</button>
-                                    <button wire:click="toggleActive({{ $subject->id }})" class="text-gray-500 hover:underline">
+                                    <button wire:click="edit({{ $subject->id }})" class="text-indigo-600 hover:text-indigo-700 font-medium">Edit</button>
+                                    <button wire:click="toggleActive({{ $subject->id }})" class="text-slate-500 hover:text-slate-700 font-medium">
                                         {{ $subject->is_active ? 'Deactivate' : 'Activate' }}
                                     </button>
                                 @endcan
@@ -207,17 +208,19 @@ new #[Layout('layouts.app')] class extends Component
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                                No subjects yet.
+                            <td colspan="6">
+                                <x-empty-state title="No subjects yet" description="Subjects you add will appear in this catalog." />
                             </td>
                         </tr>
                     @endforelse
                 </tbody>
             </table>
+        </div>
 
-            <div class="px-6 py-4">
+        @if ($subjects->hasPages())
+            <div class="px-6 py-4 border-t border-border">
                 {{ $subjects->links() }}
             </div>
-        </div>
-    </div>
+        @endif
+    </x-card>
 </div>

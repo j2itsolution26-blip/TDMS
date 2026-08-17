@@ -18,6 +18,10 @@ $app = Application::configure(basePath: dirname(__DIR__))
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
             'bootstrap.allowed' => \App\Http\Middleware\EnsureSuperAdminNotBootstrapped::class,
         ]);
+
+        // Runs on every web request, not just at login, so deactivating an
+        // account ends an already-open session immediately.
+        $middleware->appendToGroup('web', \App\Http\Middleware\EnsureAccountIsActive::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

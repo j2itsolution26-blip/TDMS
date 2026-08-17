@@ -9,7 +9,7 @@ class ApplicationPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->hasAnyRole(['director', 'coordinator', 'secretary']);
+        return $user->hasAnyRole(['admin', 'director', 'coordinator', 'secretary']);
     }
 
     public function view(User $user, Application $application): bool

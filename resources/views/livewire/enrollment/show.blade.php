@@ -134,76 +134,73 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="py-12">
-    <div class="max-w-5xl mx-auto sm:px-6 lg:px-8 space-y-6">
-        <div>
-            <a href="{{ route('students.index') }}" wire:navigate class="text-sm text-indigo-600 hover:underline">&larr; Back to students</a>
-            <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mt-1">
-                {{ $student->fullName() }}
-                <span class="text-sm font-normal text-gray-500 dark:text-gray-400">({{ $student->student_number }})</span>
-            </h2>
-            <p class="text-sm text-gray-500 dark:text-gray-400">
-                {{ $student->program->name }} &middot; {{ $student->curriculum->version_label }} &middot;
-                <span class="capitalize">{{ $student->status }}</span>
-            </p>
+<div class="space-y-6">
+    <div>
+        <a href="{{ route('students.index') }}" wire:navigate class="inline-flex items-center gap-1 text-sm font-medium text-indigo-600 hover:text-indigo-700">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>
+            Back to students
+        </a>
+        <h1 class="text-2xl font-semibold text-navy-900 mt-2">
+            {{ $student->fullName() }}
+            <span class="text-base font-normal text-slate-500">({{ $student->student_number }})</span>
+        </h1>
+        <p class="text-sm text-slate-500 flex items-center gap-2 mt-1">
+            {{ $student->program->name }} &middot; {{ $student->curriculum->version_label }}
+            <x-badge :status="$student->status" />
+        </p>
+    </div>
+
+    @if ($flash)
+        <x-alert type="success">{{ $flash }}</x-alert>
+    @endif
+    @if ($flashError)
+        <x-alert type="danger">{{ $flashError }}</x-alert>
+    @endif
+
+    <x-card padding="p-0">
+        <div class="px-6 py-4 border-b border-border flex items-center justify-between">
+            <h3 class="font-semibold text-navy-900">Credential checklist</h3>
+            @unless ($allVerified)
+                <span class="text-xs font-medium text-amber-700">Not all required credentials are verified yet</span>
+            @endunless
         </div>
-
-        @if ($flash)
-            <div class="rounded-md bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-sm px-4 py-3">{{ $flash }}</div>
-        @endif
-        @if ($flashError)
-            <div class="rounded-md bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm px-4 py-3">{{ $flashError }}</div>
-        @endif
-
-        <div class="bg-white dark:bg-gray-800 shadow-sm sm:rounded-lg overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                <h3 class="font-medium text-gray-900 dark:text-gray-100">Credential checklist</h3>
-                @unless ($allVerified)
-                    <span class="text-xs text-yellow-700 dark:text-yellow-400">Not all required credentials are verified yet</span>
-                @endunless
-            </div>
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gray-50 dark:bg-gray-900">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-border">
+                <thead class="bg-slate-50">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Requirement</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Notes</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Requirement</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Notes</th>
                         <th class="px-6 py-3"></th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody class="divide-y divide-border">
                     @foreach ($credentials as $credential)
                         <tr wire:key="credential-{{ $credential->id }}">
-                            <td class="px-6 py-4 text-sm text-gray-900 dark:text-gray-100">
+                            <td class="px-6 py-4 text-sm text-navy-900">
                                 {{ $credential->requirement->name }}
                                 @unless ($credential->requirement->is_required)
-                                    <span class="text-xs text-gray-400">(optional)</span>
+                                    <span class="text-xs text-slate-400">(optional)</span>
                                 @endunless
                             </td>
                             <td class="px-6 py-4 text-sm">
-                                <span @class([
-                                    'px-2 py-1 text-xs rounded-full capitalize',
-                                    'bg-gray-100 text-gray-600' => $credential->status === 'missing',
-                                    'bg-yellow-100 text-yellow-800' => in_array($credential->status, ['submitted', 'under_review']),
-                                    'bg-green-100 text-green-800' => $credential->status === 'verified',
-                                    'bg-red-100 text-red-800' => in_array($credential->status, ['rejected', 'expired']),
-                                ])>{{ $credential->status }}</span>
+                                <x-badge :status="$credential->status" />
                             </td>
-                            <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
+                            <td class="px-6 py-4 text-sm text-slate-500">
                                 {{ $credential->rejection_reason ?? $credential->remarks }}
                             </td>
-                            <td class="px-6 py-4 text-sm text-right space-x-3">
+                            <td class="px-6 py-4 text-sm text-right space-x-3 whitespace-nowrap">
                                 @can('verify', $credential)
                                     @if (in_array($credential->status, ['submitted', 'under_review']))
-                                        <button wire:click="verify({{ $credential->id }})" class="text-green-700 hover:underline">Verify</button>
-                                        <button wire:click="startReject({{ $credential->id }})" class="text-red-600 hover:underline">Reject</button>
+                                        <button wire:click="verify({{ $credential->id }})" class="text-green-700 hover:text-green-800 font-medium">Verify</button>
+                                        <button wire:click="startReject({{ $credential->id }})" class="text-red-600 hover:text-red-700 font-medium">Reject</button>
                                     @endif
                                 @endcan
                             </td>
                         </tr>
                         @if ($rejecting === $credential->id)
                             <tr>
-                                <td colspan="4" class="px-6 py-4 bg-gray-50 dark:bg-gray-900">
+                                <td colspan="4" class="px-6 py-4 bg-slate-50">
                                     <form wire:submit="confirmReject" class="flex items-start gap-3">
                                         <div class="flex-1">
                                             <x-input-label value="Rejection reason" />
@@ -220,82 +217,79 @@ new #[Layout('layouts.app')] class extends Component
                 </tbody>
             </table>
         </div>
+    </x-card>
 
-        <div class="bg-white dark:bg-gray-800 shadow-sm sm:rounded-lg overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                <h3 class="font-medium text-gray-900 dark:text-gray-100">Enrollment</h3>
-                @can('create', Enrollment::class)
-                    @unless ($showEnrollForm)
-                        <x-secondary-button wire:click="startEnroll">New term</x-secondary-button>
-                    @endunless
-                @endcan
-            </div>
+    <x-card padding="p-0">
+        <div class="px-6 py-4 border-b border-border flex items-center justify-between">
+            <h3 class="font-semibold text-navy-900">Enrollment</h3>
+            @can('create', Enrollment::class)
+                @unless ($showEnrollForm)
+                    <x-secondary-button wire:click="startEnroll">New term</x-secondary-button>
+                @endunless
+            @endcan
+        </div>
 
-            @if ($showEnrollForm)
-                <form wire:submit="saveEnrollment" class="p-6 grid grid-cols-1 sm:grid-cols-4 gap-4 border-b border-gray-200 dark:border-gray-700">
-                    <div>
-                        <x-input-label for="school_year" value="School year" />
-                        <x-text-input wire:model="school_year" id="school_year" class="block mt-1 w-full" placeholder="2026-2027" />
-                        <x-input-error :messages="$errors->get('school_year')" class="mt-2" />
-                    </div>
-                    <div>
-                        <x-input-label for="semester" value="Semester" />
-                        <select wire:model="semester" id="semester" class="block mt-1 w-full border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 rounded-md shadow-sm">
-                            <option value="1">1st</option>
-                            <option value="2">2nd</option>
-                        </select>
-                    </div>
-                    <div>
-                        <x-input-label for="year_level" value="Year level" />
-                        <select wire:model="year_level" id="year_level" class="block mt-1 w-full border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 rounded-md shadow-sm">
-                            <option value="1">1st year</option>
-                            <option value="2">2nd year</option>
-                            <option value="3">3rd year</option>
-                        </select>
-                    </div>
-                    <div class="flex items-end gap-3">
-                        <x-primary-button type="submit">Create</x-primary-button>
-                        <x-secondary-button type="button" wire:click="$set('showEnrollForm', false)">Cancel</x-secondary-button>
-                    </div>
-                </form>
-            @endif
+        @if ($showEnrollForm)
+            <form wire:submit="saveEnrollment" class="p-6 grid grid-cols-1 sm:grid-cols-4 gap-4 border-b border-border">
+                <div>
+                    <x-input-label for="school_year" value="School year" />
+                    <x-text-input wire:model="school_year" id="school_year" class="block mt-1 w-full" placeholder="2026-2027" />
+                    <x-input-error :messages="$errors->get('school_year')" class="mt-2" />
+                </div>
+                <div>
+                    <x-input-label for="semester" value="Semester" />
+                    <select wire:model="semester" id="semester" class="block mt-1 w-full border-slate-300 rounded-lg shadow-sm text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="1">1st</option>
+                        <option value="2">2nd</option>
+                    </select>
+                </div>
+                <div>
+                    <x-input-label for="year_level" value="Year level" />
+                    <select wire:model="year_level" id="year_level" class="block mt-1 w-full border-slate-300 rounded-lg shadow-sm text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="1">1st year</option>
+                        <option value="2">2nd year</option>
+                        <option value="3">3rd year</option>
+                    </select>
+                </div>
+                <div class="flex items-end gap-3">
+                    <x-primary-button type="submit">Create</x-primary-button>
+                    <x-secondary-button type="button" wire:click="$set('showEnrollForm', false)">Cancel</x-secondary-button>
+                </div>
+            </form>
+        @endif
 
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gray-50 dark:bg-gray-900">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-border">
+                <thead class="bg-slate-50">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Term</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Term</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
                         <th class="px-6 py-3"></th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody class="divide-y divide-border">
                     @forelse ($enrollments as $enrollment)
                         <tr wire:key="enrollment-{{ $enrollment->id }}">
-                            <td class="px-6 py-4 text-sm text-gray-900 dark:text-gray-100">
+                            <td class="px-6 py-4 text-sm text-navy-900">
                                 {{ $enrollment->school_year }} &middot; {{ $enrollment->semester === 1 ? '1st' : '2nd' }} sem &middot; Yr {{ $enrollment->year_level }}
                             </td>
                             <td class="px-6 py-4 text-sm">
-                                <span @class([
-                                    'px-2 py-1 text-xs rounded-full capitalize',
-                                    'bg-yellow-100 text-yellow-800' => $enrollment->status === 'pending',
-                                    'bg-green-100 text-green-800' => $enrollment->status === 'enrolled',
-                                    'bg-gray-100 text-gray-600' => $enrollment->status === 'dropped',
-                                ])>{{ $enrollment->status }}</span>
+                                <x-badge :status="$enrollment->status" />
                             </td>
-                            <td class="px-6 py-4 text-sm text-right space-x-3">
+                            <td class="px-6 py-4 text-sm text-right space-x-3 whitespace-nowrap">
                                 @can('transition', $enrollment)
                                     @if ($enrollment->status === 'pending')
-                                        <button wire:click="confirmEnrollment({{ $enrollment->id }})" class="text-green-700 hover:underline">Confirm enrollment</button>
-                                        <button wire:click="startDrop({{ $enrollment->id }})" class="text-red-600 hover:underline">Drop</button>
+                                        <button wire:click="confirmEnrollment({{ $enrollment->id }})" class="text-green-700 hover:text-green-800 font-medium">Confirm enrollment</button>
+                                        <button wire:click="startDrop({{ $enrollment->id }})" class="text-red-600 hover:text-red-700 font-medium">Drop</button>
                                     @elseif ($enrollment->status === 'enrolled')
-                                        <button wire:click="startDrop({{ $enrollment->id }})" class="text-red-600 hover:underline">Drop</button>
+                                        <button wire:click="startDrop({{ $enrollment->id }})" class="text-red-600 hover:text-red-700 font-medium">Drop</button>
                                     @endif
                                 @endcan
                             </td>
                         </tr>
                         @if ($dropping === $enrollment->id)
                             <tr>
-                                <td colspan="3" class="px-6 py-4 bg-gray-50 dark:bg-gray-900">
+                                <td colspan="3" class="px-6 py-4 bg-slate-50">
                                     <form wire:submit="confirmDrop" class="flex items-start gap-3">
                                         <div class="flex-1">
                                             <x-input-label value="Reason for dropping" />
@@ -310,11 +304,13 @@ new #[Layout('layouts.app')] class extends Component
                         @endif
                     @empty
                         <tr>
-                            <td colspan="3" class="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">No enrollment terms yet.</td>
+                            <td colspan="3">
+                                <x-empty-state title="No enrollment terms yet" description="Enrollment terms for this student will appear here." />
+                            </td>
                         </tr>
                     @endforelse
                 </tbody>
             </table>
         </div>
-    </div>
+    </x-card>
 </div>

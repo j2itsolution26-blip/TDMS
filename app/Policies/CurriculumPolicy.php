@@ -9,7 +9,7 @@ class CurriculumPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->hasAnyRole(['director', 'coordinator', 'secretary', 'teacher']);
+        return $user->hasAnyRole(['admin', 'director', 'coordinator', 'secretary', 'teacher']);
     }
 
     public function view(User $user, Curriculum $curriculum): bool

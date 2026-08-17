@@ -31,6 +31,7 @@ $app = Application::configure(basePath: dirname(__DIR__))
 // No-op locally/on WAMP, where APP_STORAGE is never set.
 if ($storagePath = $_ENV['APP_STORAGE'] ?? getenv('APP_STORAGE') ?: null) {
     $app->useStoragePath($storagePath);
+    $app->useBootstrapPath($storagePath.'/bootstrap');
 }
 
 return $app;

@@ -12,6 +12,10 @@
       "dest": "/public/build/$1"
     },
     {
+      "src": "/images/(.*)",
+      "dest": "/public/images/$1"
+    },
+    {
       "src": "/(favicon\\.ico|robots\\.txt)",
       "dest": "/public/$1"
     },

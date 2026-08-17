@@ -1,3 +1,5 @@
+/vendor
+/bootstrap/cache/*.php
 /node_modules
 /storage/*.key
 /storage/framework/cache/*

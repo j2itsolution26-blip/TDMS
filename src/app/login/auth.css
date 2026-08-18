@@ -182,17 +182,14 @@
 }
 
 .program-card {
-    display: flex;
-    align-items: stretch;
-    gap: 0;
-    height: clamp(6.5rem, 11vw, 8.5rem);
-    border-radius: 16px;
+    position: relative;
+    display: block;
+    height: clamp(9rem, 15vw, 12.5rem);
+    border-radius: 18px;
     overflow: hidden;
-    border: 1px solid rgba(139, 207, 32, 0.5);
-    background: linear-gradient(180deg, rgba(0, 61, 42, 0.92), rgba(0, 47, 34, 0.96));
+    border: 1px solid rgba(139, 207, 32, 0.55);
     box-shadow: 0 14px 34px rgba(0, 0, 0, 0.4);
     transition: transform 0.2s ease, border-color 0.2s ease;
-    text-decoration: none;
     opacity: 0;
     animation: tdms-rise 0.6s ease forwards;
 }
@@ -206,25 +203,25 @@
     border-color: var(--tdms-gold);
 }
 
-.program-card__body {
-    flex: 0 0 42%;
-    padding: 0.9rem 1.1rem;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 0.6rem;
-    min-width: 0;
+.program-card__badge {
+    position: absolute;
+    left: 0.9rem;
+    bottom: 0.9rem;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 999px;
+    background: rgba(0, 61, 42, 0.88);
+    border: 1px solid rgba(139, 207, 32, 0.5);
 }
 
 .program-card__icon {
-    width: 2.1rem;
-    height: 2.1rem;
-    border-radius: 999px;
-    border: 1.5px solid var(--tdms-lime);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--tdms-lime);
+    color: var(--tdms-white);
     flex-shrink: 0;
 }
 
@@ -234,47 +231,17 @@
 }
 
 .program-card__title {
-    font-weight: 700;
-    font-size: clamp(0.92rem, 1.4vw, 1.05rem);
+    font-weight: 600;
+    font-size: 0.86rem;
     color: var(--tdms-white);
     line-height: 1.2;
     margin: 0;
-}
-
-.program-card__link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.76rem;
-    font-weight: 600;
-    color: var(--tdms-lime);
-    text-decoration: none;
-}
-
-.program-card__link:hover {
-    color: var(--tdms-gold);
-}
-
-.program-card__link-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.1rem;
-    height: 1.1rem;
-    border-radius: 999px;
-    border: 1.5px solid currentColor;
-    flex-shrink: 0;
-}
-
-.program-card__link-icon svg {
-    width: 0.6rem;
-    height: 0.6rem;
+    white-space: nowrap;
 }
 
 .program-card__media {
-    position: relative;
-    flex: 1 1 58%;
-    min-width: 7rem;
+    position: absolute;
+    inset: 0;
     background: linear-gradient(160deg, var(--tdms-green), var(--tdms-green-dark));
     overflow: hidden;
 }
@@ -299,7 +266,7 @@
     content: "";
     position: absolute;
     inset: 0;
-    background: linear-gradient(90deg, rgba(0, 47, 34, 0.55) 0%, rgba(0, 47, 34, 0) 22%);
+    background: linear-gradient(0deg, rgba(0, 30, 20, 0.78) 0%, rgba(0, 30, 20, 0) 48%);
 }
 
 /* ---------- Login panel (right) ---------- */
@@ -852,9 +819,6 @@
     }
     .hero__cards {
         flex-direction: column;
-    }
-    .program-card__media {
-        min-width: 5rem;
     }
     .tdms-auth__panel {
         padding: 1.25rem;

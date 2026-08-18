@@ -58,7 +58,10 @@ export default async function LoginPage() {
 
           <div className="hero__cards">
             <div className="program-card">
-              <div className="program-card__body">
+              <div className="program-card__media program-card__media--hospitality">
+                <Image src="/images/auth/hospitality-student.jpg" alt="Hospitality Technology student at the training bar" fill sizes="(max-width: 1024px) 50vw, 20rem" />
+              </div>
+              <div className="program-card__badge">
                 <span className="program-card__icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M3 2s1 1 1 3-1 3-1 3v11a3 3 0 0 0 3 3" />
@@ -69,22 +72,14 @@ export default async function LoginPage() {
                   </svg>
                 </span>
                 <p className="program-card__title">Hospitality Technology</p>
-                <span className="program-card__link">
-                  Explore Program
-                  <span className="program-card__link-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M5 12h14M13 6l6 6-6 6" />
-                    </svg>
-                  </span>
-                </span>
-              </div>
-              <div className="program-card__media program-card__media--hospitality">
-                <Image src="/images/auth/hospitality-student.jpg" alt="Hospitality Technology student at the training bar" fill sizes="(max-width: 1024px) 50vw, 20rem" />
               </div>
             </div>
 
             <div className="program-card">
-              <div className="program-card__body">
+              <div className="program-card__media program-card__media--it">
+                <Image src="/images/auth/it-student.jpg" alt="Information Technology student in the computer laboratory" fill sizes="(max-width: 1024px) 50vw, 20rem" />
+              </div>
+              <div className="program-card__badge">
                 <span className="program-card__icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="2" y="4" width="20" height="13" rx="2" />
@@ -93,17 +88,6 @@ export default async function LoginPage() {
                   </svg>
                 </span>
                 <p className="program-card__title">Information Technology</p>
-                <span className="program-card__link">
-                  Explore Program
-                  <span className="program-card__link-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M5 12h14M13 6l6 6-6 6" />
-                    </svg>
-                  </span>
-                </span>
-              </div>
-              <div className="program-card__media program-card__media--it">
-                <Image src="/images/auth/it-student.jpg" alt="Information Technology student in the computer laboratory" fill sizes="(max-width: 1024px) 50vw, 20rem" />
               </div>
             </div>
           </div>
@@ -142,7 +126,9 @@ export default async function LoginPage() {
               </span>
               <span className="panel__trust-item">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M13 2 3 14h7l-1 8 11-13h-7l1-7Z" />
+                  <path d="M4 20V10" />
+                  <path d="M12 20V4" />
+                  <path d="M20 20v-6" />
                 </svg>
                 Efficient
               </span>

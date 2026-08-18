@@ -130,6 +130,7 @@ new #[Layout('layouts.auth-branded')] class extends Component
                     <input
                         wire:model="password"
                         id="password"
+                        type="password"
                         :type="showPassword ? 'text' : 'password'"
                         name="password"
                         required
@@ -178,6 +179,7 @@ new #[Layout('layouts.auth-branded')] class extends Component
                     <input
                         wire:model="password_confirmation"
                         id="password_confirmation"
+                        type="password"
                         :type="showConfirmPassword ? 'text' : 'password'"
                         name="password_confirmation"
                         required

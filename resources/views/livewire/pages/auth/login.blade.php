@@ -64,6 +64,7 @@ new #[Layout('layouts.auth-branded')] class extends Component
                 <input
                     wire:model="form.password"
                     id="password"
+                    type="password"
                     :type="show ? 'text' : 'password'"
                     name="password"
                     required

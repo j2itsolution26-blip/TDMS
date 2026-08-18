@@ -334,8 +334,8 @@
 }
 
 .panel__logo {
-    width: 6.5rem;
-    height: 6.5rem;
+    width: 10.5rem;
+    height: auto;
     object-fit: contain;
 }
 

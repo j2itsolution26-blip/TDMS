@@ -112,7 +112,7 @@ export default async function LoginPage() {
         <section className="tdms-auth__panel">
           <div className="panel__card">
             <div className="panel__logo-wrap">
-              <Image src="/images/auth/logo.png" alt="Asian College Diploma Program Department logo" width={104} height={104} className="panel__logo" />
+              <Image src="/images/auth/logo.png" alt="Asian College Diploma Program Department logo" width={325} height={285} className="panel__logo" />
             </div>
 
             <p className="panel__eyebrow">Welcome to</p>

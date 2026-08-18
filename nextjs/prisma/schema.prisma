@@ -1,0 +1,376 @@
+// TDMS Prisma schema — mirrors the existing Laravel/Postgres schema
+// (see database/migrations/*.php in the repo root) field-for-field,
+// so both codebases can be validated against the same shape during
+// the migration. Table names use @@map to match Laravel's snake_case
+// table names exactly (no data renaming during migration).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------
+// Auth / accounts
+// ---------------------------------------------------------------------
+
+model User {
+  id              Int       @id @default(autoincrement())
+  name            String
+  email           String    @unique
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  password        String
+  isActive        Boolean   @default(true) @map("is_active")
+  rememberToken   String?   @map("remember_token")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  sessions        Session[]
+  roles           UserRole[]
+  studentAccount  Student?               @relation("StudentUser")
+  reviewedApps    Application[]          @relation("ApplicationReviewer")
+  submittedCreds  StudentCredential[]    @relation("CredentialSubmitter")
+  verifiedCreds   StudentCredential[]    @relation("CredentialVerifier")
+  approvedEnroll  Enrollment[]           @relation("EnrollmentApprover")
+  changedEnrollHx EnrollmentStatusHistory[] @relation("EnrollmentHistoryActor")
+
+  @@map("users")
+}
+
+model Session {
+  id           String   @id
+  userId       Int?     @map("user_id")
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  payload      String
+  lastActivity Int      @map("last_activity")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("sessions")
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------
+// RBAC — mirrors spatie/laravel-permission's shape, kept centralized
+// so no permission check is ever hardcoded inline in a page/component.
+// ---------------------------------------------------------------------
+
+model Role {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       Int @map("role_id")
+  permissionId Int @map("permission_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_has_permissions")
+}
+
+model UserRole {
+  userId Int @map("user_id")
+  roleId Int @map("role_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("model_has_roles")
+}
+
+// ---------------------------------------------------------------------
+// Academic structure
+// ---------------------------------------------------------------------
+
+model Program {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique
+  name        String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  curricula               Curriculum[]
+  students                Student[]
+  applications            Application[]
+  credentialRequirements  CredentialRequirement[]
+
+  @@map("programs")
+}
+
+model Curriculum {
+  id                  Int      @id @default(autoincrement())
+  programId           Int      @map("program_id")
+  versionLabel        String   @map("version_label")
+  effectiveSchoolYear String   @map("effective_school_year")
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  program            Program             @relation(fields: [programId], references: [id])
+  curriculumSubjects CurriculumSubject[]
+  students           Student[]
+  enrollments        Enrollment[]
+
+  @@unique([programId, versionLabel])
+  @@map("curricula")
+}
+
+enum SubjectType {
+  lecture
+  laboratory
+  practical
+  capstone
+  ojt
+
+  @@map("subject_type")
+}
+
+model Subject {
+  id            Int         @id @default(autoincrement())
+  code          String      @unique
+  title         String
+  description   String?
+  subjectType   SubjectType @map("subject_type")
+  defaultUnits  Decimal     @map("default_units") @db.Decimal(4, 1)
+  isActive      Boolean     @default(true) @map("is_active")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  curriculumSubjects CurriculumSubject[] @relation("SubjectInCurriculum")
+  asPrerequisiteFor  CurriculumSubject[] @relation("SubjectAsPrerequisite")
+
+  @@map("subjects")
+}
+
+model CurriculumSubject {
+  id                     Int      @id @default(autoincrement())
+  curriculumId           Int      @map("curriculum_id")
+  subjectId              Int      @map("subject_id")
+  prerequisiteSubjectId  Int?     @map("prerequisite_subject_id")
+  yearLevel              Int      @map("year_level") @db.SmallInt
+  semester               Int      @db.SmallInt
+  units                  Decimal  @db.Decimal(4, 1)
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  curriculum   Curriculum @relation(fields: [curriculumId], references: [id], onDelete: Cascade)
+  subject      Subject    @relation("SubjectInCurriculum", fields: [subjectId], references: [id])
+  prerequisite Subject?   @relation("SubjectAsPrerequisite", fields: [prerequisiteSubjectId], references: [id])
+
+  @@unique([curriculumId, subjectId])
+  @@map("curriculum_subjects")
+}
+
+// ---------------------------------------------------------------------
+// Students / applications / enrollment / credentials
+// ---------------------------------------------------------------------
+
+enum StudentStatus {
+  applicant
+  active
+  transferred
+  archived
+  graduated
+
+  @@map("student_status")
+}
+
+model Student {
+  id             Int           @id @default(autoincrement())
+  userId         Int?          @unique @map("user_id")
+  studentNumber  String        @unique @map("student_number")
+  firstName      String        @map("first_name")
+  middleName     String?       @map("middle_name")
+  lastName       String        @map("last_name")
+  email          String?
+  phone          String?
+  dateOfBirth    DateTime?     @map("date_of_birth") @db.Date
+  programId      Int           @map("program_id")
+  curriculumId   Int           @map("curriculum_id")
+  yearLevel      Int           @default(1) @map("year_level") @db.SmallInt
+  status         StudentStatus @default(active)
+  enrollmentDate DateTime?     @map("enrollment_date") @db.Date
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  user        User?               @relation("StudentUser", fields: [userId], references: [id])
+  program     Program             @relation(fields: [programId], references: [id])
+  curriculum  Curriculum          @relation(fields: [curriculumId], references: [id])
+  application Application?
+  credentials StudentCredential[]
+  enrollments Enrollment[]
+
+  @@map("students")
+}
+
+enum ApplicationStatus {
+  submitted
+  under_review
+  approved
+  returned
+
+  @@map("application_status")
+}
+
+model Application {
+  id          Int               @id @default(autoincrement())
+  firstName   String            @map("first_name")
+  middleName  String?           @map("middle_name")
+  lastName    String            @map("last_name")
+  email       String?
+  phone       String?
+  dateOfBirth DateTime?         @map("date_of_birth") @db.Date
+  programId   Int               @map("program_id")
+  status      ApplicationStatus @default(submitted)
+  notes       String?
+  reviewedBy  Int?              @map("reviewed_by")
+  reviewedAt  DateTime?         @map("reviewed_at")
+  studentId   Int?              @unique @map("student_id")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  program  Program  @relation(fields: [programId], references: [id])
+  reviewer User?    @relation("ApplicationReviewer", fields: [reviewedBy], references: [id])
+  student  Student? @relation(fields: [studentId], references: [id])
+
+  @@map("applications")
+}
+
+model CredentialRequirement {
+  id         Int      @id @default(autoincrement())
+  programId  Int?     @map("program_id")
+  name       String
+  isRequired Boolean  @default(true) @map("is_required")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  program           Program?            @relation(fields: [programId], references: [id])
+  studentCredentials StudentCredential[]
+
+  @@map("credential_requirements")
+}
+
+enum CredentialStatus {
+  missing
+  submitted
+  under_review
+  verified
+  rejected
+  expired
+
+  @@map("credential_status")
+}
+
+model StudentCredential {
+  id                       Int              @id @default(autoincrement())
+  studentId                Int              @map("student_id")
+  credentialRequirementId  Int              @map("credential_requirement_id")
+  filePath                 String?          @map("file_path")
+  submittedBy              Int?             @map("submitted_by")
+  submittedAt              DateTime?        @map("submitted_at")
+  status                   CredentialStatus @default(missing)
+  verifiedBy               Int?             @map("verified_by")
+  verifiedAt               DateTime?        @map("verified_at")
+  remarks                  String?
+  rejectionReason          String?          @map("rejection_reason")
+  version                  Int              @default(1)
+  createdAt                DateTime         @default(now()) @map("created_at")
+  updatedAt                DateTime         @updatedAt @map("updated_at")
+
+  student    Student                @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  requirement CredentialRequirement @relation(fields: [credentialRequirementId], references: [id])
+  submitter  User?                  @relation("CredentialSubmitter", fields: [submittedBy], references: [id])
+  verifier   User?                  @relation("CredentialVerifier", fields: [verifiedBy], references: [id])
+
+  @@unique([studentId, credentialRequirementId])
+  @@map("student_credentials")
+}
+
+enum EnrollmentStatus {
+  pending
+  enrolled
+  dropped
+
+  @@map("enrollment_status")
+}
+
+model Enrollment {
+  id           Int              @id @default(autoincrement())
+  studentId    Int              @map("student_id")
+  curriculumId Int              @map("curriculum_id")
+  schoolYear   String           @map("school_year")
+  semester     Int              @db.SmallInt
+  yearLevel    Int              @map("year_level") @db.SmallInt
+  status       EnrollmentStatus @default(pending)
+  approvedBy   Int?             @map("approved_by")
+  approvedAt   DateTime?        @map("approved_at")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  student    Student                   @relation(fields: [studentId], references: [id])
+  curriculum Curriculum                @relation(fields: [curriculumId], references: [id])
+  approver   User?                     @relation("EnrollmentApprover", fields: [approvedBy], references: [id])
+  history    EnrollmentStatusHistory[]
+
+  @@unique([studentId, schoolYear, semester])
+  @@map("enrollments")
+}
+
+model EnrollmentStatusHistory {
+  id           Int      @id @default(autoincrement())
+  enrollmentId Int      @map("enrollment_id")
+  fromStatus   String?  @map("from_status")
+  toStatus     String   @map("to_status")
+  changedBy    Int?     @map("changed_by")
+  reason       String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  actor      User?      @relation("EnrollmentHistoryActor", fields: [changedBy], references: [id])
+
+  @@map("enrollment_status_history")
+}
+
+// ---------------------------------------------------------------------
+// Audit log
+// ---------------------------------------------------------------------
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  action    String
+  actor     String
+  target    String
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  details   Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("audit_logs")
+}

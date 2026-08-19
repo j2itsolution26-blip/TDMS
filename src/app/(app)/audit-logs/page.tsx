@@ -1,28 +1,40 @@
+import Link from "next/link";
 import { requirePermission } from "@/server/rbac";
-import { prisma } from "@/lib/prisma";
+import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { AuditLogFilters } from "@/components/audit-logs/AuditLogFilters";
+import { AuditLogPagination } from "@/components/audit-logs/AuditLogPagination";
+import { AuditLogViewButton } from "@/components/audit-logs/AuditLogViewButton";
+import { actionTone, formatActionLabel } from "@/components/audit-logs/actionTone";
+import {
+  getAuditLogFilterOptions,
+  listAuditLogs,
+  parseAuditLogFilters,
+  redactSensitiveDetails,
+  splitActorLabel,
+} from "@/services/audit-log.service";
 
-const PAGE_SIZE = 25;
+type SearchParams = Record<string, string | undefined>;
 
-export default async function AuditLogsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ page?: string }>;
-}) {
+export default async function AuditLogsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  // Unchanged from the previous implementation — same permission,
+  // same redirect-on-denial behavior. Coordinators, who hold only
+  // audit-logs.view.scoped, are still not admitted here; that scoping
+  // decision predates this change and isn't being revisited by it.
   await requirePermission("audit-logs.view");
-  const { page: pageParam } = await searchParams;
-  const page = Math.max(1, Number(pageParam) || 1);
 
-  const [logs, total] = await Promise.all([
-    prisma.auditLog.findMany({
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-    }),
-    prisma.auditLog.count(),
+  const rawParams = await searchParams;
+  const filters = parseAuditLogFilters(rawParams);
+
+  const [{ logs, total }, filterOptions] = await Promise.all([
+    listAuditLogs(filters),
+    getAuditLogFilterOptions(),
   ]);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const hasActiveFilters = Boolean(
+    filters.search || filters.action || filters.actor || filters.target || filters.dateFrom || filters.dateTo,
+  );
 
   return (
     <div className="space-y-6">
@@ -31,50 +43,84 @@ export default async function AuditLogsPage({
         <p className="text-sm text-slate-500">{total} recorded event(s).</p>
       </div>
 
+      <AuditLogFilters actions={filterOptions.actions} actors={filterOptions.actors} targets={filterOptions.targets} />
+
       {logs.length === 0 ? (
-        <EmptyState title="No audit activity yet" />
+        <EmptyState
+          title="No audit logs found"
+          description={
+            hasActiveFilters
+              ? "Try adjusting your filters or search criteria."
+              : "Audit activity will appear here as it happens."
+          }
+          action={
+            hasActiveFilters && (
+              <Link href="/audit-logs">
+                <Button type="button" variant="secondary">
+                  Clear Filters
+                </Button>
+              </Link>
+            )
+          }
+        />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(23,53,44,0.04)]">
           <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50">
+            <thead className="bg-app-bg">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Action</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Actor</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Target</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-500">When</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">Action</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">Actor</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">Target</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">IP Address</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">Date &amp; Time</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">Details</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {logs.map((log) => (
-                <tr key={log.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 text-sm font-medium text-slate-900">{log.action}</td>
-                  <td className="px-4 py-3 text-sm text-slate-600">{log.actor}</td>
-                  <td className="px-4 py-3 text-sm text-slate-600">{log.target}</td>
-                  <td className="px-4 py-3 text-sm text-slate-500">{log.createdAt.toLocaleString()}</td>
-                </tr>
-              ))}
+              {logs.map((log) => {
+                const actorInfo = splitActorLabel(log.actor);
+                const targetInfo = splitActorLabel(log.target);
+                return (
+                  <tr key={log.id} className="transition-colors hover:bg-app-bg">
+                    <td className="px-4 py-3 text-sm">
+                      <StatusBadge label={formatActionLabel(log.action)} tone={actionTone(log.action)} />
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <div className="font-medium text-ink">{actorInfo.name}</div>
+                      {actorInfo.email && <div className="text-xs text-ink-muted">{actorInfo.email}</div>}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <div className="font-medium text-ink">{targetInfo.name}</div>
+                      {targetInfo.email && <div className="text-xs text-ink-muted">{targetInfo.email}</div>}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-ink-soft">{log.ipAddress ?? "—"}</td>
+                    <td className="px-4 py-3 text-sm text-ink-soft">
+                      {log.createdAt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                      <div className="text-xs text-ink-muted">
+                        {log.createdAt.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" })}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <AuditLogViewButton
+                        log={{
+                          id: log.id,
+                          action: log.action,
+                          actor: log.actor,
+                          target: log.target,
+                          ipAddress: log.ipAddress,
+                          userAgent: log.userAgent,
+                          details: redactSensitiveDetails(log.details),
+                          createdAt: log.createdAt.toISOString(),
+                        }}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
 
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm text-slate-500">
-              <span>
-                Page {page} of {totalPages}
-              </span>
-              <div className="flex gap-3">
-                {page > 1 && (
-                  <a href={`/audit-logs?page=${page - 1}`} className="font-medium text-emerald-700 hover:text-emerald-900">
-                    Previous
-                  </a>
-                )}
-                {page < totalPages && (
-                  <a href={`/audit-logs?page=${page + 1}`} className="font-medium text-emerald-700 hover:text-emerald-900">
-                    Next
-                  </a>
-                )}
-              </div>
-            </div>
-          )}
+          <AuditLogPagination page={filters.page} perPage={filters.perPage} total={total} searchParams={rawParams} />
         </div>
       )}
     </div>

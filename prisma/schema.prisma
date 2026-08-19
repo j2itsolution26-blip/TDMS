@@ -370,5 +370,13 @@ model AuditLog {
   details   Json?
   createdAt DateTime @default(now()) @map("created_at")
 
+  // Support the Audit Logs page's filter bar and default sort without a
+  // full table scan as the log grows. actor/target are free-text (see
+  // audit.ts's formatActor) rather than FKs, so these are plain btree
+  // indexes, not relation indexes.
+  @@index([action])
+  @@index([actor])
+  @@index([target])
+  @@index([createdAt])
   @@map("audit_logs")
 }

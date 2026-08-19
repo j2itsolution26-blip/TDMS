@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { PAGE_SIZE_OPTIONS } from "@/services/audit-log.service";
+import { PAGE_SIZE_OPTIONS } from "@/lib/audit-log-presentation";
 
 export function RowsPerPageSelect({
   perPage,

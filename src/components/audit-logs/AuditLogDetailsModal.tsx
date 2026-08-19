@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { actionTone, formatActionLabel } from "./actionTone";
-import { splitActorLabel } from "@/services/audit-log.service";
+import { splitActorLabel } from "@/lib/audit-log-presentation";
 
 export type AuditLogDetails = {
   id: number;

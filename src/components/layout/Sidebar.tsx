@@ -23,21 +23,24 @@ export function Sidebar({
 
   return (
     <aside
-      className={`fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col border-r border-slate-200 bg-white transition-all duration-200 md:static md:translate-x-0 ${
+      className={`fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col bg-sidebar-bg transition-all duration-200 md:static md:translate-x-0 ${
         collapsed ? "md:w-[76px]" : "md:w-64"
       } ${mobileOpen ? "translate-x-0" : "-translate-x-full"} w-64`}
     >
-      <div className="flex h-16 shrink-0 items-center border-b border-slate-200 px-5">
-        <span className="text-sm font-bold tracking-wide text-emerald-800">
-          {collapsed ? "TD" : "TDMS"}
+      <div className="flex h-16 shrink-0 items-center gap-2.5 border-b border-white/10 px-5">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gold/90 text-sm font-bold text-forest-dark">
+          T
         </span>
+        {!collapsed && (
+          <span className="text-sm font-bold tracking-wide text-white">TDMS</span>
+        )}
       </div>
 
-      <nav className="flex-1 space-y-5 overflow-y-auto p-3">
+      <nav className="flex-1 space-y-6 overflow-y-auto p-3">
         {sections.map((section) => (
           <div key={section}>
             {!collapsed && (
-              <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/40">
                 {section}
               </p>
             )}
@@ -53,13 +56,16 @@ export function Sidebar({
                       href={item.href}
                       onClick={onNavigate}
                       title={collapsed ? item.label : undefined}
-                      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                      className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                         active
-                          ? "bg-emerald-50 text-emerald-800"
-                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                          ? "bg-white/10 text-white"
+                          : "text-white/70 hover:bg-white/5 hover:text-white"
                       } ${collapsed ? "md:justify-center" : ""}`}
                     >
-                      {Icon && <Icon className="h-[18px] w-[18px] shrink-0" />}
+                      {active && (
+                        <span className="absolute inset-y-1 left-0 w-[3px] rounded-full bg-gold-accent" aria-hidden="true" />
+                      )}
+                      {Icon && <Icon className={`h-[18px] w-[18px] shrink-0 ${active ? "text-gold-accent" : ""}`} />}
                       <span className={collapsed ? "md:hidden" : ""}>{item.label}</span>
                     </Link>
                   );

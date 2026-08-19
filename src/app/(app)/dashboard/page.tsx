@@ -6,6 +6,13 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionCard } from "@/components/dashboard/SectionCard";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
 import { QuickActions } from "@/components/dashboard/QuickActions";
+import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
+import {
+  StaffIcon,
+  ProgramsIcon,
+  ShieldIcon,
+  AuditIcon,
+} from "@/components/layout/icons";
 
 const SECURITY_ACTIONS = [
   "LOGIN_FAILED",
@@ -15,12 +22,17 @@ const SECURITY_ACTIONS = [
 ];
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
-// A plain helper rather than inlining `Date.now()` in the dashboard
-// function body — React's purity lint rule treats any function used as
-// a JSX tag (SuperAdminDashboard included, Server Component or not) as
-// a "component" and flags impure calls made directly in its body.
+// Plain helpers rather than inlining `Date.now()`/`new Date()` in the
+// dashboard function bodies — React's purity lint rule treats any
+// function used as a JSX tag (these dashboards included, Server
+// Component or not) as a "component" and flags impure calls made
+// directly in its body.
 function daysAgo(ms: number): Date {
   return new Date(Date.now() - ms);
+}
+
+function now(): Date {
+  return new Date();
 }
 
 async function checkDatabaseHealth(): Promise<{ ok: boolean; latencyMs: number }> {
@@ -39,8 +51,8 @@ export default async function DashboardPage() {
   if (!userHasPermission(user, "dashboard.view.institutional")) {
     return (
       <div>
-        <h1 className="text-lg font-bold text-slate-900">Welcome, {user.name}</h1>
-        <p className="mt-2 text-sm text-slate-500">
+        <h1 className="text-lg font-bold text-ink">Welcome, {user.name}</h1>
+        <p className="mt-2 text-sm text-ink-soft">
           Your role ({user.roles.join(", ") || "none"}) does not yet have a dedicated dashboard
           view in the Next.js migration. This is an honest placeholder, not a fabricated one —
           the underlying attendance/grades/clearance modules haven&rsquo;t been built yet.
@@ -50,14 +62,15 @@ export default async function DashboardPage() {
   }
 
   if (userHasRole(user, ["super_admin"])) {
-    return <SuperAdminDashboard />;
+    return <SuperAdminDashboard name={user.name} />;
   }
 
-  return <AdminDashboard />;
+  return <AdminDashboard name={user.name} />;
 }
 
-async function SuperAdminDashboard() {
+async function SuperAdminDashboard({ name }: { name: string }) {
   const since30d = daysAgo(THIRTY_DAYS_MS);
+  const today = now();
 
   const [totalAdmins, totalUsers, activeUsers, securityEventCount, recentSecurityEvents, recentActivity, db] =
     await Promise.all([
@@ -76,27 +89,31 @@ async function SuperAdminDashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-bold text-slate-900">System Administration</h1>
-        <p className="text-sm text-slate-500">Platform health, security, and account oversight.</p>
-      </div>
+      <DashboardHeader
+        name={name}
+        subtitle="Welcome back to the TDMS administration portal."
+        hour={today.getHours()}
+        today={today.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+      />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <StatCard label="Total Admins" value={totalAdmins} />
-        <StatCard label="Total Users" value={totalUsers} />
-        <StatCard label="Active Users" value={activeUsers} hint={`of ${totalUsers} total`} />
+        <StatCard label="Total Admins" value={totalAdmins} icon={<StaffIcon className="h-4 w-4" />} />
+        <StatCard label="Total Users" value={totalUsers} icon={<StaffIcon className="h-4 w-4" />} />
+        <StatCard label="Active Users" value={activeUsers} hint={`of ${totalUsers} total`} icon={<StaffIcon className="h-4 w-4" />} />
         <StatCard label="Active Modules" value="No data available" />
         <StatCard
           label="Security Events"
           value={securityEventCount}
           hint="last 30 days"
           tone={securityEventCount > 0 ? "warning" : "neutral"}
+          icon={<ShieldIcon className="h-4 w-4" />}
         />
         <StatCard
           label="System Health"
           value={db.ok ? "Operational" : "Degraded"}
           hint={`DB ${db.latencyMs}ms`}
           tone={db.ok ? "success" : "danger"}
+          icon={<ShieldIcon className="h-4 w-4" />}
         />
       </div>
 
@@ -104,23 +121,23 @@ async function SuperAdminDashboard() {
         <SectionCard title="System Health">
           <ul className="space-y-2 text-sm">
             <li className="flex items-center justify-between">
-              <span className="text-slate-600">Application</span>
+              <span className="text-ink-soft">Application</span>
               <StatusBadge label="Operational" tone="success" />
             </li>
             <li className="flex items-center justify-between">
-              <span className="text-slate-600">Database</span>
+              <span className="text-ink-soft">Database</span>
               <StatusBadge label={db.ok ? "Operational" : "Unreachable"} tone={db.ok ? "success" : "danger"} />
             </li>
             <li className="flex items-center justify-between">
-              <span className="text-slate-600">Authentication</span>
+              <span className="text-ink-soft">Authentication</span>
               <StatusBadge label={db.ok ? "Operational" : "Unreachable"} tone={db.ok ? "success" : "danger"} />
             </li>
             <li className="flex items-center justify-between">
-              <span className="text-slate-600">Storage</span>
+              <span className="text-ink-soft">Storage</span>
               <StatusBadge label="No data available" tone="neutral" />
             </li>
             <li className="flex items-center justify-between">
-              <span className="text-slate-600">Backups</span>
+              <span className="text-ink-soft">Backups</span>
               <StatusBadge label="No data available" tone="neutral" />
             </li>
           </ul>
@@ -132,9 +149,9 @@ async function SuperAdminDashboard() {
           ) : (
             <ul className="space-y-2">
               {recentSecurityEvents.map((event) => (
-                <li key={event.id} className="text-sm text-slate-600">
-                  <span className="font-medium text-slate-800">{event.action.replace(/_/g, " ")}</span> —{" "}
-                  {event.target} <span className="text-slate-400">({event.createdAt.toLocaleString()})</span>
+                <li key={event.id} className="text-sm text-ink-soft">
+                  <span className="font-medium text-ink">{event.action.replace(/_/g, " ")}</span> — {event.target}{" "}
+                  <span className="text-ink-muted">({event.createdAt.toLocaleString()})</span>
                 </li>
               ))}
             </ul>
@@ -160,7 +177,9 @@ async function SuperAdminDashboard() {
   );
 }
 
-async function AdminDashboard() {
+async function AdminDashboard({ name }: { name: string }) {
+  const today = now();
+
   const [
     totalStudents,
     totalTeachers,
@@ -191,25 +210,29 @@ async function AdminDashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-bold text-slate-900">Administration</h1>
-        <p className="text-sm text-slate-500">Daily TDMS operations overview.</p>
-      </div>
+      <DashboardHeader
+        name={name}
+        subtitle="Daily TDMS operations overview."
+        hour={today.getHours()}
+        today={today.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+      />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-        <StatCard label="Total Students" value={totalStudents} />
-        <StatCard label="Total Teachers" value={totalTeachers} />
-        <StatCard label="Total Users" value={totalUsers} />
-        <StatCard label="Programs" value={activePrograms} />
+        <StatCard label="Total Students" value={totalStudents} icon={<StaffIcon className="h-4 w-4" />} />
+        <StatCard label="Total Teachers" value={totalTeachers} icon={<StaffIcon className="h-4 w-4" />} />
+        <StatCard label="Total Users" value={totalUsers} icon={<StaffIcon className="h-4 w-4" />} />
+        <StatCard label="Programs" value={activePrograms} icon={<ProgramsIcon className="h-4 w-4" />} />
         <StatCard
           label="Pending Applications"
           value={pendingApplications}
           tone={pendingApplications > 0 ? "warning" : "neutral"}
+          icon={<AuditIcon className="h-4 w-4" />}
         />
         <StatCard
           label="Pending Documents"
           value={pendingDocuments}
           tone={pendingDocuments > 0 ? "warning" : "neutral"}
+          icon={<AuditIcon className="h-4 w-4" />}
         />
         <StatCard label="Active Classes" value="No data available" />
       </div>
@@ -218,16 +241,16 @@ async function AdminDashboard() {
         <SectionCard title="Enrollment Overview">
           <ul className="space-y-2 text-sm">
             <li className="flex items-center justify-between">
-              <span className="text-slate-600">Pending</span>
-              <span className="font-medium text-slate-900">{enrollmentCounts.pending ?? 0}</span>
+              <span className="text-ink-soft">Pending</span>
+              <span className="font-medium text-ink">{enrollmentCounts.pending ?? 0}</span>
             </li>
             <li className="flex items-center justify-between">
-              <span className="text-slate-600">Enrolled</span>
-              <span className="font-medium text-slate-900">{enrollmentCounts.enrolled ?? 0}</span>
+              <span className="text-ink-soft">Enrolled</span>
+              <span className="font-medium text-ink">{enrollmentCounts.enrolled ?? 0}</span>
             </li>
             <li className="flex items-center justify-between">
-              <span className="text-slate-600">Dropped</span>
-              <span className="font-medium text-slate-900">{enrollmentCounts.dropped ?? 0}</span>
+              <span className="text-ink-soft">Dropped</span>
+              <span className="font-medium text-ink">{enrollmentCounts.dropped ?? 0}</span>
             </li>
           </ul>
         </SectionCard>
@@ -238,13 +261,13 @@ async function AdminDashboard() {
           ) : (
             <ul className="space-y-2 text-sm">
               {pendingApplications > 0 && (
-                <li className="text-slate-600">
+                <li className="text-ink-soft">
                   <span className="font-medium text-amber-700">{pendingApplications}</span> application(s) awaiting
                   review
                 </li>
               )}
               {pendingDocuments > 0 && (
-                <li className="text-slate-600">
+                <li className="text-ink-soft">
                   <span className="font-medium text-amber-700">{pendingDocuments}</span> credential document(s)
                   awaiting verification
                 </li>
@@ -261,10 +284,10 @@ async function AdminDashboard() {
           <ul className="space-y-2 text-sm">
             {programStats.map((program) => (
               <li key={program.id} className="flex items-center justify-between">
-                <span className="text-slate-600">
-                  {program.name} <span className="text-slate-400">({program.code})</span>
+                <span className="text-ink-soft">
+                  {program.name} <span className="text-ink-muted">({program.code})</span>
                 </span>
-                <span className="font-medium text-slate-900">{program._count.students} student(s)</span>
+                <span className="font-medium text-ink">{program._count.students} student(s)</span>
               </li>
             ))}
           </ul>

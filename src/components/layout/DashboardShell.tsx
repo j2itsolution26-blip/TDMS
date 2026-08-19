@@ -19,7 +19,7 @@ export function DashboardShell({
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex min-h-screen bg-app-bg">
       <Sidebar
         navItems={navItems}
         collapsed={collapsed}

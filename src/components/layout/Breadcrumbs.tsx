@@ -23,16 +23,16 @@ export function Breadcrumbs() {
   });
 
   return (
-    <nav aria-label="Breadcrumb" className="hidden items-center gap-1.5 text-sm text-slate-500 sm:flex">
+    <nav aria-label="Breadcrumb" className="hidden items-center gap-1.5 text-sm text-ink-soft sm:flex">
       {crumbs.map((crumb, index) => {
         const isLast = index === crumbs.length - 1;
         return (
           <span key={crumb.href} className="flex items-center gap-1.5">
-            {index > 0 && <span className="text-slate-300">/</span>}
+            {index > 0 && <span className="text-ink-muted/50">/</span>}
             {isLast ? (
-              <span className="font-medium text-slate-800">{crumb.label}</span>
+              <span className="font-medium text-ink">{crumb.label}</span>
             ) : (
-              <Link href={crumb.href} className="hover:text-slate-700">
+              <Link href={crumb.href} className="hover:text-ink">
                 {crumb.label}
               </Link>
             )}

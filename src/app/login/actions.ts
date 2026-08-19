@@ -66,14 +66,18 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
     return { error: "This account has been deactivated. Please contact an administrator." };
   }
 
-  await createSession(user.id, meta);
-  await recordAudit({
-    action: "LOGIN_SUCCESS",
-    actor: { name: user.name, email: user.email },
-    target: `${user.name} <${user.email}>`,
-    ipAddress: meta.ipAddress,
-    userAgent: meta.userAgent,
-  });
+  // Independent writes — the audit entry doesn't need the session to
+  // exist yet or vice versa — so they don't need to be sequential.
+  await Promise.all([
+    createSession(user.id, meta),
+    recordAudit({
+      action: "LOGIN_SUCCESS",
+      actor: { name: user.name, email: user.email },
+      target: `${user.name} <${user.email}>`,
+      ipAddress: meta.ipAddress,
+      userAgent: meta.userAgent,
+    }),
+  ]);
 
   redirect("/dashboard");
 }

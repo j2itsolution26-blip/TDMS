@@ -1,7 +1,16 @@
 import "server-only";
 import { randomBytes } from "crypto";
 import { cookies } from "next/headers";
+import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
+
+// How stale lastActivity may get before a request bothers refreshing
+// it. Touching it on literally every request (the original behavior)
+// meant every authenticated page paid for an extra write round trip
+// it almost never needed — a session that's active every few seconds
+// doesn't need lastActivity accurate to the second, only accurate
+// enough that the 120-minute idle timeout is enforced honestly.
+const ACTIVITY_TOUCH_THRESHOLD_SECONDS = 60;
 
 const SESSION_COOKIE = "tdms_session";
 const SESSION_LIFETIME_SECONDS = 120 * 60; // parity with Laravel's SESSION_LIFETIME=120 (minutes)
@@ -64,11 +73,21 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   const sessionId = store.get(SESSION_COOKIE)?.value;
   if (!sessionId) return null;
 
+  // select, not include: this runs on every authenticated request, so
+  // it's the hottest query in the app — no reason to pull the user's
+  // password hash and other unused columns into memory every time.
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
-    include: {
+    select: {
+      lastActivity: true,
       user: {
-        include: { roles: { include: { role: true } } },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          isActive: true,
+          roles: { select: { role: { select: { name: true } } } },
+        },
       },
     },
   });
@@ -91,13 +110,21 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   }
 
   // Sliding expiration: touch lastActivity so an active user's session
-  // doesn't expire mid-use.
-  await prisma.session
-    .update({
-      where: { id: sessionId },
-      data: { lastActivity: Math.floor(Date.now() / 1000) },
-    })
-    .catch(() => {});
+  // doesn't expire mid-use — but only when it's actually gone stale,
+  // and after the response has been sent rather than blocking it.
+  // getSessionUser() runs on every authenticated request, so this was
+  // previously a synchronous write round trip on every single page
+  // load; neither the throttle nor the deferral changes when a session
+  // is considered expired, since idleSeconds above is still computed
+  // from the real lastActivity value each time.
+  if (idleSeconds >= ACTIVITY_TOUCH_THRESHOLD_SECONDS) {
+    const touchedAt = Math.floor(Date.now() / 1000);
+    after(() =>
+      prisma.session
+        .update({ where: { id: sessionId }, data: { lastActivity: touchedAt } })
+        .catch(() => {})
+    );
+  }
 
   return {
     id: session.user.id,

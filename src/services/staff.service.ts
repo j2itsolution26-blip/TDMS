@@ -62,11 +62,23 @@ export const staffInputSchema = z.object({
 
 export type StaffInput = z.infer<typeof staffInputSchema>;
 
+// Only the columns the staff list/edit UI actually renders — this
+// list is small today but the point stands regardless: no reason to
+// pull every user's password hash out of the database to display a
+// name and a role.
+const STAFF_SELECT = {
+  id: true,
+  name: true,
+  email: true,
+  isActive: true,
+  roles: { select: { role: { select: { name: true } } } },
+} as const;
+
 export async function listStaff(actor: SessionUser) {
   assertCanManageAccounts(actor);
   const users = await prisma.user.findMany({
     where: { roles: { some: { role: { name: { in: [...STAFF_ROLES] } } } } },
-    include: { roles: { include: { role: true } } },
+    select: STAFF_SELECT,
     orderBy: { name: "asc" },
   });
   return users.map((u) => ({
@@ -82,7 +94,7 @@ export async function getStaffMember(actor: SessionUser, id: number) {
   assertCanManageAccounts(actor);
   const user = await prisma.user.findUnique({
     where: { id },
-    include: { roles: { include: { role: true } } },
+    select: STAFF_SELECT,
   });
   if (!user) return null;
   return { id: user.id, name: user.name, email: user.email, role: user.roles[0]?.role.name ?? "" };
@@ -97,7 +109,7 @@ export async function createStaff(actor: SessionUser, input: StaffInput) {
     throw new Error("You cannot assign that role.");
   }
 
-  const existing = await prisma.user.findUnique({ where: { email: data.email } });
+  const existing = await prisma.user.findUnique({ where: { email: data.email }, select: { id: true } });
   if (existing) throw new Error(`A user with email "${data.email}" already exists.`);
 
   // Generated, not chosen — the account owner resets it on first login.
@@ -142,12 +154,15 @@ export async function updateStaff(actor: SessionUser, id: number, input: StaffIn
     throw new Error("You cannot assign that role.");
   }
 
-  const conflict = await prisma.user.findFirst({ where: { email: data.email, NOT: { id } } });
+  const conflict = await prisma.user.findFirst({
+    where: { email: data.email, NOT: { id } },
+    select: { id: true },
+  });
   if (conflict) throw new Error(`A user with email "${data.email}" already exists.`);
 
   const before = await prisma.user.findUniqueOrThrow({
     where: { id },
-    include: { roles: { include: { role: true } } },
+    select: { email: true, roles: { select: { role: { select: { name: true } } } } },
   });
   const oldRole = before.roles[0]?.role.name;
 
@@ -178,7 +193,7 @@ export async function toggleStaffActive(actor: SessionUser, id: number) {
   if (id === actor.id) throw new Error("You cannot deactivate your own account.");
   await assertCanTargetUser(actor, id);
 
-  const target = await prisma.user.findUniqueOrThrow({ where: { id } });
+  const target = await prisma.user.findUniqueOrThrow({ where: { id }, select: { isActive: true } });
   const user = await prisma.user.update({ where: { id }, data: { isActive: !target.isActive } });
 
   await recordAudit({

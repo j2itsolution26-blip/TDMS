@@ -1,10 +1,19 @@
 import Image from "next/image";
+import Link from "next/link";
 import { requireGuest } from "./actions";
 import { LoginForm } from "./LoginForm";
+import { prisma } from "@/lib/prisma";
 import "./auth.css";
 
 export default async function LoginPage() {
   await requireGuest();
+
+  // Mirrors the Laravel app's canBootstrap flag: the "create the first
+  // Super Admin" link only shows up while no Super Admin exists yet.
+  const superAdminExists = await prisma.userRole.findFirst({
+    where: { role: { name: "super_admin" } },
+  });
+  const canBootstrap = !superAdminExists;
 
   return (
     <div className="tdms-auth">
@@ -133,6 +142,15 @@ export default async function LoginPage() {
                 Efficient
               </span>
             </div>
+
+            {canBootstrap && (
+              <div className="panel__bootstrap">
+                <p className="panel__bootstrap-label">Don&rsquo;t have a system administrator yet?</p>
+                <Link href="/setup" className="panel__bootstrap-link">
+                  Create Initial Super Admin
+                </Link>
+              </div>
+            )}
           </div>
         </section>
       </div>

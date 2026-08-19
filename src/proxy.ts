@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const SESSION_COOKIE = "tdms_session";
-const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PATHS = ["/login", "/setup"];
 
 // This is a UX fast-path only (Prisma/the database can't run on the
 // Edge runtime middleware uses) — it redirects obviously-unauthenticated

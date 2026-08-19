@@ -724,6 +724,30 @@
     color: var(--tdms-green);
 }
 
+.panel__bootstrap {
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid #E7ECE9;
+    text-align: center;
+}
+
+.panel__bootstrap-label {
+    font-size: 0.8rem;
+    color: #6B7A72;
+    margin: 0 0 0.4rem;
+}
+
+.panel__bootstrap-link {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--tdms-green);
+    text-decoration: none;
+}
+
+.panel__bootstrap-link:hover {
+    color: var(--tdms-gold);
+}
+
 /* ---------- Footer ---------- */
 
 .tdms-auth__footer {

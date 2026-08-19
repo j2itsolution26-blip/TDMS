@@ -1,5 +1,6 @@
-import { Sidebar } from "./Sidebar";
-import { Topbar } from "./Topbar";
+import { DashboardShell } from "./DashboardShell";
+import { NAV_ITEMS } from "./navItems";
+import { userHasPermission } from "@/server/rbac";
 import type { SessionUser } from "@/server/session";
 
 export function DashboardLayout({
@@ -9,13 +10,16 @@ export function DashboardLayout({
   user: SessionUser;
   children: React.ReactNode;
 }) {
+  // Computed server-side (this file is a Server Component) and handed
+  // down as plain data — the client Sidebar has no business importing
+  // the server-only rbac/session chain itself.
+  const navItems = NAV_ITEMS.filter(
+    (item) => !item.permission || userHasPermission(user, item.permission)
+  );
+
   return (
-    <div className="flex min-h-screen bg-slate-50">
-      <Sidebar user={user} />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar user={user} />
-        <main className="flex-1 p-6">{children}</main>
-      </div>
-    </div>
+    <DashboardShell user={user} navItems={navItems}>
+      {children}
+    </DashboardShell>
   );
 }

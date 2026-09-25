@@ -2,7 +2,7 @@
   "name": "tdms",
   "version": "1.0.0",
   "private": true,
-  "description": "TDMS — TVET Diploma Management System",
+  "description": "TDMS \u2014 TVET Diploma Management System",
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
@@ -17,9 +17,6 @@
     "db:seed:demo": "tsx prisma/seed-demo.ts",
     "test": "vitest run",
     "test:watch": "vitest"
-  },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.1.0",

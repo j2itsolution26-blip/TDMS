@@ -1,8 +1,42 @@
 # Deployment
 
-The application is a standard Next.js app. Vercel detects it with no
-configuration, which is why the Laravel-era `vercel.json` (PHP runtime and
-hand-written routes) was deleted rather than rewritten.
+The application is a standard Next.js app.
+
+## vercel.json
+
+The Laravel-era `vercel.json` (PHP runtime, hand-written routes,
+`outputDirectory: public`) was deleted. A minimal one replaces it:
+
+```json
+{
+  "framework": "nextjs",
+  "outputDirectory": null
+}
+```
+
+Both lines exist to override **stale dashboard Project Settings left over
+from the PHP deployment**, which survive a repository change because they
+live in the Vercel project, not in git. With the old settings the build
+compiled fine and then failed with:
+
+```
+Error: No Output Directory named "dist" found after the Build completed.
+```
+
+That is Vercel running the *static* build path — it had the Framework
+Preset on "Other" and an Output Directory override of `dist`, so after
+running the build it went looking for a folder of static files. A Next.js
+build produces `.next` and a set of functions instead, which Vercel only
+knows how to deploy once the framework preset says `nextjs`.
+
+`vercel.json` takes precedence over the dashboard, so committing these two
+keys fixes it for every environment at once and keeps the setting in
+version control. Note that `"framework": null` would mean "Other" — the
+slug `"nextjs"` is what is wanted. Setting `outputDirectory` to `null`
+clears the dashboard override and returns it to the framework default.
+
+You may also clear both in the dashboard (Settings → Build & Deployment);
+the file makes that unnecessary.
 
 ## Commands
 

@@ -1,0 +1,476 @@
+// TDMS — Prisma schema.
+//
+// Mapped 1:1 onto the tables the Laravel migrations already created in
+// PostgreSQL. Every @@map/@map exists so that not one column or table is
+// renamed: the live database is reused as-is and no data is moved.
+//
+// Laravel conventions preserved deliberately:
+//   * snake_case columns        -> @map on each field
+//   * plural snake_case tables  -> @@map on each model
+//   * BigInt auto-increment ids -> BigInt @id @default(autoincrement())
+//   * Laravel enum() columns    -> Prisma enums whose member names are the
+//                                  exact strings already stored as text
+//   * created_at / updated_at   -> @map("created_at") / @map("updated_at")
+//
+// Prisma has no equivalent of Eloquent's polymorphic `model_type` string, so
+// Spatie's model_has_roles / model_has_permissions keep their literal shape
+// and are queried with model_type = 'App\Models\User' (see
+// src/server/auth/rbac.ts). Existing rows therefore stay valid untouched.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Auth / accounts
+// ---------------------------------------------------------------------------
+
+model User {
+  id              BigInt    @id @default(autoincrement())
+  name            String    @db.VarChar(255)
+  /// Added by the migration that finally makes the "Username or Email"
+  /// login label true. Nullable: accounts created from the Staff screen
+  /// still sign in with their email only.
+  username        String?   @unique(map: "users_username_unique") @db.VarChar(255)
+  email           String    @unique(map: "users_email_unique") @db.VarChar(255)
+  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamp(0)
+  /// bcrypt hash written by PHP ($2y$12$...). bcryptjs verifies these
+  /// unchanged, so no existing account needs a password reset.
+  password        String    @db.VarChar(255)
+  rememberToken   String?   @map("remember_token") @db.VarChar(100)
+  isActive        Boolean   @default(true) @map("is_active")
+  createdAt       DateTime? @map("created_at") @db.Timestamp(0)
+  updatedAt       DateTime? @map("updated_at") @db.Timestamp(0)
+
+  /// Eloquent declared hasOne(Student), but students.user_id carries no
+  /// unique index in the live database, so a one-to-one here would demand
+  /// a schema change. Modelled as a list and narrowed to the first row in
+  /// the service layer — exactly what Eloquent's hasOne does at runtime.
+  students             Student[]                 @relation("StudentAccount")
+  sessions             Session[]
+  reviewedApplications Application[]             @relation("ApplicationReviewer")
+  submittedCredentials StudentCredential[]       @relation("CredentialSubmitter")
+  verifiedCredentials  StudentCredential[]       @relation("CredentialVerifier")
+  approvedEnrollments  Enrollment[]              @relation("EnrollmentApprover")
+  enrollmentChanges    EnrollmentStatusHistory[] @relation("EnrollmentStatusActor")
+
+  @@map("users")
+}
+
+/// Replaces the payload of Laravel's `sessions` table, which is a
+/// PHP-serialised blob Node cannot read. A separate table, so the old rows
+/// are left untouched rather than deleted — nothing reads them any more.
+model Session {
+  id             String   @id @db.VarChar(128)
+  userId         BigInt   @map("user_id")
+  ipAddress      String?  @map("ip_address") @db.VarChar(45)
+  userAgent      String?  @map("user_agent")
+  createdAt      DateTime @default(now()) @map("created_at")
+  lastActivityAt DateTime @default(now()) @map("last_activity_at")
+  expiresAt      DateTime @map("expires_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+}
+
+model PasswordResetToken {
+  email     String    @id @db.VarChar(255)
+  token     String    @db.VarChar(255)
+  createdAt DateTime? @map("created_at") @db.Timestamp(0)
+
+  @@map("password_reset_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Spatie laravel-permission tables, reused verbatim
+// ---------------------------------------------------------------------------
+
+model Role {
+  id        BigInt    @id @default(autoincrement())
+  name      String    @db.VarChar(255)
+  guardName String    @map("guard_name") @db.VarChar(255)
+  createdAt DateTime? @map("created_at") @db.Timestamp(0)
+  updatedAt DateTime? @map("updated_at") @db.Timestamp(0)
+
+  permissions RoleHasPermission[]
+  models      ModelHasRole[]
+
+  @@unique([name, guardName], map: "roles_name_guard_name_unique")
+  @@map("roles")
+}
+
+model Permission {
+  id        BigInt    @id @default(autoincrement())
+  name      String    @db.VarChar(255)
+  guardName String    @map("guard_name") @db.VarChar(255)
+  createdAt DateTime? @map("created_at") @db.Timestamp(0)
+  updatedAt DateTime? @map("updated_at") @db.Timestamp(0)
+
+  roles  RoleHasPermission[]
+  models ModelHasPermission[]
+
+  @@unique([name, guardName], map: "permissions_name_guard_name_unique")
+  @@map("permissions")
+}
+
+model RoleHasPermission {
+  permissionId BigInt @map("permission_id")
+  roleId       BigInt @map("role_id")
+
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade, map: "role_has_permissions_permission_id_foreign", onUpdate: NoAction)
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade, map: "role_has_permissions_role_id_foreign", onUpdate: NoAction)
+
+  @@id([permissionId, roleId])
+  @@map("role_has_permissions")
+}
+
+model ModelHasRole {
+  roleId    BigInt @map("role_id")
+  modelType String @map("model_type") @db.VarChar(255)
+  modelId   BigInt @map("model_id")
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade, map: "model_has_roles_role_id_foreign", onUpdate: NoAction)
+
+  @@id([roleId, modelId, modelType])
+  @@index([modelId, modelType], map: "model_has_roles_model_id_model_type_index")
+  @@map("model_has_roles")
+}
+
+model ModelHasPermission {
+  permissionId BigInt @map("permission_id")
+  modelType    String @map("model_type") @db.VarChar(255)
+  modelId      BigInt @map("model_id")
+
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade, map: "model_has_permissions_permission_id_foreign", onUpdate: NoAction)
+
+  @@id([permissionId, modelId, modelType])
+  @@index([modelId, modelType], map: "model_has_permissions_model_id_model_type_index")
+  @@map("model_has_permissions")
+}
+
+// ---------------------------------------------------------------------------
+// Academic domain
+// ---------------------------------------------------------------------------
+
+model Program {
+  id          BigInt    @id @default(autoincrement())
+  code        String    @unique(map: "programs_code_unique") @db.VarChar(255)
+  name        String    @db.VarChar(255)
+  description String?
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime? @map("created_at") @db.Timestamp(0)
+  updatedAt   DateTime? @map("updated_at") @db.Timestamp(0)
+
+  curricula              Curriculum[]
+  students               Student[]
+  applications           Application[]
+  credentialRequirements CredentialRequirement[]
+
+  @@map("programs")
+}
+
+model Curriculum {
+  id                  BigInt    @id @default(autoincrement())
+  programId           BigInt    @map("program_id")
+  versionLabel        String    @map("version_label") @db.VarChar(255)
+  effectiveSchoolYear String    @map("effective_school_year") @db.VarChar(255)
+  isActive            Boolean   @default(true) @map("is_active")
+  createdAt           DateTime? @map("created_at") @db.Timestamp(0)
+  updatedAt           DateTime? @map("updated_at") @db.Timestamp(0)
+
+  // Laravel restrictOnDelete() -> onDelete: Restrict
+  program            Program             @relation(fields: [programId], references: [id], onDelete: Restrict, map: "curricula_program_id_foreign", onUpdate: NoAction)
+  curriculumSubjects CurriculumSubject[]
+  students           Student[]
+  enrollments        Enrollment[]
+
+  @@unique([programId, versionLabel], map: "curricula_program_id_version_label_unique")
+  @@map("curricula")
+}
+
+model Subject {
+  id           BigInt      @id @default(autoincrement())
+  code         String      @unique(map: "subjects_code_unique") @db.VarChar(255)
+  title        String      @db.VarChar(255)
+  description  String?
+  subjectType  String      @map("subject_type") @db.VarChar(255)
+  defaultUnits Decimal     @map("default_units") @db.Decimal(4, 1)
+  isActive     Boolean     @default(true) @map("is_active")
+  createdAt    DateTime?   @map("created_at") @db.Timestamp(0)
+  updatedAt    DateTime?   @map("updated_at") @db.Timestamp(0)
+
+  curriculumSubjects CurriculumSubject[] @relation("CurriculumSubjectSubject")
+  prerequisiteFor    CurriculumSubject[] @relation("CurriculumSubjectPrerequisite")
+
+  @@map("subjects")
+}
+
+model CurriculumSubject {
+  id                    BigInt    @id @default(autoincrement())
+  curriculumId          BigInt    @map("curriculum_id")
+  subjectId             BigInt    @map("subject_id")
+  prerequisiteSubjectId BigInt?   @map("prerequisite_subject_id")
+  yearLevel             Int       @map("year_level") @db.SmallInt
+  semester              Int       @db.SmallInt
+  units                 Decimal   @db.Decimal(4, 1)
+  createdAt             DateTime? @map("created_at") @db.Timestamp(0)
+  updatedAt             DateTime? @map("updated_at") @db.Timestamp(0)
+
+  curriculum   Curriculum @relation(fields: [curriculumId], references: [id], onDelete: Cascade, map: "curriculum_subjects_curriculum_id_foreign", onUpdate: NoAction)
+  subject      Subject    @relation("CurriculumSubjectSubject", fields: [subjectId], references: [id], onDelete: Restrict, map: "curriculum_subjects_subject_id_foreign", onUpdate: NoAction)
+  prerequisite Subject?   @relation("CurriculumSubjectPrerequisite", fields: [prerequisiteSubjectId], references: [id], onDelete: SetNull, map: "curriculum_subjects_prerequisite_subject_id_foreign", onUpdate: NoAction)
+
+  @@unique([curriculumId, subjectId], map: "curriculum_subjects_curriculum_id_subject_id_unique")
+  @@map("curriculum_subjects")
+}
+
+model Student {
+  id             BigInt        @id @default(autoincrement())
+  userId         BigInt?       @map("user_id")
+  studentNumber  String        @unique(map: "students_student_number_unique") @map("student_number") @db.VarChar(255)
+  firstName      String        @map("first_name") @db.VarChar(255)
+  middleName     String?       @map("middle_name") @db.VarChar(255)
+  lastName       String        @map("last_name") @db.VarChar(255)
+  email          String?       @db.VarChar(255)
+  phone          String?       @db.VarChar(255)
+  dateOfBirth    DateTime?     @map("date_of_birth") @db.Date
+  programId      BigInt        @map("program_id")
+  curriculumId   BigInt        @map("curriculum_id")
+  yearLevel      Int           @default(1) @map("year_level") @db.SmallInt
+  status         String        @default("active") @db.VarChar(255)
+  enrollmentDate DateTime?     @map("enrollment_date") @db.Date
+  createdAt      DateTime?     @map("created_at") @db.Timestamp(0)
+  updatedAt      DateTime?     @map("updated_at") @db.Timestamp(0)
+
+  user        User?               @relation("StudentAccount", fields: [userId], references: [id], onDelete: SetNull, map: "students_user_id_foreign", onUpdate: NoAction)
+  program     Program             @relation(fields: [programId], references: [id], onDelete: Restrict, map: "students_program_id_foreign", onUpdate: NoAction)
+  curriculum  Curriculum          @relation(fields: [curriculumId], references: [id], onDelete: Restrict, map: "students_curriculum_id_foreign", onUpdate: NoAction)
+  application Application[]
+  credentials StudentCredential[]
+  enrollments Enrollment[]
+
+  @@map("students")
+}
+
+model Application {
+  id          BigInt            @id @default(autoincrement())
+  firstName   String            @map("first_name") @db.VarChar(255)
+  middleName  String?           @map("middle_name") @db.VarChar(255)
+  lastName    String            @map("last_name") @db.VarChar(255)
+  email       String?           @db.VarChar(255)
+  phone       String?           @db.VarChar(255)
+  dateOfBirth DateTime?         @map("date_of_birth") @db.Date
+  programId   BigInt            @map("program_id")
+  status      String            @default("submitted") @db.VarChar(255)
+  notes       String?
+  reviewedBy  BigInt?           @map("reviewed_by")
+  reviewedAt  DateTime?         @map("reviewed_at") @db.Timestamp(0)
+  studentId   BigInt?           @map("student_id")
+  createdAt   DateTime?         @map("created_at") @db.Timestamp(0)
+  updatedAt   DateTime?         @map("updated_at") @db.Timestamp(0)
+
+  program  Program  @relation(fields: [programId], references: [id], onDelete: Restrict, map: "applications_program_id_foreign", onUpdate: NoAction)
+  reviewer User?    @relation("ApplicationReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull, map: "applications_reviewed_by_foreign", onUpdate: NoAction)
+  student  Student? @relation(fields: [studentId], references: [id], onDelete: SetNull, map: "applications_student_id_foreign", onUpdate: NoAction)
+
+  @@map("applications")
+}
+
+model CredentialRequirement {
+  id         BigInt    @id @default(autoincrement())
+  programId  BigInt?   @map("program_id")
+  name       String    @db.VarChar(255)
+  isRequired Boolean   @default(true) @map("is_required")
+  isActive   Boolean   @default(true) @map("is_active")
+  createdAt  DateTime? @map("created_at") @db.Timestamp(0)
+  updatedAt  DateTime? @map("updated_at") @db.Timestamp(0)
+
+  program            Program?            @relation(fields: [programId], references: [id], onDelete: Restrict, map: "credential_requirements_program_id_foreign", onUpdate: NoAction)
+  studentCredentials StudentCredential[]
+
+  @@map("credential_requirements")
+}
+
+model StudentCredential {
+  id                      BigInt           @id @default(autoincrement())
+  studentId               BigInt           @map("student_id")
+  credentialRequirementId BigInt           @map("credential_requirement_id")
+  filePath                String?          @map("file_path") @db.VarChar(255)
+  submittedBy             BigInt?          @map("submitted_by")
+  submittedAt             DateTime?        @map("submitted_at") @db.Timestamp(0)
+  status                  String           @default("missing") @db.VarChar(255)
+  verifiedBy              BigInt?          @map("verified_by")
+  verifiedAt              DateTime?        @map("verified_at") @db.Timestamp(0)
+  remarks                 String?
+  rejectionReason         String?          @map("rejection_reason")
+  version                 Int              @default(1)
+  createdAt               DateTime?        @map("created_at") @db.Timestamp(0)
+  updatedAt               DateTime?        @map("updated_at") @db.Timestamp(0)
+
+  student     Student               @relation(fields: [studentId], references: [id], onDelete: Cascade, map: "student_credentials_student_id_foreign", onUpdate: NoAction)
+  requirement CredentialRequirement @relation(fields: [credentialRequirementId], references: [id], onDelete: Restrict, map: "student_credentials_credential_requirement_id_foreign", onUpdate: NoAction)
+  submitter   User?                 @relation("CredentialSubmitter", fields: [submittedBy], references: [id], onDelete: SetNull, map: "student_credentials_submitted_by_foreign", onUpdate: NoAction)
+  verifier    User?                 @relation("CredentialVerifier", fields: [verifiedBy], references: [id], onDelete: SetNull, map: "student_credentials_verified_by_foreign", onUpdate: NoAction)
+
+  @@unique([studentId, credentialRequirementId], map: "student_credentials_student_id_credential_requirement_id_unique")
+  @@map("student_credentials")
+}
+
+model Enrollment {
+  id           BigInt           @id @default(autoincrement())
+  studentId    BigInt           @map("student_id")
+  curriculumId BigInt           @map("curriculum_id")
+  schoolYear   String           @map("school_year") @db.VarChar(255)
+  semester     Int              @db.SmallInt
+  yearLevel    Int              @map("year_level") @db.SmallInt
+  status       String           @default("pending") @db.VarChar(255)
+  approvedBy   BigInt?          @map("approved_by")
+  approvedAt   DateTime?        @map("approved_at") @db.Timestamp(0)
+  createdAt    DateTime?        @map("created_at") @db.Timestamp(0)
+  updatedAt    DateTime?        @map("updated_at") @db.Timestamp(0)
+
+  student       Student                   @relation(fields: [studentId], references: [id], onDelete: Restrict, map: "enrollments_student_id_foreign", onUpdate: NoAction)
+  curriculum    Curriculum                @relation(fields: [curriculumId], references: [id], onDelete: Restrict, map: "enrollments_curriculum_id_foreign", onUpdate: NoAction)
+  approver      User?                     @relation("EnrollmentApprover", fields: [approvedBy], references: [id], onDelete: SetNull, map: "enrollments_approved_by_foreign", onUpdate: NoAction)
+  statusHistory EnrollmentStatusHistory[]
+
+  @@unique([studentId, schoolYear, semester], map: "enrollments_student_id_school_year_semester_unique")
+  @@map("enrollments")
+}
+
+model EnrollmentStatusHistory {
+  id           BigInt   @id @default(autoincrement())
+  enrollmentId BigInt   @map("enrollment_id")
+  fromStatus   String?  @map("from_status") @db.VarChar(255)
+  toStatus     String   @map("to_status") @db.VarChar(255)
+  changedBy    BigInt?  @map("changed_by")
+  reason       String?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade, map: "enrollment_status_history_enrollment_id_foreign", onUpdate: NoAction)
+  actor      User?      @relation("EnrollmentStatusActor", fields: [changedBy], references: [id], onDelete: SetNull, map: "enrollment_status_history_changed_by_foreign", onUpdate: NoAction)
+
+  @@map("enrollment_status_history")
+}
+
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  action    String   @db.VarChar(255)
+  actor     String   @db.VarChar(255)
+  target    String   @db.VarChar(255)
+  ipAddress String?  @map("ip_address") @db.VarChar(45)
+  userAgent String?  @map("user_agent")
+  details   Json?    @db.Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+
+  @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Status values
+// ---------------------------------------------------------------------------
+//
+// Deliberately NOT Prisma enums. Laravel's $table->enum() on PostgreSQL
+// produces varchar(255) plus a CHECK constraint, and this database contains
+// no native enum types at all (verified against pg_type). Declaring Prisma
+// enums here would make Prisma want to CREATE TYPE and rewrite five live
+// columns — a destructive migration for zero gain.
+//
+// The CHECK constraints remain the authority in the database; the matching
+// TypeScript unions and Zod schemas live in src/types/domain.ts, so invalid
+// values are rejected before a query is ever built.
+
+// ---------------------------------------------------------------------------
+// Legacy Laravel infrastructure — retained, unused, never dropped implicitly
+// ---------------------------------------------------------------------------
+
+/// Old Laravel session store. Its `payload` is a PHP-serialised blob that
+/// Node cannot read, which is why auth_sessions exists instead. Kept so no
+/// migration deletes it behind your back.
+model LegacySession {
+  id           String  @id @db.VarChar(255)
+  userId       BigInt? @map("user_id")
+  ipAddress    String? @map("ip_address") @db.VarChar(45)
+  userAgent    String? @map("user_agent")
+  payload      String
+  lastActivity Int     @map("last_activity")
+
+  @@index([userId], map: "sessions_user_id_index")
+  @@index([lastActivity], map: "sessions_last_activity_index")
+  @@map("sessions")
+}
+
+model LegacyMigration {
+  id        Int    @id @default(autoincrement())
+  migration String @db.VarChar(255)
+  batch     Int
+
+  @@map("migrations")
+}
+
+model LegacyCache {
+  key        String @id @db.VarChar(255)
+  value      String
+  expiration BigInt
+
+  @@index([expiration], map: "cache_expiration_index")
+  @@map("cache")
+}
+
+model LegacyCacheLock {
+  key        String @id @db.VarChar(255)
+  owner      String @db.VarChar(255)
+  expiration BigInt
+
+  @@index([expiration], map: "cache_locks_expiration_index")
+  @@map("cache_locks")
+}
+
+model LegacyJob {
+  id          BigInt @id @default(autoincrement())
+  queue       String @db.VarChar(255)
+  payload     String
+  attempts    Int    @db.SmallInt
+  reservedAt  Int?   @map("reserved_at")
+  availableAt Int    @map("available_at")
+  createdAt   Int    @map("created_at")
+
+  @@index([queue], map: "jobs_queue_index")
+  @@map("jobs")
+}
+
+model LegacyJobBatch {
+  id           String  @id @db.VarChar(255)
+  name         String  @db.VarChar(255)
+  totalJobs    Int     @map("total_jobs")
+  pendingJobs  Int     @map("pending_jobs")
+  failedJobs   Int     @map("failed_jobs")
+  failedJobIds String  @map("failed_job_ids")
+  options      String?
+  cancelledAt  Int?    @map("cancelled_at")
+  createdAt    Int     @map("created_at")
+  finishedAt   Int?    @map("finished_at")
+
+  @@map("job_batches")
+}
+
+model LegacyFailedJob {
+  id         BigInt   @id @default(autoincrement())
+  uuid       String   @unique(map: "failed_jobs_uuid_unique") @db.VarChar(255)
+  connection String   @db.VarChar(255)
+  queue      String   @db.VarChar(255)
+  payload    String
+  exception  String
+  failedAt   DateTime @default(now()) @map("failed_at") @db.Timestamp(0)
+
+  @@index([connection, queue, failedAt], map: "failed_jobs_connection_queue_failed_at_index")
+  @@map("failed_jobs")
+}

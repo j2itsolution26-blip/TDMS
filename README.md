@@ -1,58 +1,84 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# TDMS — TVET Diploma Management System
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Diploma programme, student, credential and enrolment management for the
+Asian College of Science and Technology.
 
-## About Laravel
+Built with **Next.js 15**, **TypeScript**, **React 19**, **Prisma 6** and
+**PostgreSQL**. No PHP.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
-
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
-
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
-
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## Quick start
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+npm install
+cp .env.example .env          # then set DATABASE_URL
+npm run db:migrate            # apply schema changes
+npm run db:seed               # roles, permissions, credential requirements
+npm run dev                   # http://localhost:3000
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+For a local database with sign-in-able accounts:
 
-## Contributing
+```bash
+npm run db:seed:demo          # never run this against production
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+That creates one account per role. Sign in with either the username or the
+email address:
 
-## Code of Conduct
+| Username      | Email                     | Role          |
+| ------------- | ------------------------- | ------------- |
+| `superadmin`  | `superadmin@tdms.test`    | Super Admin   |
+| `admin`       | `admin@tdms.test`         | Admin         |
+| `director`    | `director@tdms.test`      | Director      |
+| `coordinator` | `coordinator@tdms.test`   | Coordinator   |
+| `secretary`   | `secretary@tdms.test`     | Secretary     |
+| `teacher`     | `teacher@tdms.test`       | Teacher       |
+| `student`     | `student@tdms.test`       | Student       |
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+The password comes from `DEMO_SEED_PASSWORD` (default `Password123!`).
 
-## Security Vulnerabilities
+If the system has no Super Admin at all, `/login` offers **Create Super
+Admin**, a one-time bootstrap that disappears the moment one exists.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Scripts
 
-## License
+| Command                | Does                                        |
+| ---------------------- | ------------------------------------------- |
+| `npm run dev`          | Development server                          |
+| `npm run build`        | `prisma generate` + production build        |
+| `npm start`            | Serve the production build                  |
+| `npm test`             | Unit tests (Vitest)                         |
+| `npm run typecheck`    | `tsc --noEmit`                              |
+| `npm run db:migrate`   | Apply migrations                            |
+| `npm run db:seed`      | System configuration — safe, idempotent     |
+| `npm run db:seed:demo` | Demo accounts — development only            |
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## Roles
+
+Seven roles, unchanged from the original system: Super Admin, Admin,
+Director, Coordinator, Secretary, Teacher, Student. Permissions are stored
+in the `roles` / `permissions` / `model_has_roles` tables and enforced
+server-side by the policy functions in `src/server/auth/policies.ts`.
+
+A Super Admin passes every permission check, with one exception: nobody,
+including a Super Admin, can deactivate their own account.
+
+## Documentation
+
+| Document                                     | Covers                                    |
+| -------------------------------------------- | ----------------------------------------- |
+| [architecture.md](docs/architecture.md)       | Stack, layout, request lifecycle          |
+| [database.md](docs/database.md)               | Prisma schema, mapping, migrations        |
+| [authentication.md](docs/authentication.md)   | Sign-in, sessions, cookies, RBAC          |
+| [api.md](docs/api.md)                         | Endpoints and the Livewire → REST map     |
+| [deployment.md](docs/deployment.md)           | Vercel, env vars, first deploy            |
+| [migration.md](docs/migration.md)             | What changed moving off Laravel, and why  |
+
+## Notes
+
+- The application reuses the **existing PostgreSQL database**. No table was
+  renamed and no data was moved; see [database.md](docs/database.md).
+- Existing bcrypt passwords written by PHP work unchanged — no account
+  needed a reset.
+- Before deploying, read the security note in
+  [migration.md](docs/migration.md) about the demo accounts.

@@ -10,11 +10,12 @@ The Laravel-era `vercel.json` (PHP runtime, hand-written routes,
 ```json
 {
   "framework": "nextjs",
-  "outputDirectory": null
+  "outputDirectory": null,
+  "regions": ["sin1"]
 }
 ```
 
-Both lines exist to override **stale dashboard Project Settings left over
+The first two lines exist to override **stale dashboard Project Settings left over
 from the PHP deployment**, which survive a repository change because they
 live in the Vercel project, not in git. With the old settings the build
 compiled fine and then failed with:
@@ -37,6 +38,26 @@ clears the dashboard override and returns it to the framework default.
 
 You may also clear both in the dashboard (Settings → Build & Deployment);
 the file makes that unnecessary.
+
+### Function region
+
+`"regions": ["sin1"]` pins the serverless functions to Singapore
+(`ap-southeast-1`) — the same AWS region as the Neon database.
+
+This matters more than it looks. Vercel functions default to `iad1`
+(Washington, D.C.), so without this every Prisma query would cross the
+Pacific at roughly 230 ms per round trip. The dashboard alone issues about
+ten queries, which is seconds of latency per page load for work the
+database answers in single-digit milliseconds. Vercel's own guidance is to
+run functions in the same region as the database.
+
+It is a single region, so it is valid on every plan including Hobby
+(multi-region requires Pro or Enterprise). Static assets are unaffected —
+they are served from all 126 PoPs regardless — and the Edge middleware
+stays globally distributed, which is fine because it only reads a cookie.
+
+If the database ever moves, change this to match it: the region codes are
+listed at https://vercel.com/docs/regions.
 
 ## Commands
 

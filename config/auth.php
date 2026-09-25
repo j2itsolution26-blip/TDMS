@@ -75,6 +75,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Demo Account Password
+    |--------------------------------------------------------------------------
+    |
+    | Used only by DevSeeder, which refuses to run in production. Kept in
+    | config rather than hard-coded in the seeder so a developer can point
+    | DEMO_SEED_PASSWORD at something else without editing code. It is
+    | never read by the authentication path itself.
+    |
+    */
+
+    'demo_password' => env('DEMO_SEED_PASSWORD', 'Password123!'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Resetting Passwords
     |--------------------------------------------------------------------------
     |

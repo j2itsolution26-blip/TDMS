@@ -46,7 +46,7 @@ new #[Layout('layouts.auth-branded')] class extends Component
                 <input
                     wire:model="form.email"
                     id="email"
-                    type="email"
+                    type="text"
                     name="email"
                     required
                     autofocus

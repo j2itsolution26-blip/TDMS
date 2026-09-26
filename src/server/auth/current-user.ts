@@ -30,7 +30,7 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
       name: true,
       username: true,
       email: true,
-      isActive: true,
+      status: true,
       emailVerifiedAt: true,
     },
   });
@@ -56,8 +56,14 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
   // The row is gone (hard-deleted elsewhere) — treat as signed out.
   if (!user) return null;
 
-  // Deactivated mid-session: this is the EnsureAccountIsActive middleware.
-  if (!user.isActive) return null;
+  /*
+   * Re-checked on every request, not just at sign-in, so deactivating,
+   * suspending or un-verifying an account ends its access immediately
+   * rather than whenever the session happens to lapse. This is the job
+   * Laravel's EnsureAccountIsActive middleware did.
+   */
+  if (user.status !== 'ACTIVE') return null;
+  if (!user.emailVerifiedAt) return null;
 
   const { roles, permissions } = await loadRolesAndPermissions(user.id);
 
@@ -66,7 +72,7 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
     name: user.name,
     username: user.username,
     email: user.email,
-    isActive: user.isActive,
+    status: user.status as AuthUser['status'],
     emailVerifiedAt: user.emailVerifiedAt,
     roles,
     permissions,

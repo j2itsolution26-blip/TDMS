@@ -14,10 +14,12 @@
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
-    "db:seed:demo": "tsx prisma/seed-demo.ts",
+    "db:fresh": "tsx scripts/db-fresh.ts",
+    "admin:create": "tsx scripts/create-admin.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "node scripts/e2e/session-redirect.mjs",
+    "test:accounts": "node scripts/e2e/institutional-auth.mjs",
     "test:prod": "node scripts/e2e/production-flow.mjs"
   },
   "dependencies": {

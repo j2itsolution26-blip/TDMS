@@ -16,29 +16,28 @@ npm run db:seed               # roles, permissions, credential requirements
 npm run dev                   # http://localhost:3000
 ```
 
-For a local database with sign-in-able accounts:
+There are **no demo accounts**. A fresh installation has roles and
+permissions but no users, so create the first administrator:
 
 ```bash
-npm run db:seed:demo          # never run this against production
+npm run admin:create -- --name "Your Name" --email you@asiancollege.edu.ph
 ```
 
-That creates one account per role. Sign in with either the username or the
-email address:
+…or open `/login` and use **Create Super Admin**, which emails a verification
+link (this needs a mail provider — see [accounts.md](docs/accounts.md)).
 
-| Username      | Email                     | Role          |
-| ------------- | ------------------------- | ------------- |
-| `superadmin`  | `superadmin@tdms.test`    | Super Admin   |
-| `admin`       | `admin@tdms.test`         | Admin         |
-| `director`    | `director@tdms.test`      | Director      |
-| `coordinator` | `coordinator@tdms.test`   | Coordinator   |
-| `secretary`   | `secretary@tdms.test`     | Secretary     |
-| `teacher`     | `teacher@tdms.test`       | Teacher       |
-| `student`     | `student@tdms.test`       | Student       |
+Every TDMS account must be on **@asiancollege.edu.ph**, must verify its email
+address, and must be `ACTIVE` before it can sign in. Administrators invite
+colleagues from the Staff screen; nobody is ever issued a generated password.
 
-The password comes from `DEMO_SEED_PASSWORD` (default `Password123!`).
+To wipe accounts and academic records while keeping roles and permissions:
 
-If the system has no Super Admin at all, `/login` offers **Create Super
-Admin**, a one-time bootstrap that disappears the moment one exists.
+```bash
+CONFIRM_DB_FRESH=<database-name> npm run db:fresh
+```
+
+It refuses to run in production, and refuses to run at all unless you name
+the target database out loud.
 
 ## Scripts
 
@@ -51,7 +50,9 @@ Admin**, a one-time bootstrap that disappears the moment one exists.
 | `npm run typecheck`    | `tsc --noEmit`                              |
 | `npm run db:migrate`   | Apply migrations                            |
 | `npm run db:seed`      | System configuration — safe, idempotent     |
-| `npm run db:seed:demo` | Demo accounts — development only            |
+| `npm run db:fresh`     | Wipe accounts + records, keep configuration |
+| `npm run admin:create` | Provision the first administrator           |
+| `npm run test:accounts`| Account lifecycle end-to-end (local)        |
 
 ## Roles
 
@@ -68,6 +69,7 @@ including a Super Admin, can deactivate their own account.
 | Document                                     | Covers                                    |
 | -------------------------------------------- | ----------------------------------------- |
 | [architecture.md](docs/architecture.md)       | Stack, layout, request lifecycle          |
+| [accounts.md](docs/accounts.md)               | Institutional email, states, invitations  |
 | [database.md](docs/database.md)               | Prisma schema, mapping, migrations        |
 | [authentication.md](docs/authentication.md)   | Sign-in, sessions, cookies, RBAC          |
 | [api.md](docs/api.md)                         | Endpoints and the Livewire → REST map     |

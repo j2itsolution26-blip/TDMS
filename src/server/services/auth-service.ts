@@ -4,6 +4,11 @@ import { AppError } from '@/lib/http';
 import { verifyPassword, hashPassword, needsRehash } from '@/server/auth/password';
 import { createSession, destroyCurrentSession } from '@/server/auth/session';
 import {
+  isInstitutionalEmail,
+  normalizeEmail,
+  DOMAIN_REJECTION_MESSAGE,
+} from '@/lib/institutional-email';
+import {
   checkLoginThrottle,
   hitLoginThrottle,
   clearLoginThrottle,
@@ -11,17 +16,28 @@ import {
 } from '@/server/auth/rate-limit';
 
 /**
- * Authentication service — the Node replacement for App\Livewire\Forms\LoginForm.
+ * Authentication service.
  *
- * The whole login decision lives here, on the server, and every account goes
- * through it identically: there is no demo shortcut, no seeded bypass, and
- * no credential of any kind in this file. A demo account signs in because
- * its bcrypt hash verifies, exactly like anyone else's.
+ * The whole sign-in decision lives here, on the server, and every account
+ * goes through it identically. There is no demo shortcut, no seeded bypass
+ * and no credential of any kind in this file.
+ *
+ * Order of checks, and why:
+ *   1. rate limit        — before any work is done
+ *   2. identifier shape  — a non-institutional email is refused outright
+ *   3. lookup + password — always a bcrypt compare, even with no match
+ *   4. email verified    — after the password, never before
+ *   5. account status    — after the password, never before
+ *
+ * Steps 4 and 5 come last on purpose. Reporting "unverified" or "inactive"
+ * to someone who has not proved they own the account would turn those
+ * messages into an oracle for which addresses exist.
  */
 
-/** Shown for a bad identifier AND for a bad password, deliberately. */
 const GENERIC_FAILURE = 'Invalid username/email or password.';
+const UNVERIFIED_MESSAGE = 'Please verify your institutional email before signing in.';
 const INACTIVE_MESSAGE = 'Your account is inactive. Please contact the administrator.';
+const SUSPENDED_MESSAGE = 'Your account has been suspended. Please contact the administrator.';
 
 export interface LoginInput {
   identifier: string;
@@ -40,12 +56,10 @@ export interface LoginResult {
 }
 
 /**
- * Split the "Username or Email" field into the column it should match.
+ * Split the "Username or Email" field into the column to match on.
  *
- * Both sides are lower-cased so an email matches case-insensitively, and so
- * does a username — the column is new, so no case-sensitive username can be
- * broken by this. Whitespace is trimmed because it is almost always a paste
- * artefact rather than part of the credential.
+ * Both sides are lower-cased, so an email matches case-insensitively and so
+ * does a username.
  */
 export function resolveIdentifier(raw: string): { column: 'email' | 'username'; value: string } {
   const trimmed = raw.trim();
@@ -67,27 +81,34 @@ export async function login(input: LoginInput, context: LoginContext): Promise<L
     );
   }
 
-  // Case-insensitive lookup on whichever column the identifier implies.
-  // `mode: 'insensitive'` compiles to ILIKE-equivalent SQL through Prisma,
-  // which is parameterised, so the identifier is never concatenated in.
+  /*
+   * An address on the wrong domain cannot belong to a TDMS account, so it is
+   * refused by name rather than with the generic message. This discloses
+   * nothing: it is a statement about the domain, identical for every address
+   * on it, and says nothing about whether any account exists.
+   *
+   * A username is not checked here — usernames carry no domain. The account
+   * behind it still had to be created with an institutional address.
+   */
+  if (column === 'email' && !isInstitutionalEmail(value)) {
+    await hitLoginThrottle(throttleKey);
+    throw new AppError(DOMAIN_REJECTION_MESSAGE, 403);
+  }
+
   const user = await prisma.user.findFirst({
     where:
       column === 'email'
-        ? { email: { equals: value, mode: 'insensitive' } }
+        ? { email: { equals: normalizeEmail(value), mode: 'insensitive' } }
         : { username: { equals: value, mode: 'insensitive' } },
-    select: { id: true, password: true, isActive: true },
+    select: { id: true, password: true, status: true, emailVerifiedAt: true, email: true },
   });
 
   /*
-   * Always run a bcrypt comparison, even when no user matched.
-   *
-   * Skipping it would let an attacker distinguish "no such account" from
-   * "wrong password" by timing alone, which is the account-enumeration leak
-   * Phase 12 asks to avoid. The dummy hash below is a real bcrypt hash of a
-   * random value, so the work factor matches the genuine path.
+   * Always run a bcrypt comparison, even when no user matched, against a
+   * real hash of the same cost. Skipping it would let an attacker tell
+   * "no such account" from "wrong password" by timing alone.
    */
-  const hashToCheck = user?.password ?? DUMMY_HASH;
-  const passwordValid = await verifyPassword(input.password, hashToCheck);
+  const passwordValid = await verifyPassword(input.password, user?.password ?? DUMMY_HASH);
 
   if (!user || !passwordValid) {
     await hitLoginThrottle(throttleKey);
@@ -95,15 +116,32 @@ export async function login(input: LoginInput, context: LoginContext): Promise<L
     throw new AppError(GENERIC_FAILURE, 401);
   }
 
-  /*
-   * Account status is checked only after the password is known to be
-   * correct. Reversing the order would turn the "inactive" message into an
-   * oracle: anyone could discover which accounts exist by watching for it.
-   */
-  if (!user.isActive) {
+  // From here the caller has proved they own the account, so a specific
+  // reason is safe — and necessary, or they cannot act on it.
+
+  if (!user.emailVerifiedAt) {
     await hitLoginThrottle(throttleKey);
-    logAuthDebug({ column, userFound: true, passwordVerified: true, active: false });
-    throw new AppError(INACTIVE_MESSAGE, 403);
+    logAuthDebug({ column, userFound: true, passwordVerified: true, status: user.status });
+    throw new AppError(UNVERIFIED_MESSAGE, 403);
+  }
+
+  if (user.status !== 'ACTIVE') {
+    await hitLoginThrottle(throttleKey);
+    logAuthDebug({ column, userFound: true, passwordVerified: true, status: user.status });
+    throw new AppError(
+      user.status === 'SUSPENDED' ? SUSPENDED_MESSAGE : INACTIVE_MESSAGE,
+      403,
+    );
+  }
+
+  /*
+   * An account whose address is no longer institutional cannot sign in even
+   * if it once could — covers a domain change, or a record edited directly
+   * in the database.
+   */
+  if (!isInstitutionalEmail(user.email)) {
+    await hitLoginThrottle(throttleKey);
+    throw new AppError(DOMAIN_REJECTION_MESSAGE, 403);
   }
 
   // Opportunistic upgrade if the stored hash predates the current cost.
@@ -121,7 +159,13 @@ export async function login(input: LoginInput, context: LoginContext): Promise<L
     userAgent: context.userAgent,
   });
 
-  logAuthDebug({ column, userFound: true, passwordVerified: true, active: true, session: true });
+  logAuthDebug({
+    column,
+    userFound: true,
+    passwordVerified: true,
+    status: user.status,
+    session: true,
+  });
 
   return { userId: user.id, redirectTo: '/dashboard' };
 }
@@ -131,23 +175,21 @@ export async function logout(): Promise<void> {
 }
 
 /**
- * A real bcrypt hash at the same cost as production hashes, used purely to
- * equalise timing on the "no such user" path. It is not a credential: no
- * password is known that produces it, and it is never written anywhere.
+ * A real bcrypt hash at production cost, used only to equalise timing on the
+ * "no such user" path. It is not a credential: no password is known that
+ * produces it, and it is never written anywhere.
  */
 const DUMMY_HASH = '$2b$12$6p0lwdiEfXY6J3XH0FMYuebojRn6x/FQwr7ud0jKiWqjIOLNquerS';
 
 /**
- * Development-only trace of where an attempt landed.
- *
- * Booleans only. No identifier value, password, hash, cookie or token is
- * ever passed in, so enabling debug logging cannot leak a credential.
+ * Development-only trace. Booleans and a status string only — no identifier
+ * value, password, hash, cookie or token is ever passed in.
  */
 function logAuthDebug(stages: {
   column: string;
   userFound: boolean;
   passwordVerified: boolean;
-  active?: boolean;
+  status?: string;
   session?: boolean;
 }): void {
   if (process.env.NODE_ENV === 'production') return;
@@ -155,7 +197,7 @@ function logAuthDebug(stages: {
     lookup_column: stages.column,
     user_found: stages.userFound,
     password_verified: stages.passwordVerified,
-    account_active: stages.active ?? null,
+    account_status: stages.status ?? null,
     session_created: stages.session ?? false,
   });
 }

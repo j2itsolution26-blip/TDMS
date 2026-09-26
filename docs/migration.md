@@ -25,7 +25,7 @@ What was done, what changed, and what is deliberately still open.
 | `AuditLog::record()`                      | `src/server/services/audit-log.ts`                           |
 | `RateLimiter` (cache store)               | `src/server/auth/rate-limit.ts`, same `cache` table          |
 | `DatabaseSeeder`                          | `prisma/seed.ts`                                             |
-| `DevSeeder`                               | `prisma/seed-demo.ts`                                        |
+| `DevSeeder`                               | removed - no demo accounts exist (see accounts.md)           |
 | `database/migrations/*`                   | `prisma/migrations/0_init` (baseline)                        |
 | Pest tests                                | Vitest (`src/**/*.test.ts`)                                  |
 | `lang/en/auth.php`                        | message constants in `auth-service.ts`                       |
@@ -91,6 +91,51 @@ Each of these is a change, made knowingly, with the reason:
 - **`confirm-password` interstitial.** Nothing in TDMS was gated behind
   `password.confirm`, so the screen guarded nothing.
 
+## Fresh start, and institutional accounts
+
+The migration originally carried the Laravel demo accounts across so the new
+system could be exercised. That was scaffolding, and it is now gone.
+
+What was decided, and why:
+
+- **No demo accounts, and no demo seed.** `prisma/seed-demo.ts` and
+  `db:seed:demo` are deleted rather than merely unused. A seed that creates
+  accounts with a known password is a liability the moment any environment
+  shares a database with production - which this one does.
+- **No generated passwords anywhere.** Inviting staff used to display a
+  one-time password on screen, which meant the administrator knew it. An
+  invitation now creates an account whose password column holds a random value
+  discarded on the line that hashes it, and the invitee sets their own through
+  a verification link.
+- **Institutional domain only.** Every address must be on
+  `@asiancollege.edu.ph`, checked server-side against an exact match, not a
+  suffix.
+- **Verification is required, not implied.** Being on the right domain is not
+  proof of holding the mailbox. `status` and `emailVerifiedAt` are separate
+  conditions and both must hold to sign in.
+- **`prisma/seed.ts` creates no users at all** - roles, permissions and the
+  credential-requirement checklist only.
+
+The database this was developed against held no academic records at all (zero
+students, programmes, subjects, curricula, applications, enrolments) and ten
+accounts, every one of them on `tdms.test` or `gmail.com`. None can sign in
+under the domain rule, which is the intended outcome of starting fresh.
+
+### Google Workspace sign-in - considered, not built
+
+"Continue with Google" would suit an institution already on Workspace and
+would remove passwords from the system entirely. It is deliberately not
+implemented, for one reason: OAuth *is* authentication, and shipping an
+authentication path never exercised against a real identity provider is worse
+than not having it. It needs a Workspace project, a client id and secret and a
+verified redirect URI before it can be tested at all.
+
+The shape is already settled by what is here, if you want it: the identity
+must come from Google's token response and never from a client-supplied email
+field, `email_verified` must be true, and the `hd` claim must equal the
+institutional domain exactly - the same rule as
+`src/lib/institutional-email.ts` applied to a different input.
+
 ## Remaining work
 
 1. **Password reset email.** `MAIL_MAILER` was `log` under Laravel, so
@@ -109,25 +154,19 @@ Each of these is a change, made knowingly, with the reason:
    so Prisma will not drop them behind your back; removing them is a
    deliberate decision for you to make. `cache` must stay — it backs login
    throttling.
-4. **Rotate the demo passwords.** See the security note below.
+4. **Configure a mail provider.** Until `RESEND_API_KEY` is set, invitations
+   and resets cannot be delivered; use `npm run admin:create` to provision
+   the first administrator.
 
-## Security note: the demo accounts
+## Security note
 
-`DATABASE_URL` points at the same Neon database the Vercel deployment
-uses. `npm run db:seed:demo` therefore writes seven accounts with a
-well-known password — including `super_admin` and `admin` — into what is
-effectively production.
+The database used for development is the same instance the Vercel deployment
+uses. That is the reason there is no demo seed and no generated password
+anywhere in this codebase: anything created for convenience would be created
+in production.
 
-The seed refuses to run when `NODE_ENV=production`, but that guard protects
-the *process*, not the *database*: running it locally against a production
-`DATABASE_URL` still writes those rows.
-
-Two options, in order of preference:
-
-1. Point local development at a separate Neon branch, and delete the
-   `@tdms.test` accounts from the production database.
-2. Keep them, but rotate the password immediately after any demo, and
-   never leave `super_admin@tdms.test` reachable from the public URL.
+`npm run db:fresh` is the only destructive command, and it refuses to run
+unless you name the target database explicitly.
 
 ## Verification performed
 

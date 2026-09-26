@@ -1,9 +1,13 @@
 /**
  * Production-safe seed — the Node replacement for DatabaseSeeder.
  *
- * Contains system configuration only (roles, permissions, credential
- * requirements), never demo accounts, exactly as the Laravel
- * DatabaseSeeder was scoped. Run with: npm run db:seed
+ * Contains system configuration only — roles, permissions and the standing
+ * credential-requirement checklist. It creates NO users, and there is no
+ * counterpart demo seed: this system has no demo accounts at all, by design.
+ * The first administrator is created through /create-super-admin or
+ * `npm run admin:create`.
+ *
+ * Run with: npm run db:seed
  *
  * Fully idempotent: every write is an upsert or a findFirst-then-create, so
  * running it repeatedly converges rather than duplicating or failing. It is

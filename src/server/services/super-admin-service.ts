@@ -3,19 +3,30 @@ import { prisma } from '@/lib/prisma';
 import { AppError } from '@/lib/http';
 import { hashPassword } from '@/server/auth/password';
 import { USER_MODEL_TYPE, GUARD } from '@/server/auth/rbac';
+import { issueEmailVerificationToken } from '@/server/auth/tokens';
+import { sendVerificationEmail } from '@/server/mail/messages';
+import { checkInstitutionalEmail } from '@/lib/institutional-email';
 import { recordAudit, type AuditContext } from './audit-log';
 
 /**
- * Port of App\Services\SuperAdminBootstrapService.
+ * First-time system setup.
  *
- * One-time system initialisation: creates the very first Super Admin when
- * none exists. The route that exposes it is gated by the same check, which
- * is what the EnsureSuperAdminNotBootstrapped middleware enforced.
+ * A fresh installation has roles and permissions but no users at all. This
+ * creates the first Super Admin, and it is the only way to obtain one
+ * through the web — there is no seeded administrator and no default
+ * password anywhere in this codebase.
+ *
+ * The account is created PENDING_VERIFICATION with the password the operator
+ * chose. It cannot sign in until the institutional address is confirmed,
+ * which is what proves the person setting up the system actually holds a
+ * college mailbox.
+ *
+ * The route is reachable only while no Super Admin exists, and the check is
+ * repeated inside the transaction so it cannot be raced.
  */
 
 export const SUPER_ADMIN_ROLE = 'super_admin';
 
-/** True only while the system has no Super Admin at all. */
 export async function isBootstrapAllowed(): Promise<boolean> {
   const role = await prisma.role.findFirst({
     where: { name: SUPER_ADMIN_ROLE, guardName: GUARD },
@@ -37,29 +48,33 @@ export interface CreateSuperAdminInput {
   password: string;
 }
 
-/**
- * Create the first Super Admin.
- *
- * The Laravel version took a 10-second cache lock so two simultaneous
- * submissions could not both pass the exists-check. Here the guarantee
- * comes from the database instead: the whole thing runs in a Serializable
- * transaction that re-checks inside the transaction, so concurrent callers
- * conflict and one is rolled back. That is stronger than an advisory lock
- * and needs no extra infrastructure on serverless.
- */
+export interface CreateSuperAdminResult {
+  id: string;
+  email: string;
+  mailDelivered: boolean;
+  mailDetail?: string;
+}
+
 export async function createSuperAdmin(
   input: CreateSuperAdminInput,
   context: AuditContext,
-): Promise<{ id: string; email: string }> {
+): Promise<CreateSuperAdminResult> {
+  const check = checkInstitutionalEmail(input.email);
+  if (!check.ok) throw new AppError(check.message!, 422, { email: [check.message!] });
+
   const passwordHash = await hashPassword(input.password);
-  const email = input.email.toLowerCase();
 
   const created = await prisma
     .$transaction(
       async (tx) => {
         const role = await tx.role.upsert({
           where: { name_guardName: { name: SUPER_ADMIN_ROLE, guardName: GUARD } },
-          create: { name: SUPER_ADMIN_ROLE, guardName: GUARD, createdAt: new Date(), updatedAt: new Date() },
+          create: {
+            name: SUPER_ADMIN_ROLE,
+            guardName: GUARD,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
           update: {},
         });
 
@@ -74,23 +89,25 @@ export async function createSuperAdmin(
           );
         }
 
-        const clash = await tx.user.findFirst({
-          where: { email: { equals: email, mode: 'insensitive' } },
+        const clash = await tx.user.findUnique({
+          where: { email: check.email },
           select: { id: true },
         });
         if (clash) {
-          throw new AppError('That email address is already in use.', 422, {
-            email: ['That email address is already in use.'],
+          throw new AppError('An account already exists for that email address.', 422, {
+            email: ['An account already exists for that email address.'],
           });
         }
 
         const user = await tx.user.create({
           data: {
-            name: input.name,
-            email,
+            name: input.name.trim(),
+            email: check.email,
             password: passwordHash,
-            emailVerifiedAt: new Date(),
-            isActive: true,
+            // Not verified, and therefore not yet able to sign in.
+            emailVerifiedAt: null,
+            status: 'PENDING_VERIFICATION',
+            isActive: false,
             createdAt: new Date(),
             updatedAt: new Date(),
           },
@@ -113,6 +130,14 @@ export async function createSuperAdmin(
       );
     });
 
+  const { token, expiresAt } = await issueEmailVerificationToken(created.id, created.email);
+  const mail = await sendVerificationEmail({
+    to: created.email,
+    name: created.name,
+    token,
+    expiresAt,
+  });
+
   await recordAudit({
     action: 'INITIAL_SUPER_ADMIN_CREATED',
     actor: 'SYSTEM_BOOTSTRAP',
@@ -122,9 +147,16 @@ export async function createSuperAdmin(
       name: created.name,
       email: created.email,
       role: SUPER_ADMIN_ROLE,
+      mail_transport: mail.transport,
+      mail_delivered: mail.delivered,
     },
     context,
   });
 
-  return { id: created.id.toString(), email: created.email };
+  return {
+    id: created.id.toString(),
+    email: created.email,
+    mailDelivered: mail.delivered,
+    mailDetail: mail.detail,
+  };
 }

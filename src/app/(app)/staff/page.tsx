@@ -1,9 +1,10 @@
 import { requireUser, authorizePage } from '@/server/auth/current-user';
 import { userPolicy } from '@/server/auth/policies';
-import { listStaff, assignableRoles } from '@/server/services/staff-service';
+import { listAccounts, assignableRoles, mailIsConfigured } from '@/server/services/account-service';
+import { INSTITUTIONAL_DOMAIN } from '@/lib/institutional-email';
 import StaffScreen from '@/components/screens/StaffScreen';
 
-/** Port of livewire/staff/index.blade.php. */
+/** Account administration. */
 export const dynamic = 'force-dynamic';
 
 export default async function StaffPage({
@@ -16,7 +17,7 @@ export default async function StaffPage({
 
   const { page } = await searchParams;
   const parsed = Number(page ?? 1);
-  const data = await listStaff(Number.isFinite(parsed) && parsed > 0 ? parsed : 1);
+  const data = await listAccounts(Number.isFinite(parsed) && parsed > 0 ? parsed : 1);
 
   return (
     <StaffScreen
@@ -24,10 +25,12 @@ export default async function StaffPage({
       page={data.page}
       lastPage={data.lastPage}
       total={data.total}
-      // Only a Super Admin sees 'admin' in this list; the API re-checks.
+      // Only a Super Admin sees 'admin' here; the API re-checks.
       roleOptions={assignableRoles(user)}
       currentUserId={user.id}
       canCreate={userPolicy.create(user)}
+      mailConfigured={mailIsConfigured()}
+      institutionalDomain={INSTITUTIONAL_DOMAIN}
     />
   );
 }

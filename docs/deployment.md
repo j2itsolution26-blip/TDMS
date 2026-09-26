@@ -91,7 +91,12 @@ stale in the build cache.
 | `NODE_ENV`                 | yes      | `production` on Vercel; drives the `secure` cookie flag     |
 | `SESSION_LIFETIME_MINUTES` | no       | Default 120                                                 |
 | `BCRYPT_ROUNDS`            | no       | Default 12 — keep at 12 to match the existing hashes        |
-| `DEMO_SEED_PASSWORD`       | no       | Only read by `db:seed:demo`. **Never set on Vercel.**       |
+| `INSTITUTIONAL_EMAIL_DOMAIN` | no     | Defaults to `asiancollege.edu.ph`                          |
+| `APP_URL`                  | yes*     | Absolute base for links in email. *Once email is enabled    |
+| `RESEND_API_KEY`           | yes*     | *Required for invitations, verification and resets          |
+| `MAIL_FROM`                | no       | Defaults to `TDMS <no-reply@asiancollege.edu.ph>`          |
+| `EMAIL_VERIFICATION_TTL_HOURS` | no   | Default 24                                                 |
+| `PASSWORD_RESET_TTL_MINUTES`   | no   | Default 60                                                 |
 
 Nothing secret is exposed to the browser: no variable is prefixed
 `NEXT_PUBLIC_`, and `DATABASE_URL` is only ever read inside `server-only`
@@ -151,6 +156,22 @@ that environment, which is the single most likely cause of a deployment
 where every page 500s while static pages work. See `authentication.md` for
 the full table of responses.
 
+### Account lifecycle suite
+
+```bash
+npm run dev                                        # in one shell
+DEV_LOG=<path-to-dev-log> npm run test:accounts    # in another
+```
+
+`scripts/e2e/institutional-auth.mjs` walks the acceptance list: domain
+rejection on invite and on sign-in, invitation, the pending state, the
+verification link, single-use tokens, password choice, sign-in, deactivate,
+suspend, reactivate, and the non-enumerating forgot-password response.
+
+It reads the verification link out of the log transport, and creates then
+deletes a throwaway `@asiancollege.edu.ph` account - so it refuses a non-local
+`BASE` unless `ALLOW_REMOTE=1`.
+
 ### Session regression suite
 
 ```bash
@@ -178,6 +199,47 @@ rejection of bad credentials, and the cookie flags including `Secure`.
 
 It is safe to point at production: it only creates and destroys its own
 sessions, and writes nothing else.
+
+## Email delivery
+
+Invitations, email verification and password resets all need a mail provider.
+Set `RESEND_API_KEY` and `APP_URL`.
+
+Without a provider the app falls back to a **log transport**, which writes the
+message - including the verification link - to the server log. That is
+deliberate, so the flow is exercisable in development before any provider
+exists. In production the log transport counts as a **delivery failure**:
+`sendMail` reports that nothing was sent, and the UI says so rather than
+telling somebody to check an inbox that will stay empty.
+
+`APP_URL` is configuration and is never derived from a request header. `Host`
+is attacker-controlled, and a poisoned value would send verification links to
+somebody else's domain.
+
+## Fresh installation
+
+```bash
+npm run db:migrate                                # schema
+npm run db:seed                                   # roles, permissions, requirements
+npm run admin:create -- --name "..." --email you@asiancollege.edu.ph
+```
+
+To clear an existing database back to that state - deleting all accounts and
+academic records, keeping roles, permissions and credential requirements:
+
+```bash
+CONFIRM_DB_FRESH=<database-name> npm run db:fresh
+```
+
+Two guards, and the second is the one that matters: it refuses if `NODE_ENV`
+is production, **and** it refuses unless `CONFIRM_DB_FRESH` names the target
+database exactly. A `NODE_ENV` guard alone would be nearly useless here,
+because the dangerous case is a developer machine with `NODE_ENV` unset
+pointed at a production `DATABASE_URL` - which is the situation this project
+has been in throughout.
+
+There is no `db:seed:demo`. The system has no demo accounts by design; see
+[accounts.md](accounts.md).
 
 ## Scheduled work
 

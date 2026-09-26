@@ -25,8 +25,8 @@ function user(roles: string[], permissions: string[] = []): AuthUser {
     name: 'Test',
     username: null,
     email: 't@example.test',
-    isActive: true,
-    emailVerifiedAt: null,
+    status: 'ACTIVE',
+    emailVerifiedAt: new Date(),
     roles,
     permissions,
   };

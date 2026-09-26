@@ -43,6 +43,15 @@ model User {
   /// unchanged, so no existing account needs a password reset.
   password        String    @db.VarChar(255)
   rememberToken   String?   @map("remember_token") @db.VarChar(100)
+  /// Authoritative account state: PENDING_VERIFICATION | ACTIVE | INACTIVE
+  /// | SUSPENDED. Only ACTIVE, with emailVerifiedAt set, may authenticate.
+  /// varchar rather than a Prisma enum for the same reason as every other
+  /// status column here — see the note at the foot of this file.
+  status          String    @default("PENDING_VERIFICATION") @db.VarChar(32)
+  /// Superseded by `status`, retained so no migration has to drop a column
+  /// on a live database. Nothing reads it; account-mutating code keeps it in
+  /// step (is_active = status === 'ACTIVE') so the two can never disagree.
+  /// Safe to drop once you are happy to.
   isActive        Boolean   @default(true) @map("is_active")
   createdAt       DateTime? @map("created_at") @db.Timestamp(0)
   updatedAt       DateTime? @map("updated_at") @db.Timestamp(0)
@@ -51,8 +60,10 @@ model User {
   /// unique index in the live database, so a one-to-one here would demand
   /// a schema change. Modelled as a list and narrowed to the first row in
   /// the service layer — exactly what Eloquent's hasOne does at runtime.
-  students             Student[]                 @relation("StudentAccount")
-  sessions             Session[]
+  students               Student[]                 @relation("StudentAccount")
+  sessions               Session[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetRequests   PasswordResetRequest[]
   reviewedApplications Application[]             @relation("ApplicationReviewer")
   submittedCredentials StudentCredential[]       @relation("CredentialSubmitter")
   verifiedCredentials  StudentCredential[]       @relation("CredentialVerifier")
@@ -79,6 +90,48 @@ model Session {
   @@index([userId])
   @@index([expiresAt])
   @@map("auth_sessions")
+}
+
+/// Single-use, expiring email verification tokens.
+///
+/// Only the SHA-256 of the token is stored, exactly as for session tokens: a
+/// database dump must not yield a working verification link. The plaintext
+/// exists only in the email that was sent.
+model EmailVerificationToken {
+  id         BigInt    @id @default(autoincrement())
+  userId     BigInt    @map("user_id")
+  tokenHash  String    @unique(map: "email_verification_tokens_token_hash_unique") @map("token_hash") @db.VarChar(64)
+  /// The address the token was issued for. If the user changes their email
+  /// before clicking, the token no longer matches and is refused.
+  email      String    @db.VarChar(255)
+  expiresAt  DateTime  @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("email_verification_tokens")
+}
+
+/// Single-use, expiring password reset tokens. Same storage rules as above.
+///
+/// Replaces Laravel's `password_reset_tokens`, which held one plaintext token
+/// per email address with no expiry column; that table is left untouched.
+model PasswordResetRequest {
+  id         BigInt    @id @default(autoincrement())
+  userId     BigInt    @map("user_id")
+  tokenHash  String    @unique(map: "password_reset_requests_token_hash_unique") @map("token_hash") @db.VarChar(64)
+  expiresAt  DateTime  @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_requests")
 }
 
 model PasswordResetToken {

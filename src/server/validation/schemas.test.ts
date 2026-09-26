@@ -6,7 +6,7 @@ import {
   studentSchema,
   enrollmentSchema,
   curriculumSubjectSchema,
-  staffSchema,
+  inviteAccountSchema,
   idSchema,
   fieldErrors,
 } from './schemas';
@@ -84,8 +84,26 @@ describe('Laravel rule parity', () => {
   });
 
   it('will not let the Staff screen create a student account', () => {
-    expect(staffSchema.safeParse({ name: 'N', email: 'a@b.test', role: 'secretary' }).success).toBe(true);
-    expect(staffSchema.safeParse({ name: 'N', email: 'a@b.test', role: 'student' }).success).toBe(false);
+    const base = { name: 'N', email: 'a@asiancollege.edu.ph' };
+    expect(inviteAccountSchema.safeParse({ ...base, role: 'secretary' }).success).toBe(true);
+    expect(inviteAccountSchema.safeParse({ ...base, role: 'student' }).success).toBe(false);
+  });
+
+  it('refuses a non-institutional address on the server, whatever the form sent', () => {
+    for (const email of ['a@gmail.com', 'a@tdms.test', 'a@asiancollege.edu.ph.evil.com']) {
+      const result = inviteAccountSchema.safeParse({ name: 'N', email, role: 'secretary' });
+      expect(result.success).toBe(false);
+    }
+  });
+
+  it('stores the normalised address', () => {
+    const parsed = inviteAccountSchema.parse({
+      name: '  Maria Santos ',
+      email: '  Maria.Santos@AsianCollege.EDU.ph ',
+      role: 'secretary',
+    });
+    expect(parsed.email).toBe('maria.santos@asiancollege.edu.ph');
+    expect(parsed.name).toBe('Maria Santos');
   });
 });
 

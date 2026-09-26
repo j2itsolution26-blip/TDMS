@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation';
 import AuthBrandedLayout from '@/components/AuthBrandedLayout';
 import CreateSuperAdminForm from '@/components/CreateSuperAdminForm';
 import { isBootstrapAllowed } from '@/server/services/super-admin-service';
+import { INSTITUTIONAL_DOMAIN } from '@/lib/institutional-email';
+import { canSendMail } from '@/server/mail/mailer';
 
 /**
  * Port of the create-super-admin Volt route.
@@ -18,7 +20,7 @@ export default async function CreateSuperAdminPage() {
 
   return (
     <AuthBrandedLayout>
-      <CreateSuperAdminForm />
+      <CreateSuperAdminForm domain={INSTITUTIONAL_DOMAIN} mailConfigured={canSendMail()} />
     </AuthBrandedLayout>
   );
 }

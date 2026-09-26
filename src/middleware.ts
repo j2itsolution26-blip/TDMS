@@ -27,7 +27,10 @@ const SESSION_COOKIE = 'tdms_session';
 const PUBLIC_PATHS = [
   '/login',
   '/forgot-password',
+  // Reached from an email, by someone who cannot yet sign in. The token in
+  // the URL is the credential; it is single-use and expiring.
   '/reset-password',
+  '/verify-email',
   '/create-super-admin',
 ];
 

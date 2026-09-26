@@ -4,7 +4,7 @@ import { withErrorHandling, parseJson, requestContext } from '@/server/api-handl
 import { requireApiUser, authorize } from '@/server/auth/current-user';
 import { userPolicy } from '@/server/auth/policies';
 import { idSchema } from '@/server/validation/schemas';
-import { getStaffMember, toggleStaffActive } from '@/server/services/staff-service';
+import { getAccount, resendVerification } from '@/server/services/account-service';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -12,8 +12,7 @@ export const POST = withErrorHandling(async (request: NextRequest, { params }: P
   const user = await requireApiUser();
   const { id } = await params;
   const targetId = idSchema.parse(id);
-  const target = await getStaffMember(targetId);
-  authorize(userPolicy.toggleActive(user, { id: target.id.toString(), roles: target.roles }));
-  const isActive = await toggleStaffActive(user, targetId, requestContext(request));
-  return ok({ isActive });
+  const target = await getAccount(targetId);
+  authorize(userPolicy.update(user, { id: target.id.toString(), roles: target.roles }));
+  return ok(await resendVerification(user, targetId, requestContext(request)));
 });

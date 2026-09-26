@@ -4,8 +4,27 @@ import {
   studentStatusSchema,
   applicationStatusSchema,
   enrollmentStatusSchema,
+  accountStatusSchema,
   ROLES,
 } from '@/types/domain';
+import { checkInstitutionalEmail } from '@/lib/institutional-email';
+
+/**
+ * Any address that will belong to a TDMS account goes through this, not
+ * z.string().email(). It normalises (trim + lowercase) and enforces the
+ * institutional domain server-side, rejecting lookalikes — see
+ * src/lib/institutional-email.ts for the cases that matters for.
+ */
+const institutionalEmail = z
+  .string()
+  .transform((v) => v.trim())
+  .superRefine((value, ctx) => {
+    const check = checkInstitutionalEmail(value);
+    if (!check.ok) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: check.message! });
+    }
+  })
+  .transform((v) => checkInstitutionalEmail(v).email);
 
 /**
  * Zod replacements for the Laravel validation rules that lived in the Volt
@@ -74,14 +93,36 @@ export const loginSchema = z.object({
 });
 
 export const forgotPasswordSchema = z.object({
-  email: z.string().trim().min(1, 'Please enter your email address.').email().max(255),
+  email: institutionalEmail,
 });
+
+/** A raw verification or reset token: 32 bytes, hex. */
+export const tokenSchema = z
+  .string()
+  .trim()
+  .regex(/^[0-9a-f]{64}$/, 'That link is not valid.');
+
+export const verifyTokenSchema = z.object({ token: tokenSchema });
+
+/**
+ * Password strength, applied everywhere a password is chosen.
+ *
+ * Length does the heavy lifting; the character-class rules exist because the
+ * original Laravel form asserted them and the tests depended on it.
+ */
+export const strongPassword = z
+  .string()
+  .min(12, 'The password must be at least 12 characters.')
+  .max(200, 'That password is too long.')
+  .regex(/[a-z]/, 'The password must contain a lowercase letter.')
+  .regex(/[A-Z]/, 'The password must contain an uppercase letter.')
+  .regex(/[0-9]/, 'The password must contain a number.')
+  .regex(/[^A-Za-z0-9]/, 'The password must contain a symbol.');
 
 export const resetPasswordSchema = z
   .object({
-    token: z.string().min(1),
-    email: z.string().trim().email().max(255),
-    password: z.string().min(8, 'The password must be at least 8 characters.'),
+    token: tokenSchema,
+    password: strongPassword,
     passwordConfirmation: z.string(),
   })
   .refine((d) => d.password === d.passwordConfirmation, {
@@ -92,7 +133,7 @@ export const resetPasswordSchema = z
 export const updatePasswordSchema = z
   .object({
     currentPassword: z.string().min(1, 'Please enter your current password.'),
-    password: z.string().min(8, 'The password must be at least 8 characters.'),
+    password: strongPassword,
     passwordConfirmation: z.string(),
   })
   .refine((d) => d.password === d.passwordConfirmation, {
@@ -102,7 +143,7 @@ export const updatePasswordSchema = z
 
 export const updateProfileSchema = z.object({
   name: z.string().trim().min(1, 'Please enter your name.').max(255),
-  email: z.string().trim().min(1, 'Please enter your email.').email().max(255),
+  email: institutionalEmail,
 });
 
 /**
@@ -111,15 +152,9 @@ export const updateProfileSchema = z.object({
  */
 export const createSuperAdminSchema = z
   .object({
-    name: z.string().trim().min(1).max(255),
-    email: z.string().trim().email().max(255),
-    password: z
-      .string()
-      .min(12, 'The password must be at least 12 characters.')
-      .regex(/[a-z]/, 'The password must contain a lowercase letter.')
-      .regex(/[A-Z]/, 'The password must contain an uppercase letter.')
-      .regex(/[0-9]/, 'The password must contain a number.')
-      .regex(/[^A-Za-z0-9]/, 'The password must contain a symbol.'),
+    name: z.string().trim().min(1, 'Please enter your name.').max(255),
+    email: institutionalEmail,
+    password: strongPassword,
     passwordConfirmation: z.string(),
   })
   .refine((d) => d.password === d.passwordConfirmation, {
@@ -250,10 +285,21 @@ export const staffRoleSchema = z.enum(
   ROLES.filter((r) => r !== 'student') as unknown as [string, ...string[]],
 );
 
-export const staffSchema = z.object({
+/**
+ * Inviting or editing a staff account. No password field: the invitee sets
+ * their own through the verification link, so none is ever transmitted,
+ * generated or displayed.
+ */
+export const inviteAccountSchema = z.object({
   name: z.string().trim().min(1, 'The name is required.').max(255),
-  email: z.string().trim().min(1, 'The email is required.').email().max(255),
+  email: institutionalEmail,
   role: staffRoleSchema,
+});
+
+export const accountStatusChangeSchema = z.object({
+  status: accountStatusSchema.refine((s) => s !== 'PENDING_VERIFICATION', {
+    message: 'An account cannot be put back into pending verification.',
+  }),
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
@@ -261,7 +307,7 @@ export type ProgramInput = z.infer<typeof programSchema>;
 export type SubjectInput = z.infer<typeof subjectSchema>;
 export type StudentInput = z.infer<typeof studentSchema>;
 export type ApplicationInput = z.infer<typeof applicationSchema>;
-export type StaffInput = z.infer<typeof staffSchema>;
+export type InviteAccountInput = z.infer<typeof inviteAccountSchema>;
 
 /** Flatten Zod issues into the { field: [messages] } shape the UI renders. */
 export function fieldErrors(error: z.ZodError): Record<string, string[]> {

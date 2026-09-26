@@ -13,6 +13,42 @@ export const SUBJECT_TYPES = ['lecture', 'laboratory', 'practical', 'capstone', 
 export const STUDENT_STATUSES = ['applicant', 'active', 'transferred', 'archived', 'graduated'] as const;
 export const APPLICATION_STATUSES = ['submitted', 'under_review', 'approved', 'returned'] as const;
 export const CREDENTIAL_STATUSES = ['missing', 'submitted', 'under_review', 'verified', 'rejected', 'expired'] as const;
+/**
+ * Account lifecycle. Only ACTIVE may authenticate, and only then with a
+ * verified institutional email — the two conditions are independent and both
+ * are checked (see src/server/services/auth-service.ts).
+ *
+ *   PENDING_VERIFICATION  created, email not yet confirmed
+ *   ACTIVE                confirmed and permitted to sign in
+ *   INACTIVE              deactivated by an administrator, reversible
+ *   SUSPENDED             withdrawn for cause, reversible
+ */
+export const ACCOUNT_STATUSES = [
+  'PENDING_VERIFICATION',
+  'ACTIVE',
+  'INACTIVE',
+  'SUSPENDED',
+] as const;
+
+export type AccountStatus = (typeof ACCOUNT_STATUSES)[number];
+
+export const accountStatusSchema = z.enum(ACCOUNT_STATUSES);
+
+export const ACCOUNT_STATUS_LABELS: Record<AccountStatus, string> = {
+  PENDING_VERIFICATION: 'Pending verification',
+  ACTIVE: 'Active',
+  INACTIVE: 'Inactive',
+  SUSPENDED: 'Suspended',
+};
+
+/** Maps an account state onto the x-badge colour vocabulary. */
+export const ACCOUNT_STATUS_BADGE: Record<AccountStatus, string> = {
+  PENDING_VERIFICATION: 'pending',
+  ACTIVE: 'active',
+  INACTIVE: 'inactive',
+  SUSPENDED: 'rejected',
+};
+
 export const ENROLLMENT_STATUSES = ['pending', 'enrolled', 'dropped'] as const;
 
 export type SubjectType = (typeof SUBJECT_TYPES)[number];
@@ -79,7 +115,7 @@ export interface AuthUser {
   name: string;
   username: string | null;
   email: string;
-  isActive: boolean;
+  status: AccountStatus;
   emailVerifiedAt: Date | null;
   roles: string[];
   permissions: string[];

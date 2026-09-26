@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { resolveIdentifier } from './auth-service';
 import { defaultSchoolYear } from './enrollment-service';
 import { greeting } from './dashboard-service';
-import { generatePassword, assignableRoles, STAFF_ROLES } from './staff-service';
+import { assignableRoles, STAFF_ROLES } from './account-service';
 import { fullName } from './student-service';
 import type { AuthUser } from '@/types/domain';
 
@@ -50,23 +50,11 @@ describe('fullName', () => {
   });
 });
 
-describe('generatePassword', () => {
-  it('produces the requested length', () => {
-    expect(generatePassword(20)).toHaveLength(20);
-    expect(generatePassword(8)).toHaveLength(8);
-  });
-
-  it('does not repeat itself', () => {
-    const seen = new Set(Array.from({ length: 50 }, () => generatePassword(20)));
-    expect(seen.size).toBe(50);
-  });
-});
-
 describe('assignableRoles', () => {
   function user(roles: string[]): AuthUser {
     return {
       id: '1', name: 'T', username: null, email: 't@e.test',
-      isActive: true, emailVerifiedAt: null, roles, permissions: [],
+      status: 'ACTIVE', emailVerifiedAt: new Date(), roles, permissions: [],
     };
   }
 

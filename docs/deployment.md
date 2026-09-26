@@ -293,6 +293,57 @@ Two things changed as a result:
    host, a credential or any part of Prisma's own text — those go to the
    server log. See `src/server/api-handler.test.ts`.
 
+## Diagnosing a mail failure
+
+`/api/health` reports the mail configuration — enough to place a problem
+without reading the server log, and with no secret in it:
+
+```bash
+curl -s https://<deployment>/api/health | jq .mail
+```
+
+```jsonc
+{
+  "transport": "smtp",          // smtp | resend | log | none
+  "canSend": true,
+  "senderConfigured": true,
+  "host": "smtp.gmail.com",     // hostname only; not a secret
+  "port": "587",
+  "credentials": { "username": true, "password": true },  // presence only
+  "resendApiKey": false,
+  "developmentMode": false
+}
+```
+
+A failed send answers with a **code** alongside the user-facing message, so
+the cause is visible in the Network tab:
+
+| Code | Means | Fix |
+| --- | --- | --- |
+| `EMAIL_SERVICE_NOT_CONFIGURED` | no transport at all | set `MAIL_*` or `RESEND_API_KEY` |
+| `EMAIL_AUTH_FAILED` | username/password rejected | for Gmail/Workspace an **App Password** is required; an ordinary account password will not work |
+| `EMAIL_SENDER_NOT_VERIFIED` | provider refuses that sender | verify the sender or its domain with the provider |
+| `EMAIL_CONNECTION_FAILED` | host unreachable | check host, port, and that outbound SMTP is permitted |
+| `EMAIL_TIMEOUT` | no response in time | usually a blocked port |
+| `EMAIL_PROVIDER_REJECTED` | server refused the message | read the server log |
+| `DATABASE_ERROR` | recognised Prisma fault | see the section above |
+
+None of these carries a host, credential or provider text — that goes to the
+server log only.
+
+### A loopback MAIL_HOST cannot work when deployed
+
+This caught out the Vercel deployment: `MAIL_HOST` was `127.0.0.1` and
+`MAIL_PORT` `2525` — almost certainly copied from a local mail catcher. On a
+serverless function, loopback is the function's own sandbox, where nothing is
+listening, so every send failed with a connection error that reads like a
+network fault rather than the configuration mistake it was.
+
+It is now detected and named: deployed runtimes refuse a loopback
+`MAIL_HOST` up front with an explanation, instead of attempting a connection
+that cannot succeed. A loopback host remains perfectly valid in local
+development, where Mailpit or MailHog is a normal setup.
+
 ## Development email mode
 
 With no mail provider configured, registration correctly refuses rather than

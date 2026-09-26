@@ -192,13 +192,15 @@ export function mailFromAddress(): string {
   return process.env.MAIL_FROM ?? '';
 }
 
-/** True when real delivery is possible. Used to gate self-service flows. */
+/**
+ * True when real delivery is possible. Used to gate self-service flows.
+ *
+ * Derived from mailConfigurationProblem() rather than repeating its
+ * conditions, so the two can never disagree — a gate that says "yes" while
+ * the diagnostic says "misconfigured" is how a doomed send gets attempted.
+ */
 export function canSendMail(): boolean {
-  const transport = activeTransport();
-  if (transport === 'none') return false;
-  // The log transport has no recipient to satisfy, so no From is required.
-  if (transport === 'log') return true;
-  return mailFromAddress() !== '';
+  return mailConfigurationProblem() === null;
 }
 
 /**
@@ -208,6 +210,37 @@ export function canSendMail(): boolean {
  * it is the operator installing the system. It names environment variables,
  * never their values.
  */
+/**
+ * True when this process is running on a deployment platform rather than a
+ * developer's machine.
+ *
+ * VERCEL is set by the platform itself. NODE_ENV is consulted too so a
+ * self-hosted production build is covered.
+ */
+function isDeployedRuntime(): boolean {
+  return Boolean(process.env.VERCEL) || process.env.NODE_ENV === 'production';
+}
+
+/**
+ * Hosts that only mean anything on the machine running the code.
+ *
+ * A local mail catcher such as Mailpit on 127.0.0.1:1025 is perfectly valid
+ * in development, so this is only a fault when deployed — on a serverless
+ * function, loopback is the function's own sandbox, where nothing is
+ * listening, and every send fails with a connection error that looks like a
+ * network problem rather than the configuration mistake it is.
+ */
+function isLoopbackHost(host: string): boolean {
+  const h = host.trim().toLowerCase();
+  return (
+    h === 'localhost' ||
+    h === '::1' ||
+    h === '[::1]' ||
+    h === '0.0.0.0' ||
+    /^127\./.test(h)
+  );
+}
+
 export function mailConfigurationProblem(): string | null {
   if (activeTransport() === 'none') {
     return (
@@ -218,8 +251,24 @@ export function mailConfigurationProblem(): string | null {
     );
   }
 
-  if (mailFromAddress() === '') {
+  // The log transport has no recipient to satisfy, so no From is required.
+  if (activeTransport() !== 'log' && mailFromAddress() === '') {
     return 'Email delivery is not configured: no sender address. Set MAIL_FROM_ADDRESS (and MAIL_FROM_NAME) in the server environment.';
+  }
+
+  /*
+   * Caught here rather than left to fail at connect time. Attempting it would
+   * produce a bare connection error, which reads as "the network is broken"
+   * when in fact the address can never work in a deployed environment.
+   */
+  const host = process.env.MAIL_HOST;
+  if (host && isLoopbackHost(host) && isDeployedRuntime()) {
+    return (
+      `MAIL_HOST is set to a loopback address (${host.trim()}), which cannot work in a ` +
+      'deployed environment — it refers to the server itself, where no mail server is ' +
+      'running. Set MAIL_HOST to a reachable SMTP host, or use RESEND_API_KEY instead. ' +
+      'A loopback address is only valid for a local mail catcher during development.'
+    );
   }
 
   return null;

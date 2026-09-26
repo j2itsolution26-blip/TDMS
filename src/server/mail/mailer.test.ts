@@ -276,3 +276,68 @@ describe('classifySmtpError', () => {
     expect(MAIL_ERROR_REMEDY.EMAIL_AUTH_FAILED).toMatch(/app password/i);
   });
 });
+
+describe('a loopback MAIL_HOST is caught before it can fail at connect time', () => {
+  const KEYS = ['MAIL_HOST', 'MAIL_PORT', 'MAIL_FROM_ADDRESS', 'VERCEL', 'EMAIL_VERIFICATION_MODE'] as const;
+  let saved: Record<string, string | undefined>;
+
+  beforeEach(() => {
+    saved = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]));
+    for (const k of KEYS) delete process.env[k];
+    process.env.MAIL_PORT = '2525';
+    process.env.MAIL_FROM_ADDRESS = 'no-reply@asiancollege.edu.ph';
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    for (const k of KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+
+  for (const host of ['127.0.0.1', 'localhost', '::1', '0.0.0.0', '127.1.2.3']) {
+    it(`reports ${host} as a misconfiguration when deployed`, () => {
+      process.env.MAIL_HOST = host;
+      vi.stubEnv('VERCEL', '1');
+      const problem = mailConfigurationProblem();
+      expect(problem).toMatch(/loopback/i);
+      expect(problem).toContain(host);
+      // canSendMail must go false, so registration refuses early and clearly
+      // rather than attempting a connection that cannot succeed.
+      expect(canSendMail()).toBe(false);
+    });
+  }
+
+  it('allows a local mail catcher in development', () => {
+    // Mailpit / MailHog on loopback is a normal development setup.
+    process.env.MAIL_HOST = '127.0.0.1';
+    vi.stubEnv('NODE_ENV', 'development');
+    expect(mailConfigurationProblem()).toBeNull();
+    expect(canSendMail()).toBe(true);
+  });
+
+  it('leaves a real host alone when deployed', () => {
+    process.env.MAIL_HOST = 'smtp.gmail.com';
+    vi.stubEnv('VERCEL', '1');
+    expect(mailConfigurationProblem()).toBeNull();
+    expect(canSendMail()).toBe(true);
+  });
+
+  it('names variables but never their values', () => {
+    process.env.MAIL_HOST = 'localhost';
+    process.env.MAIL_USERNAME = 'smtp-user@example.com';
+    process.env.MAIL_PASSWORD = 'super-secret-password';
+    vi.stubEnv('VERCEL', '1');
+    vi.stubEnv('RESEND_API_KEY', 're_liveKey_abc123');
+
+    const problem = mailConfigurationProblem()!;
+
+    // Naming RESEND_API_KEY is the remedy, so the variable name is expected.
+    expect(problem).toContain('RESEND_API_KEY');
+    // Its value, and every other credential, must not be.
+    expect(problem).not.toContain('re_liveKey_abc123');
+    expect(problem).not.toContain('super-secret-password');
+    expect(problem).not.toContain('smtp-user@example.com');
+  });
+});

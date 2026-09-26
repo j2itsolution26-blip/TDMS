@@ -103,6 +103,34 @@ Serverless functions each open their own connection. Use the **pooled**
 Neon host (the `-pooler` one, already in `DATABASE_URL`) or the database
 will run out of connections under any real load.
 
+## Diagnosing a deployment
+
+`GET /api/health` is unauthenticated and reports whether the database is
+reachable, the Prisma error code if it is not, and whether each required
+environment variable is set — booleans and codes only, never a value:
+
+```bash
+curl -s https://<deployment>/api/health | jq
+```
+
+`"env": { "DATABASE_URL": false }` means the variable is simply not set for
+that environment, which is the single most likely cause of a deployment
+where every page 500s while static pages work. See `authentication.md` for
+the full table of responses.
+
+### Session regression suite
+
+```bash
+npm run dev            # in one shell
+npm run test:e2e       # in another
+```
+
+`scripts/e2e/session-redirect.mjs` covers the login/dashboard handoff: a
+garbage cookie, an expired cookie, the authenticated redirect, a
+mid-session deactivation, and `/api/health`. It deactivates and restores
+the `teacher` demo account, so it refuses to run against a non-local
+`BASE` unless you pass `ALLOW_REMOTE=1`.
+
 ## Scheduled work
 
 Laravel's queue and scheduler tables exist but were never used — there are

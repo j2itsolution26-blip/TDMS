@@ -16,7 +16,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:demo": "tsx prisma/seed-demo.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "node scripts/e2e/session-redirect.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.1.0",

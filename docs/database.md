@@ -90,19 +90,41 @@ prisma/migrations/
                                              already existed; marked applied,
                                              never executed
   20260925000001_add_username_and_auth_sessions/
-                                             the only change this migration
-                                             made to the database
+  20260926000000_account_status_and_verification_tokens/
+  20260926010000_google_identity/
+  20260926020000_pending_admin_registrations/
 ```
 
-The delta is purely additive:
+Every delta is purely additive:
 
 ```sql
 ALTER TABLE "users" ADD COLUMN "username" VARCHAR(255);
 CREATE UNIQUE INDEX "users_username_unique" ON "users"("username");
 CREATE TABLE "auth_sessions" (...);
+CREATE TABLE "email_verification_tokens" (...);
+CREATE TABLE "password_reset_requests" (...);
+CREATE TABLE "pending_admin_registrations" (...);
 ```
 
 No `DROP`, no `ALTER COLUMN`, no data movement.
+
+### `pending_admin_registrations`
+
+Super Admin registrations that have been filled in but not yet verified. It
+exists so that no `users` row is created before the institutional address is
+proven: the setup form writes here, the emailed code is checked against here,
+and only a correct code turns the row into an account — inside one transaction
+that deletes the row as it goes.
+
+It holds a bcrypt password hash, a bcrypt hash of the six-digit code (bcrypt
+rather than SHA-256 because the code has too little entropy for a fast digest
+to protect), the SHA-256 of the browser's opaque setup-cookie handle, and the
+attempt and resend counters. It grants nothing: a row here cannot sign in,
+holds no session and has no role.
+
+Unique on `email` and on `handle_hash`, so two requests cannot both insert a
+registration for one address and one cookie can never resolve to two rows.
+Indexed on `verification_expires_at` for the scheduled prune.
 
 ### Baselining a fresh environment
 

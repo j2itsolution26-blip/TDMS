@@ -35,7 +35,21 @@ maps each of those actions to its replacement.
 | `login()` on `pages.auth.login`        | `POST /api/auth/login`         | —    | —          |
 | `Logout` action on `layout.navigation` | `POST /api/auth/logout`        | yes  | —          |
 | `auth()->user()` in Blade              | `GET /api/auth/session`        | yes  | —          |
-| `create-super-admin` submit            | `POST /api/auth/super-admin`   | —    | only while no Super Admin exists |
+| `create-super-admin` step 1            | `POST /api/auth/super-admin/start`   | —    | only while no Super Admin exists |
+| `create-super-admin` resend            | `POST /api/auth/super-admin/resend`  | —    | setup cookie, rate limited |
+| `create-super-admin` step 2            | `POST /api/auth/super-admin/verify`  | —    | setup cookie, attempts capped |
+| `create-super-admin` resume            | `GET /api/auth/super-admin/pending`  | —    | setup cookie |
+| `create-super-admin` abandon           | `DELETE /api/auth/super-admin/pending` | —  | setup cookie |
+| `create-super-admin` submit            | `POST /api/auth/super-admin`   | —    | verified pending registration, and only while no Super Admin exists |
+
+The bootstrap is three requests, in this order, and the order is the security
+property: `start` writes a pending registration and emails a six-digit code
+but creates no account; `verify` proves the address; `POST /api/auth/super-admin`
+creates the account, and takes **no body** — the name, address and password
+hash come from the pending row named by an HttpOnly cookie, so nothing about
+the account can change between verification and creation. That endpoint
+refuses outright unless the pending registration's `verified_at` is set. See
+[authentication.md](authentication.md#first-time-setup).
 
 ### Programs & curricula
 

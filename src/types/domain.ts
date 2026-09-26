@@ -125,6 +125,29 @@ export interface AuthUser {
   permissions: string[];
 }
 
+/**
+ * What the Super Admin verification screen is told about a registration that
+ * is waiting on an emailed code.
+ *
+ * This is the whole contract between the server and that screen, and it is
+ * deliberately thin. There is no code in it, no hash, no password, and no
+ * identifier for the pending row — the browser is identified by an HttpOnly
+ * cookie it cannot read, so none of those has to cross.
+ *
+ * The countdowns are seconds remaining at the moment of the response, not
+ * absolute times, so a clock that is wrong on either machine cannot make a
+ * code look live when it has expired or vice versa.
+ */
+export interface PendingRegistration {
+  email: string;
+  expiresInSeconds: number;
+  resendInSeconds: number;
+  resendsRemaining: number;
+  attemptsRemaining: number;
+  verified: boolean;
+  completionInSeconds: number;
+}
+
 /** Display labels, carried over from the Blade templates verbatim. */
 export const SUBJECT_TYPE_LABELS: Record<SubjectType, string> = {
   lecture: 'Lecture',

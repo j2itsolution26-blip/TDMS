@@ -8,22 +8,20 @@
  * writes to the database — and therefore refuses a non-local target unless
  * ALLOW_REMOTE=1 is passed.
  *
- * The verification link is read from the mailer's log transport, which is
- * how the flow is exercisable before a mail provider exists.
+ * The verification link is read out of a local SMTP catcher — Mailpit or
+ * MailHog — because that is now the only way mail leaves the application:
+ * the old log transport, which wrote verification links to the server log,
+ * has been removed. See docs/deployment.md.
+ *
+ *   mailpit          # SMTP on :1025, HTTP API and UI on :8025
+ *   MAIL_HOST=127.0.0.1 MAIL_PORT=1025  *     MAIL_FROM_ADDRESS=no-reply@asiancollege.edu.ph npm run dev
  */
-import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 const BASE = process.env.BASE ?? 'http://127.0.0.1:3100';
 
-/**
- * Where the dev server's stdout was redirected. Resolved through os.tmpdir()
- * rather than a literal "/tmp", because a shell like Git Bash maps /tmp to
- * the Windows temp directory while Node reads it as C:	mp.
- */
-const LOG = process.env.DEV_LOG ?? join(tmpdir(), 'tdms-dev.log');
+/** A local SMTP catcher's HTTP API. Mailpit and MailHog both serve on 8025. */
+const CATCHER = (process.env.MAIL_CATCHER_URL ?? 'http://127.0.0.1:8025').replace(/\/+$/, '');
 
 const isLocal = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/.test(BASE);
 if (!isLocal && process.env.ALLOW_REMOTE !== '1') {
@@ -71,16 +69,78 @@ async function call(path, { method = 'GET', body, jar } = {}) {
   return { status: r.status, json, text, location: r.headers.get('location') };
 }
 
-/** Pull the most recent verification token out of the dev log transport. */
-function latestTokenFromLog(kind = 'verify-email') {
-  try {
-    const log = readFileSync(LOG, 'utf8');
-    const re = new RegExp(`/${kind}\\?token=([0-9a-f]{64})`, 'g');
-    const found = [...log.matchAll(re)].map((m) => m[1]);
-    return found.at(-1) ?? null;
-  } catch {
-    return null;
+/**
+ * Read the delivered messages out of a local SMTP catcher.
+ *
+ * Mailpit and MailHog expose different endpoints, so both shapes are tried:
+ * the point is to read a real delivered message rather than to prefer a tool.
+ * Returns null when no catcher answers at all, which the caller reports as a
+ * missing prerequisite rather than as a failed assertion.
+ */
+async function catcherBodies() {
+  const shapes = [
+    {
+      list: `${CATCHER}/api/v1/messages`,
+      items: (json) => json.messages ?? [],
+      detail: (item) => `${CATCHER}/api/v1/message/${item.ID}`,
+    },
+    {
+      list: `${CATCHER}/api/v2/messages`,
+      items: (json) => json.items ?? [],
+      detail: null,
+    },
+  ];
+
+  for (const shape of shapes) {
+    let listed;
+    try {
+      listed = await fetch(shape.list);
+    } catch {
+      continue;
+    }
+    if (!listed.ok) continue;
+
+    const items = shape.items(await listed.json());
+    const bodies = [];
+
+    for (const item of items) {
+      if (!shape.detail) {
+        // MailHog returns the body inline, quoted-printable soft breaks and all.
+        bodies.push((item.Content?.Body ?? '').replace(/=\r?\n/g, ''));
+        continue;
+      }
+
+      const one = await fetch(shape.detail(item));
+      if (!one.ok) continue;
+      const detail = await one.json();
+      bodies.push(detail.Text ?? detail.HTML ?? '');
+    }
+
+    return bodies;
   }
+
+  return null;
+}
+
+/** The most recent token of a kind, from the mail that was actually sent. */
+async function latestTokenFromMail(kind = 'verify-email') {
+  const bodies = await catcherBodies();
+
+  if (bodies === null) {
+    throw new Error(
+      [
+        `No SMTP catcher answered at ${CATCHER}.`,
+        'Start Mailpit (or MailHog) and run the dev server with:',
+        '  MAIL_HOST=127.0.0.1 MAIL_PORT=1025 MAIL_FROM_ADDRESS=no-reply@asiancollege.edu.ph',
+        'or point MAIL_CATCHER_URL at one. The log transport this used to read',
+        'has been removed — mail is now either delivered or it fails.',
+      ].join('\n'),
+    );
+  }
+
+  const pattern = new RegExp(`/${kind}\\?token=([0-9a-f]{64})`, 'g');
+  const found = bodies.flatMap((body) => [...body.matchAll(pattern)].map((m) => m[1]));
+  return found.at(-1) ?? null;
 }
 
 const clientUrl = pathToFileURL(`${process.cwd()}/node_modules/@prisma/client/default.js`).href;
@@ -184,9 +244,9 @@ try {
   console.log('\n=== Verification link activates the account ===');
   let resetToken = null;
   {
-    const token = latestTokenFromLog('verify-email');
-    check('verification link found in the dev mail log', Boolean(token));
-    if (!token) throw new Error(`no verification token found in ${LOG} — set DEV_LOG to the dev server's log file`);
+    const token = await latestTokenFromMail('verify-email');
+    check('verification link found in the delivered mail', Boolean(token));
+    if (!token) throw new Error(`no verification token found in the mail at ${CATCHER}`);
 
     const r = await call('/api/auth/verify-email', { method: 'POST', body: { token } });
     check('verify 200', r.status === 200, `${r.status} ${r.text.slice(0, 150)}`);

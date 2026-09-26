@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { GoogleIdentity } from '@/server/auth/google/oauth';
 
 /**
@@ -43,12 +43,28 @@ function identity(overrides: Partial<GoogleIdentity> = {}): GoogleIdentity {
 
 const context = { ip: '203.0.113.5', userAgent: 'test' };
 
+/*
+ * Most of these cases describe the RESTRICTED policy, so it is switched on
+ * here. The OFF behaviour — any real Google account — has its own block at
+ * the end of this file.
+ */
+let savedRestriction: string | undefined;
+
 beforeEach(() => {
+  savedRestriction = process.env.GOOGLE_DOMAIN_RESTRICTION_ENABLED;
+  process.env.GOOGLE_DOMAIN_RESTRICTION_ENABLED = 'true';
+  process.env.GOOGLE_ALLOWED_DOMAIN = 'asiancollege.edu.ph';
   vi.clearAllMocks();
   db.user.findFirst.mockResolvedValue(null);
   db.user.create.mockResolvedValue({ id: 99n });
   db.user.update.mockResolvedValue({});
   db.modelHasRole.count.mockResolvedValue(0);
+});
+
+afterEach(() => {
+  if (savedRestriction === undefined) delete process.env.GOOGLE_DOMAIN_RESTRICTION_ENABLED;
+  else process.env.GOOGLE_DOMAIN_RESTRICTION_ENABLED = savedRestriction;
+  delete process.env.DEV_AUTO_ACTIVATE_GOOGLE_USERS;
 });
 
 describe('Google must have verified the address', () => {
@@ -282,5 +298,117 @@ describe('query budget', () => {
       { googleId: 'google-sub-12345' },
       { email: 'jane.cruz@asiancollege.edu.ph' },
     ]);
+  });
+});
+
+describe('RESTRICTION OFF — any real Google account (development setting)', () => {
+  beforeEach(() => {
+    delete process.env.GOOGLE_DOMAIN_RESTRICTION_ENABLED;
+  });
+
+  const accounts = [
+    'user@gmail.com',
+    'developer@gmail.com',
+    'user@asiancollege.edu.ph',
+    'tester@outlook.com',
+  ];
+
+  for (const email of accounts) {
+    it(`accepts ${email}`, async () => {
+      const result = await signInWithGoogle(identity({ email, hostedDomain: null }), context);
+      // Accepted by the domain policy, then held at PENDING by the account
+      // policy — which is the distinction this whole service exists to keep.
+      expect(result).toEqual({ kind: 'pending', created: true });
+      expect(db.user.create).toHaveBeenCalledOnce();
+    });
+  }
+
+  it('ignores the Workspace hosted-domain claim when there is no domain to enforce', async () => {
+    const result = await signInWithGoogle(
+      identity({ email: 'user@gmail.com', hostedDomain: 'someoneelse.edu' }),
+      context,
+    );
+    expect(result.kind).toBe('pending');
+  });
+
+  it('still requires Google to have verified the address', async () => {
+    const result = await signInWithGoogle(
+      identity({ email: 'user@gmail.com', emailVerified: false }),
+      context,
+    );
+    expect(result.kind).toBe('email_unverified');
+    expect(db.user.create).not.toHaveBeenCalled();
+  });
+
+  it('still refuses a malformed address', async () => {
+    const result = await signInWithGoogle(identity({ email: 'not-an-email' }), context);
+    expect(result.kind).toBe('wrong_domain');
+    expect(db.user.create).not.toHaveBeenCalled();
+  });
+
+  it('still creates the account with NO role', async () => {
+    await signInWithGoogle(identity({ email: 'developer@gmail.com' }), context);
+    const data = db.user.create.mock.calls[0][0].data;
+    expect(JSON.stringify(data)).not.toMatch(/role|admin|super/i);
+  });
+
+  it('still refuses a SUSPENDED account', async () => {
+    db.user.findFirst.mockResolvedValue({
+      id: 7n, email: 'user@gmail.com', googleId: 'google-sub-12345',
+      status: 'SUSPENDED', emailVerifiedAt: new Date(), name: 'Dev',
+    });
+    const result = await signInWithGoogle(identity({ email: 'user@gmail.com' }), context);
+    expect(result.kind).toBe('suspended');
+    expect(createSession).not.toHaveBeenCalled();
+  });
+});
+
+describe('DEV_AUTO_ACTIVATE_GOOGLE_USERS', () => {
+  beforeEach(() => {
+    delete process.env.GOOGLE_DOMAIN_RESTRICTION_ENABLED;
+  });
+
+  it('is off unless explicitly set, so PENDING remains the default', async () => {
+    const result = await signInWithGoogle(identity({ email: 'dev@gmail.com' }), context);
+    expect(result.kind).toBe('pending');
+    expect(db.user.create.mock.calls[0][0].data.status).toBe('PENDING');
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it('when on, a first-time user is ACTIVE and signed straight in', async () => {
+    process.env.DEV_AUTO_ACTIVATE_GOOGLE_USERS = 'true';
+    const result = await signInWithGoogle(identity({ email: 'dev@gmail.com' }), context);
+    expect(result).toEqual({ kind: 'signed_in', userId: 99n, redirectTo: '/dashboard' });
+    expect(db.user.create.mock.calls[0][0].data.status).toBe('ACTIVE');
+    expect(createSession).toHaveBeenCalledOnce();
+  });
+
+  it('grants no role even when on — activation is not authorization', async () => {
+    process.env.DEV_AUTO_ACTIVATE_GOOGLE_USERS = 'true';
+    await signInWithGoogle(identity({ email: 'dev@gmail.com' }), context);
+    const data = db.user.create.mock.calls[0][0].data;
+    expect(JSON.stringify(data)).not.toMatch(/role|admin|super/i);
+  });
+
+  it('does not resurrect a SUSPENDED account', async () => {
+    process.env.DEV_AUTO_ACTIVATE_GOOGLE_USERS = 'true';
+    db.user.findFirst.mockResolvedValue({
+      id: 7n, email: 'dev@gmail.com', googleId: 'google-sub-12345',
+      status: 'SUSPENDED', emailVerifiedAt: new Date(), name: 'Dev',
+    });
+    const result = await signInWithGoogle(identity({ email: 'dev@gmail.com' }), context);
+    expect(result.kind).toBe('suspended');
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it('only an explicit affirmative enables it', async () => {
+    for (const value of ['false', '0', 'no', '', 'ture']) {
+      vi.clearAllMocks();
+      db.user.findFirst.mockResolvedValue(null);
+      db.user.create.mockResolvedValue({ id: 99n });
+      process.env.DEV_AUTO_ACTIVATE_GOOGLE_USERS = value;
+      const result = await signInWithGoogle(identity({ email: 'dev@gmail.com' }), context);
+      expect(result.kind).toBe('pending');
+    }
   });
 });

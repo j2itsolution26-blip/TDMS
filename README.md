@@ -26,12 +26,18 @@ npm run admin:create -- --name "Your Name" --email you@asiancollege.edu.ph
 …or open `/login` and use **Create Super Admin**, which emails a verification
 link (this needs a mail provider — see [accounts.md](docs/accounts.md)).
 
-Sign-in is **Continue with Google** against a real `@asiancollege.edu.ph`
-Google account, with the credential form kept beneath it for staff who have
-not linked Google. Every account must be on the institutional domain, must
-have a verified address, and must be `ACTIVE` before it can sign in — a
-first-time Google sign-in creates a `PENDING` account with **no role**, for an
-administrator to approve. Administrators invite
+Sign-in is **Continue with Google** against a real Google account, with the
+credential form kept beneath it for staff who have not linked Google.
+
+While in development the email-domain restriction is **off**, so any real
+Google account works. It is a configurable switch, not a deleted feature —
+set `GOOGLE_DOMAIN_RESTRICTION_ENABLED=true` to require
+`@asiancollege.edu.ph` for launch. See
+[accounts.md](docs/accounts.md#the-email-domain-policy).
+
+Every account must still have a Google-verified address and be `ACTIVE`
+before it can sign in. A first-time Google sign-in creates a `PENDING`
+account with **no role**, for an administrator to approve. Administrators invite
 colleagues from the Staff screen; nobody is ever issued a generated password.
 
 To wipe accounts and academic records while keeping roles and permissions:

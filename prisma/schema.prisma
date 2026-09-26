@@ -143,6 +143,54 @@ model PasswordResetRequest {
   @@map("password_reset_requests")
 }
 
+/// A Super Admin registration that has been filled in but NOT yet verified.
+///
+/// This table is the reason no `users` row exists before the institutional
+/// address is proven. The setup form writes here, the emailed code is checked
+/// against here, and only then is a real account created — inside one
+/// transaction that also deletes the row it came from.
+///
+/// What is stored, and what is deliberately not:
+///   * `passwordHash` is a finished bcrypt hash. The plaintext password is
+///     never stored, never emailed and never logged, exactly as for a live
+///     account. A pending row is not a weaker place to keep a password.
+///   * `verificationCodeHash` is bcrypt, not SHA-256, because a six-digit
+///     code has too little entropy for a fast digest to protect — see
+///     src/server/auth/verification-code.ts.
+///   * `handleHash` is the SHA-256 of the opaque handle in the browser's
+///     HttpOnly cookie. It is what ties a verification attempt to this row,
+///     so attempts cannot be aimed at somebody else's pending registration.
+///   * `verificationAttempts` and `resendCount` are the per-registration
+///     brakes; IP-level throttling lives in the cache table alongside the
+///     login throttle.
+///
+/// Nothing here grants access. A pending row cannot sign in, holds no
+/// session, and has no role.
+model PendingAdminRegistration {
+  id                   BigInt    @id @default(autoincrement())
+  fullName             String    @map("full_name") @db.VarChar(255)
+  /// One pending registration per address, enforced by the database rather
+  /// than by a read-then-write that two requests could interleave.
+  email                String    @unique(map: "pending_admin_registrations_email_unique") @db.VarChar(255)
+  passwordHash         String    @map("password_hash") @db.VarChar(255)
+  /// Emptied the moment the code is accepted, so a code is strictly single use.
+  verificationCodeHash String    @map("verification_code_hash") @db.VarChar(255)
+  verificationExpiresAt DateTime @map("verification_expires_at")
+  verificationAttempts Int       @default(0) @map("verification_attempts")
+  resendCount          Int       @default(0) @map("resend_count")
+  /// When the current code was sent. Drives the resend cooldown.
+  lastSentAt           DateTime  @default(now()) @map("last_sent_at")
+  handleHash           String    @unique(map: "pending_admin_registrations_handle_hash_unique") @map("handle_hash") @db.VarChar(64)
+  /// Set only by a correct code. Until it is non-null, no account may be
+  /// created from this row under any circumstances.
+  verifiedAt           DateTime? @map("verified_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  @@index([verificationExpiresAt])
+  @@map("pending_admin_registrations")
+}
+
 model PasswordResetToken {
   email     String    @id @db.VarChar(255)
   token     String    @db.VarChar(255)

@@ -7,7 +7,8 @@ import {
   accountStatusSchema,
   ROLES,
 } from '@/types/domain';
-import { checkInstitutionalEmail } from '@/lib/institutional-email';
+import { checkInstitutionalEmail, INSTITUTIONAL_DOMAIN } from '@/lib/institutional-email';
+import { passwordProblems } from '@/lib/password-policy';
 
 /**
  * Any address that will belong to a TDMS account goes through this, not
@@ -107,17 +108,19 @@ export const verifyTokenSchema = z.object({ token: tokenSchema });
 /**
  * Password strength, applied everywhere a password is chosen.
  *
- * Length does the heavy lifting; the character-class rules exist because the
- * original Laravel form asserted them and the tests depended on it.
+ * Built from PASSWORD_REQUIREMENTS rather than restating the rules, so the
+ * live checklist in the browser and this check cannot disagree — there is one
+ * list, and both read it. Same requirements as before, same messages.
+ *
+ * Every requirement is reported at once, rather than stopping at the first
+ * failure, because a form showing one problem at a time is how you get five
+ * round trips to choose a password.
  */
-export const strongPassword = z
-  .string()
-  .min(12, 'The password must be at least 12 characters.')
-  .max(200, 'That password is too long.')
-  .regex(/[a-z]/, 'The password must contain a lowercase letter.')
-  .regex(/[A-Z]/, 'The password must contain an uppercase letter.')
-  .regex(/[0-9]/, 'The password must contain a number.')
-  .regex(/[^A-Za-z0-9]/, 'The password must contain a symbol.');
+export const strongPassword = z.string().superRefine((value, ctx) => {
+  for (const message of passwordProblems(value)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+  }
+});
 
 export const resetPasswordSchema = z
   .object({
@@ -147,20 +150,63 @@ export const updateProfileSchema = z.object({
 });
 
 /**
- * Super Admin bootstrap. The password rule matches the Laravel form's
- * Password::defaults() with the strength requirements the tests assert.
+ * Super Admin bootstrap, step 1: the registration details.
+ *
+ * Identical rules to every other account in the system, with one difference
+ * that is presentation only: the domain refusal is worded for somebody who is
+ * registering rather than signing in. The check itself is the shared one, so
+ * the lookalike domains it rejects (see institutional-email.ts) are rejected
+ * here too.
+ *
+ * Passing this schema creates nothing. It is the gate in front of sending a
+ * verification code, and the account is created only after that code comes
+ * back — see src/server/services/super-admin-service.ts.
  */
-export const createSuperAdminSchema = z
+const registrationEmail = z
+  .string()
+  .transform((v) => v.trim())
+  .superRefine((value, ctx) => {
+    const check = checkInstitutionalEmail(value);
+    if (check.ok) return;
+
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      // An empty or over-long address keeps its own specific message; only
+      // the "wrong domain" case is reworded.
+      message:
+        value.trim() === '' || value.trim().length > 255
+          ? check.message!
+          : `Please use your @${INSTITUTIONAL_DOMAIN} institutional email.`,
+    });
+  })
+  .transform((v) => checkInstitutionalEmail(v).email);
+
+export const superAdminRegistrationSchema = z
   .object({
     name: z.string().trim().min(1, 'Please enter your name.').max(255),
-    email: institutionalEmail,
+    email: registrationEmail,
     password: strongPassword,
     passwordConfirmation: z.string(),
   })
   .refine((d) => d.password === d.passwordConfirmation, {
-    message: 'The password confirmation does not match.',
+    message: 'Passwords do not match.',
     path: ['passwordConfirmation'],
   });
+
+/**
+ * Super Admin bootstrap, step 2: the emailed code.
+ *
+ * Six digits, nothing else. Spaces and dashes are stripped first so a pasted
+ * "123 456" is not rejected for a formatting choice the sender made.
+ */
+export const verificationCodeSchema = z.object({
+  code: z
+    .string()
+    .transform((v) => v.replace(/[\s-]/g, ''))
+    .refine((v) => /^[0-9]{6}$/.test(v), {
+      message: 'Enter the 6-digit code from your email.',
+    }),
+});
 
 // --- Programs & curricula --------------------------------------------------
 

@@ -29,9 +29,12 @@ import Link from 'next/link';
  * nothing technical reaches the browser: the callback emits a short code and
  * this turns it into a sentence.
  */
-const ERROR_MESSAGES: Record<string, string> = {
+function errorMessages(domainNotice: string | null): Record<string, string> {
+  return {
   cancelled: 'Google sign-in was cancelled.',
-  wrong_domain: 'Only an @asiancollege.edu.ph account can access TDMS.',
+  // Only meaningful when the domain restriction is on; the server supplies
+  // the wording so the page never names a domain that is not being enforced.
+  wrong_domain: domainNotice ?? 'That Google account cannot be used to access TDMS.',
   google_email_unverified:
     'That Google account has not verified its email address, so it cannot be used to sign in.',
   account_created_pending:
@@ -44,7 +47,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   expired: 'That sign-in attempt timed out. Please try again.',
   google_failed: 'Google sign-in failed. Please try again.',
   google_unavailable: 'Google sign-in is not available. Please contact the administrator.',
-};
+  };
+}
 
 /** These are outcomes, not faults — shown in a calmer tone than an error. */
 const INFORMATIONAL = new Set(['account_created_pending', 'account_pending', 'cancelled']);
@@ -53,12 +57,22 @@ export default function LoginForm({
   canBootstrap,
   systemUnavailable = false,
   googleEnabled = false,
+  domainNotice = null,
+  allowedDomain = null,
 }: {
   canBootstrap: boolean;
   /** True when the server could not reach the database while rendering. */
   systemUnavailable?: boolean;
   /** True when Google OAuth is configured for this environment. */
   googleEnabled?: boolean;
+  /**
+   * The domain restriction message, or null when the restriction is off.
+   * Decided on the server, so the page never advertises a rule that is not
+   * actually being enforced.
+   */
+  domainNotice?: string | null;
+  /** The enforced domain, or null when the restriction is off. */
+  allowedDomain?: string | null;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -70,7 +84,8 @@ export default function LoginForm({
   const [error, setError] = useState<string | null>(null);
 
   const errorCode = searchParams.get('error');
-  const callbackMessage = errorCode ? (ERROR_MESSAGES[errorCode] ?? ERROR_MESSAGES.google_failed) : null;
+  const messages = errorMessages(domainNotice);
+  const callbackMessage = errorCode ? (messages[errorCode] ?? messages.google_failed) : null;
   const callbackIsInfo = errorCode ? INFORMATIONAL.has(errorCode) : false;
   const [submitting, setSubmitting] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -154,6 +169,12 @@ export default function LoginForm({
             </svg>
             <span>Continue with Google</span>
           </a>
+
+          <p className="tdms-google-hint">
+            {allowedDomain
+              ? `Use your @${allowedDomain} account`
+              : 'Sign in with your Google account'}
+          </p>
 
           <div className="tdms-or-divider">
             <span>or sign in with your TDMS password</span>

@@ -180,6 +180,66 @@ the same budget Laravel used. Counters live in the existing `cache` table
 rather than in memory, because serverless functions share no memory and an
 in-process `Map` would reset on every cold start and throttle nothing.
 
+The Super Admin setup flow uses the same storage through
+`consumeRateLimit()`, with its own budgets: 6 codes per email address and 10
+per IP in an hour, and 20 verification attempts per IP in 15 minutes. Those
+sit on top of the per-registration caps described below, and are what stop the
+flow being restarted to get around them.
+
+## First-time setup
+
+A fresh installation has roles and permissions but no users. The only way to
+obtain the first Super Admin through the web is `/create-super-admin`, which
+is reachable only while no Super Admin exists — the page redirects and every
+endpoint behind it refuses independently, re-checked inside the transaction
+that finally creates the account so it cannot be raced.
+
+**No account exists before the institutional address has been verified.** The
+flow is three steps and the order is the point:
+
+1. `POST /api/auth/super-admin/start` — validates the details and writes a row
+   to `pending_admin_registrations`, with the password already bcrypt-hashed.
+   No `users` row, no role, no session. A six-digit code is generated with
+   `randomInt` from the CSPRNG, hashed, and emailed. If the mail cannot be
+   sent, the pending row is deleted again: an unsendable code must not leave a
+   half-finished registration holding the address.
+2. `POST /api/auth/super-admin/verify` — checks the code. Success sets
+   `verified_at` and empties `verification_code_hash`, so the code is strictly
+   single use. It creates nothing and issues no session.
+3. `POST /api/auth/super-admin` — creates the account, assigns the role, marks
+   the email verified and issues the first session, in that order. It takes no
+   request body: everything comes from the pending row, so nothing about the
+   account can be changed between verification and creation. It refuses unless
+   `verified_at` is set.
+
+Why the code is hashed with bcrypt rather than SHA-256, when link tokens use
+SHA-256: a link token carries 256 bits of entropy and there is nothing to
+brute force, but a six-digit code has under 20 bits, and a million SHA-256
+candidates can be swept in well under a second from a database dump. bcrypt's
+cost and per-row salt make that sweep cost weeks, for one row.
+
+Guessing, not cracking, is the real threat at that entropy, so the attempt cap
+is what actually protects the code: five wrong guesses and the code is burnt
+outright — its hash is emptied, and even the right digits stop working until a
+new code is requested. Resends are capped at three per registration with a
+60-second cooldown, and the code expires after 10 minutes.
+
+The browser is tied to its pending registration by an HttpOnly cookie holding
+a 32-byte random handle, stored only as its SHA-256. That is what lets a
+refresh mid-verification resume instead of stranding the operator, and it means
+verification attempts cannot be aimed at a pending registration the browser
+does not hold. The code itself never reaches the browser, an API response, a
+log line or an error message.
+
+Claiming the pending row is a conditional delete **inside** the creating
+transaction, so two concurrent requests cannot both create an account: the
+second deletes nothing, fails its count check and rolls back.
+
+`npm run admin:create` remains for the case where no mail provider is
+configured yet — it requires shell access and the database credentials, which
+is a strictly higher bar than any web flow. See
+[accounts.md](accounts.md).
+
 ## Roles and permissions
 
 Unchanged. The seven roles and 24 permissions are read from the existing

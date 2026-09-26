@@ -5,6 +5,11 @@ import LoginForm from '@/components/LoginForm';
 import { isBootstrapAllowed } from '@/server/services/super-admin-service';
 import { getCurrentUser } from '@/server/auth/current-user';
 import { googleConfigured } from '@/server/auth/google/oauth';
+import {
+  domainRestrictionEnabled,
+  domainRejectionMessage,
+  allowedDomain,
+} from '@/lib/institutional-email';
 
 /**
  * /login — the branded sign-in screen.
@@ -57,6 +62,8 @@ export default async function LoginPage() {
           canBootstrap={canBootstrap}
           systemUnavailable={systemUnavailable}
           googleEnabled={googleConfigured()}
+          domainNotice={domainRestrictionEnabled() ? domainRejectionMessage() : null}
+          allowedDomain={domainRestrictionEnabled() ? allowedDomain() : null}
         />
       </Suspense>
     </AuthBrandedLayout>

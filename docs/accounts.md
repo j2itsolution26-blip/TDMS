@@ -5,37 +5,85 @@ passwords. Every account belongs to a real person on the institution's own
 email domain, and every account proves control of that mailbox before it can
 be used.
 
-## The institutional domain rule
+## The email domain policy
 
-Only addresses on **@asiancollege.edu.ph** may hold an account. The rule
-lives in one place, `src/lib/institutional-email.ts`, and every path that
-accepts an address goes through it: the first-administrator bootstrap, staff
-invitations, profile changes, password reset requests and sign-in itself.
+TDMS can restrict accounts to a single email domain. It is a **switch**, not a
+hard-coded rule, and it is currently **OFF** for development.
 
-It is enforced **on the server**. `<input type="email">` and any client-side
-check are conveniences for the person typing, not the rule.
+| | `GOOGLE_DOMAIN_RESTRICTION_ENABLED=false` (now) | `=true` (launch) |
+| --- | --- | --- |
+| `user@asiancollege.edu.ph` | allowed | allowed |
+| `user@gmail.com` | allowed | rejected |
+| `user@notasiancollege.edu.ph` | allowed | rejected |
+| `not-an-email` | rejected | rejected |
 
-Change the domain with `INSTITUTIONAL_EMAIL_DOMAIN`.
+Two separate questions, deliberately kept apart in
+`src/lib/institutional-email.ts`:
 
-### Why the check is an exact match
+1. **Is this a well-formed address?** Always enforced. A malformed address is
+   never acceptable, and letting one through puts junk in a UNIQUE column that
+   somebody has to clean up by hand later.
+2. **Is it on the allowed domain?** Only enforced when the switch is on.
 
-The domain must equal the institutional domain exactly. `endsWith` is not
-sufficient, and that is the specific bug the implementation exists to avoid.
-All of these are rejected:
+Turn it on for launch:
 
-| Address                                | Why                                       |
-| -------------------------------------- | ----------------------------------------- |
-| `user@notasiancollege.edu.ph`          | `endsWith` would accept it                |
-| `user@asiancollege.edu.ph.example.com` | the domain is a prefix, not the domain     |
-| `user@asiancollege-edu.ph`             | hyphen substituted for a dot               |
-| `user@sub.asiancollege.edu.ph`         | a subdomain is a different host            |
-| `user@asiancollege.edu.ph@evil.com`    | split on the LAST `@`, so this is evil.com |
+```env
+GOOGLE_DOMAIN_RESTRICTION_ENABLED=true
+GOOGLE_ALLOWED_DOMAIN=asiancollege.edu.ph
+```
 
-Addresses are normalised before validation and storage: trimmed and
+Only an explicit `true`, `1`, `yes` or `on` enables it, so a typo leaves it
+off rather than half-on. The value is read per call, so a deployment can
+change it without a rebuild.
+
+Check which way a deployment is set:
+
+```bash
+curl -s https://<deployment>/api/health | jq .domainPolicy
+# { "enabled": false, "allowedDomain": "asiancollege.edu.ph",
+#   "summary": "OPEN — any well-formed Google account is accepted (development setting)" }
+```
+
+### The default is OFF, and that is a fail-open default
+
+Worth being explicit about, because fail-open defaults are usually wrong.
+
+It is chosen because this project's development happens against the deployed
+Vercel environment, where `NODE_ENV` is `production` — so keying the default
+off `NODE_ENV` would restrict the very environment being developed in.
+
+The cost is that a real launch which forgets the variable accepts any Google
+account. Rather than leave that in a document nobody re-reads, the state is
+reported by `/api/health` and described in words that are hard to misread
+(`OPEN — …`). **Set it to `true` before the system carries real student
+records.**
+
+### Why the restriction stays implemented
+
+Nothing was deleted to turn it off. The exact-match comparison, the lookalike
+rejection and the normalisation are all still there and still tested — see
+`src/lib/domain-policy.test.ts`, which exercises **both** switch positions,
+and `src/lib/institutional-email.test.ts`, which covers the restricted
+behaviour in detail. A switch only ever tested in one position is a switch
+nobody can trust to be flipped.
+
+When the restriction is on, the domain must match **exactly**. `endsWith` is
+not sufficient, and that is the specific bug the implementation exists to
+prevent:
+
+| Address | Why it is rejected |
+| --- | --- |
+| `user@notasiancollege.edu.ph` | `endsWith` would accept it |
+| `user@asiancollege.edu.ph.example.com` | the domain is a prefix, not the domain |
+| `user@asiancollege-edu.ph` | hyphen substituted for a dot |
+| `user@sub.asiancollege.edu.ph` | a subdomain is a different host |
+| `user@asiancollege.edu.ph@evil.com` | split on the LAST `@`, so this is evil.com |
+
+Addresses are normalised before validation and storage — trimmed and
 lower-cased in full, local part included. SMTP permits case-sensitive local
 parts, but no institution issues `J.Cruz@` and `j.cruz@` to two people, and
 treating them as distinct would let one person hold two accounts and split
-their records. `src/lib/institutional-email.test.ts` pins all of this.
+their records.
 
 ## Account states
 
@@ -64,13 +112,21 @@ two ways to create the first one, and neither involves a known password.
 
 ### 1. Web bootstrap — `/login` → "Create Super Admin"
 
-Available only while no Super Admin exists, re-checked inside the
-transaction so it cannot be raced. The operator supplies their own name,
-institutional email and password. The account is created
-`PENDING_VERIFICATION` and a verification link is emailed; it cannot sign in
-until that link is opened.
+Available only while no Super Admin exists, re-checked inside the transaction
+so it cannot be raced. Two steps: the operator supplies their own name,
+institutional email and password, then types a six-digit code emailed to that
+address.
 
-**This needs a working mail provider.**
+**Nothing is created until the code is verified.** The details wait in
+`pending_admin_registrations` with the password already hashed — no `users`
+row, no role, no session — and the account is created from that row only after
+a correct code, in a transaction that deletes the row as it goes. The full
+reasoning, and the attempt and resend caps, are in
+[authentication.md](authentication.md#first-time-setup).
+
+**This needs a working mail provider.** Without one the setup screen shows a
+configuration error naming the variables to set and stops; it does not create
+an administrator that cannot be verified.
 
 ### 2. `npm run admin:create` — when email is not configured yet
 

@@ -676,6 +676,289 @@
     height: 0.95rem;
 }
 
+/* ---------- Two-step setup: progress indicator ---------- */
+/*
+ * Reads as "① Account Details ② Verify Email" with a rule between the two, so
+ * the operator can always see which of the two steps they are on. Numbers
+ * rather than icons: the count is the information.
+ */
+
+.tdms-steps {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 1.25rem;
+    padding: 0;
+}
+
+.tdms-steps li {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #8D9A94;
+    flex: 1;
+    min-width: 0;
+}
+
+/* The connector between the two steps. */
+.tdms-steps li + li::before {
+    content: "";
+    flex: 1;
+    height: 1.5px;
+    background: #DCE3E0;
+    margin-right: 0.25rem;
+}
+
+.tdms-steps__marker {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    flex-shrink: 0;
+    border-radius: 999px;
+    border: 1.5px solid #DCE3E0;
+    background: var(--tdms-white);
+    font-size: 0.72rem;
+    line-height: 1;
+    color: #8D9A94;
+}
+
+.tdms-steps__label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tdms-steps li.is-current {
+    color: var(--tdms-green-dark);
+}
+
+.tdms-steps li.is-current .tdms-steps__marker {
+    border-color: var(--tdms-green);
+    background: linear-gradient(135deg, var(--tdms-green), var(--tdms-green-dark));
+    color: var(--tdms-white);
+    box-shadow: 0 2px 8px rgba(0, 107, 63, 0.25);
+}
+
+.tdms-steps li.is-done {
+    color: var(--tdms-green);
+}
+
+.tdms-steps li.is-done .tdms-steps__marker {
+    border-color: var(--tdms-green);
+    color: var(--tdms-green);
+}
+
+/* ---------- Password checklist heading + submit hint ---------- */
+
+.tdms-requirements-heading {
+    margin: 0.7rem 0 0;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6B7A73;
+}
+
+.tdms-password-match.is-mismatch {
+    color: #B42318;
+}
+
+.tdms-password-match.is-mismatch .tdms-req-icon {
+    color: var(--tdms-white);
+    border-color: #B42318;
+    background: #B42318;
+}
+
+.tdms-submit-hint {
+    margin: 0.55rem 0 0;
+    font-size: 0.75rem;
+    color: #6B7A73;
+    line-height: 1.45;
+    text-align: center;
+}
+
+/* ---------- Verification step ---------- */
+
+.tdms-verify-title {
+    margin: 0 0 0.25rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--tdms-green-dark);
+}
+
+.tdms-verify-lead {
+    margin: 0 0 1.1rem;
+    font-size: 0.82rem;
+    color: #4B5A53;
+    line-height: 1.5;
+}
+
+.tdms-verify-email {
+    display: block;
+    margin-top: 0.15rem;
+    font-weight: 700;
+    color: var(--tdms-green-dark);
+    /* Long institutional addresses must not push the panel sideways. */
+    overflow-wrap: anywhere;
+}
+
+/*
+ * Six separate boxes rather than one field: it makes the expected length
+ * obvious before anything is typed, and gives each digit a visible landing
+ * place as the focus moves along.
+ */
+.tdms-code-inputs {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 0.4rem;
+}
+
+.tdms-code-inputs input {
+    width: 100%;
+    padding: 0.7rem 0;
+    text-align: center;
+    font-size: 1.15rem;
+    font-weight: 700;
+    /* Tabular figures keep the boxes from twitching as digits change. */
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    color: var(--tdms-ink);
+    background: var(--tdms-gray-light);
+    border: 1.5px solid #D7DFDB;
+    border-radius: 10px;
+    transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tdms-code-inputs input:focus {
+    outline: none;
+    border-color: var(--tdms-green);
+    background: var(--tdms-white);
+    box-shadow: 0 0 0 3px rgba(0, 107, 63, 0.12);
+}
+
+.tdms-code-inputs input:disabled {
+    opacity: 0.6;
+}
+
+/* ---------- Resend + countdown ---------- */
+
+.tdms-resend {
+    margin-top: 1rem;
+    text-align: center;
+}
+
+.tdms-resend__prompt {
+    margin: 0;
+    font-size: 0.78rem;
+    color: #6B7A73;
+}
+
+.tdms-resend__button {
+    margin-top: 0.35rem;
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--tdms-green);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.tdms-resend__button:hover:not([disabled]) {
+    color: var(--tdms-green-dark);
+}
+
+.tdms-resend__button[disabled] {
+    color: #9AA6A0;
+    cursor: not-allowed;
+    text-decoration: none;
+}
+
+.tdms-resend__timer {
+    margin: 0.4rem 0 0;
+    font-size: 0.75rem;
+    color: #6B7A73;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Verified confirmation ---------- */
+
+.tdms-verified {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.7rem;
+    padding: 0.9rem 1rem;
+    margin-bottom: 1rem;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 107, 63, 0.25);
+    background: linear-gradient(135deg, rgba(0, 107, 63, 0.08), rgba(139, 207, 32, 0.1));
+}
+
+.tdms-verified__mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    flex-shrink: 0;
+    border-radius: 999px;
+    background: var(--tdms-green);
+    color: var(--tdms-white);
+    font-size: 0.85rem;
+    line-height: 1;
+}
+
+.tdms-verified__title {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--tdms-green-dark);
+}
+
+.tdms-verified__body {
+    margin: 0.15rem 0 0;
+    font-size: 0.8rem;
+    color: #4B5A53;
+}
+
+/* ---------- Mail configuration error (administrator facing) ---------- */
+/*
+ * Shown on the setup screen when no mail transport is configured. It names
+ * environment variables so an operator can act on it, and never their values.
+ */
+
+.tdms-config-error {
+    border: 1px solid #F3B7B0;
+    background: #FEF3F2;
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+    margin-bottom: 1.1rem;
+    font-size: 0.78rem;
+    color: #7A271A;
+    line-height: 1.5;
+}
+
+.tdms-config-error p {
+    margin: 0;
+}
+
+.tdms-config-error__title {
+    font-weight: 700;
+    margin-bottom: 0.2rem !important;
+}
+
+.tdms-config-error__note {
+    margin-top: 0.4rem !important;
+    color: #9A3412;
+}
+
 /* ---------- Setup Notice Banner ---------- */
 
 .tdms-setup-notice {
@@ -922,4 +1205,12 @@
         font-size: 0.68rem;
         letter-spacing: 0.04em;
     }
+}
+
+/* Caption under the Google button; wording depends on the domain policy. */
+.tdms-google-hint {
+    margin-top: 0.6rem;
+    text-align: center;
+    font-size: 0.8rem;
+    color: #6B7280;
 }

@@ -3,11 +3,12 @@
  *
  * WHY THIS EXISTS
  *
- * The web bootstrap at /create-super-admin creates a PENDING_VERIFICATION
- * account and emails a verification link, which is right: it proves the
- * person holds an institutional mailbox. But it presupposes a working mail
- * provider, and a brand-new installation may not have one yet — leaving
- * nobody able to sign in and configure the thing that would send the mail.
+ * The web bootstrap at /create-super-admin emails a six-digit code and creates
+ * nothing until it comes back, which is right: it proves the person holds an
+ * institutional mailbox before any account exists. But it presupposes a
+ * working mail provider, and a brand-new installation may not have one yet —
+ * leaving nobody able to sign in and configure the thing that would send the
+ * mail.
  *
  * This command breaks that circle without weakening anything. It is not a
  * backdoor:

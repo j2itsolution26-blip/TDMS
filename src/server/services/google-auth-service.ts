@@ -1,6 +1,11 @@
 import 'server-only';
 import { prisma } from '@/lib/prisma';
-import { isInstitutionalEmail, normalizeEmail, INSTITUTIONAL_DOMAIN } from '@/lib/institutional-email';
+import {
+  isInstitutionalEmail,
+  normalizeEmail,
+  allowedDomain,
+  domainRestrictionEnabled,
+} from '@/lib/institutional-email';
 import { createSession } from '@/server/auth/session';
 import { recordAudit } from './audit-log';
 import type { GoogleIdentity } from '@/server/auth/google/oauth';
@@ -49,13 +54,27 @@ export async function signInWithGoogle(
   const email = normalizeEmail(identity.email);
 
   /*
-   * The domain check, server-side, on the address Google vouched for — not
-   * on anything a client sent. `hd` is checked too when present: a Workspace
-   * account carries its hosted domain, and a mismatch between `hd` and the
-   * address is a reason to stop rather than to guess.
+   * The domain check, server-side, on the address Google vouched for — never
+   * on anything a client sent.
+   *
+   * Both halves are governed by the same switch. While the restriction is
+   * off this accepts any well-formed address, which is the development
+   * setting; a malformed one is still refused, because that is a different
+   * question (see lib/institutional-email.ts).
    */
   if (!isInstitutionalEmail(email)) return { kind: 'wrong_domain' };
-  if (identity.hostedDomain && identity.hostedDomain.toLowerCase() !== INSTITUTIONAL_DOMAIN) {
+
+  /*
+   * Workspace accounts carry a hosted-domain claim. When the restriction is
+   * on, a mismatch between `hd` and the address is a reason to stop rather
+   * than to guess which one to believe. With the restriction off there is no
+   * domain to compare against, so the claim is simply not consulted.
+   */
+  if (
+    domainRestrictionEnabled() &&
+    identity.hostedDomain &&
+    identity.hostedDomain.toLowerCase() !== allowedDomain()
+  ) {
     return { kind: 'wrong_domain' };
   }
 
@@ -101,8 +120,7 @@ export async function signInWithGoogle(
         googleId: identity.sub,
         // Google has verified it; that is what emailVerifiedAt records.
         emailVerifiedAt: new Date(),
-        status: 'PENDING',
-        isActive: false,
+        ...newAccountState(),
         /*
          * No password, and none that can ever be guessed: a random value
          * hashed and discarded on this line. Sign-in for this account is
@@ -115,15 +133,30 @@ export async function signInWithGoogle(
       select: { id: true },
     });
 
+    const autoActivated = autoActivateNewGoogleUsers();
+
     await recordAudit({
       action: 'ACCOUNT_SELF_REGISTERED_VIA_GOOGLE',
       actor: 'GOOGLE_SIGN_IN',
       target: email,
-      details: { status: 'PENDING', role: null, google_sub_present: true },
+      details: {
+        status: autoActivated ? 'ACTIVE' : 'PENDING',
+        role: null,
+        auto_activated: autoActivated,
+        google_sub_present: true,
+      },
       context: { ip: context.ip, userAgent: context.userAgent },
     });
 
-    return { kind: 'pending', created: true };
+    if (!autoActivated) return { kind: 'pending', created: true };
+
+    // Activated on creation, so sign them straight in — still with no role.
+    await createSession(created.id, {
+      remember: false,
+      ipAddress: context.ip,
+      userAgent: context.userAgent,
+    });
+    return { kind: 'signed_in', userId: created.id, redirectTo: '/dashboard' };
   }
 
   /*
@@ -191,6 +224,35 @@ export async function signInWithGoogle(
    * the roles table.
    */
   return { kind: 'signed_in', userId: existing.id, redirectTo: '/dashboard' };
+}
+
+/**
+ * The state a brand-new Google account is created in.
+ *
+ * PENDING by default: somebody proving they hold a Google mailbox is not the
+ * same as an administrator deciding they may use TDMS.
+ *
+ * DEV_AUTO_ACTIVATE_GOOGLE_USERS=true makes first sign-in land on ACTIVE
+ * instead, so a developer can walk the flow without a second person to
+ * approve them. It is a setting rather than a hardcoded shortcut precisely
+ * so it is visible, greppable and off unless asked for — and it is reported
+ * by /api/health, because an environment where anyone who signs in is
+ * immediately active should say so out loud.
+ *
+ * Note what it deliberately does NOT do: it grants no role. Activation and
+ * authorization are different, and a variable that handed out roles would be
+ * a privilege-escalation switch one typo away from production. An
+ * auto-activated account can sign in and reach the dashboard; every
+ * role-gated screen still refuses it until an administrator assigns a role.
+ */
+export function autoActivateNewGoogleUsers(): boolean {
+  const raw = (process.env.DEV_AUTO_ACTIVATE_GOOGLE_USERS ?? '').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on';
+}
+
+function newAccountState() {
+  const active = autoActivateNewGoogleUsers();
+  return { status: active ? 'ACTIVE' : 'PENDING', isActive: active };
 }
 
 /** An unguessable value, hashed and immediately forgotten. */

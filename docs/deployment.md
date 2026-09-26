@@ -91,15 +91,29 @@ stale in the build cache.
 | `NODE_ENV`                 | yes      | `production` on Vercel; drives the `secure` cookie flag     |
 | `SESSION_LIFETIME_MINUTES` | no       | Default 120                                                 |
 | `BCRYPT_ROUNDS`            | no       | Default 12 — keep at 12 to match the existing hashes        |
-| `INSTITUTIONAL_EMAIL_DOMAIN` | no     | Defaults to `asiancollege.edu.ph`                          |
+| `GOOGLE_DOMAIN_RESTRICTION_ENABLED` | no | Default **false** (open). Set `true` for launch            |
+| `GOOGLE_ALLOWED_DOMAIN`    | no       | Enforced domain when the above is true                      |
+| `DEV_AUTO_ACTIVATE_GOOGLE_USERS` | no | Default false. Development only; grants no role             |
 | `APP_URL`                  | yes*     | Absolute base for links in email. *Once email is enabled    |
-| `RESEND_API_KEY`           | yes*     | *Required for invitations, verification and resets          |
-| `MAIL_FROM`                | no       | Defaults to `TDMS <no-reply@asiancollege.edu.ph>`          |
+| `MAIL_HOST`                | yes*     | *SMTP host. Either this or `RESEND_API_KEY` is required     |
+| `MAIL_PORT`                | yes*     | *With `MAIL_HOST`. 587 for STARTTLS, 465 for implicit TLS   |
+| `MAIL_USERNAME`            | no       | Omit only for a relay that needs no authentication          |
+| `MAIL_PASSWORD`            | no       | With `MAIL_USERNAME`. Never committed                       |
+| `MAIL_ENCRYPTION`          | no       | Derived from the port when unset                            |
+| `RESEND_API_KEY`           | yes*     | *Alternative to SMTP, used when `MAIL_HOST` is unset        |
+| `MAIL_FROM_ADDRESS`        | yes*     | *Required once mail is configured; no default sender        |
+| `MAIL_FROM_NAME`           | no       | Display name on the From header                             |
+| `MAIL_FROM`                | no       | Deprecated pre-composed form, honoured if the pair is unset  |
 | `GOOGLE_CLIENT_ID`         | yes*     | *Required for Google sign-in; see google-auth.md            |
 | `GOOGLE_CLIENT_SECRET`     | yes*     | *Server-only, never NEXT_PUBLIC_                            |
 | `GOOGLE_REDIRECT_URI`      | yes*     | *Must match the OAuth client exactly                       |
 | `EMAIL_VERIFICATION_TTL_HOURS` | no   | Default 24                                                 |
 | `PASSWORD_RESET_TTL_MINUTES`   | no   | Default 60                                                 |
+| `SUPER_ADMIN_CODE_TTL_MINUTES` | no   | Default 10 — the setup code's lifetime                     |
+| `SUPER_ADMIN_CODE_MAX_ATTEMPTS` | no  | Default 5 wrong guesses per code                            |
+| `SUPER_ADMIN_CODE_MAX_RESENDS` | no   | Default 3 codes per registration                            |
+| `SUPER_ADMIN_CODE_RESEND_COOLDOWN_SECONDS` | no | Default 60                                       |
+| `SUPER_ADMIN_COMPLETION_WINDOW_MINUTES` | no | Default 30 after verification                         |
 
 Nothing secret is exposed to the browser: no variable is prefixed
 `NEXT_PUBLIC_`, and `DATABASE_URL` is only ever read inside `server-only`
@@ -161,9 +175,16 @@ the full table of responses.
 
 ### Account lifecycle suite
 
+This one reads a real delivered email, so it needs a local SMTP catcher —
+[Mailpit](https://mailpit.axllent.org/) or MailHog. Both listen for SMTP on
+1025 and serve an HTTP API on 8025.
+
 ```bash
-npm run dev                                        # in one shell
-DEV_LOG=<path-to-dev-log> npm run test:accounts    # in another
+mailpit                                            # in one shell
+
+MAIL_HOST=127.0.0.1 MAIL_PORT=1025   MAIL_FROM_ADDRESS=no-reply@asiancollege.edu.ph   npm run dev                                      # in another
+
+npm run test:accounts                              # in a third
 ```
 
 `scripts/e2e/institutional-auth.mjs` walks the acceptance list: domain
@@ -171,9 +192,15 @@ rejection on invite and on sign-in, invitation, the pending state, the
 verification link, single-use tokens, password choice, sign-in, deactivate,
 suspend, reactivate, and the non-enumerating forgot-password response.
 
-It reads the verification link out of the log transport, and creates then
-deletes a throwaway `@asiancollege.edu.ph` account - so it refuses a non-local
-`BASE` unless `ALLOW_REMOTE=1`.
+It creates and then deletes a throwaway `@asiancollege.edu.ph` account, so it
+refuses a non-local `BASE` unless `ALLOW_REMOTE=1`. Point `MAIL_CATCHER_URL`
+at the catcher if it is not on `http://127.0.0.1:8025`.
+
+It used to scrape the verification link out of the dev server's log, via
+`DEV_LOG`. That worked because the mailer had a log transport; it does not any
+more, because that transport put live credentials in the logs and reported
+success while delivering nothing. A catcher is a real SMTP server, so this now
+exercises the same path production uses.
 
 ### Session regression suite
 
@@ -205,19 +232,40 @@ sessions, and writes nothing else.
 
 ## Email delivery
 
-Invitations, email verification and password resets all need a mail provider.
-Set `RESEND_API_KEY` and `APP_URL`.
+Invitations, email verification, password resets and the Super Admin setup
+code all need real mail. There are two transports, chosen from the
+environment, and **no development fallback**:
 
-Without a provider the app falls back to a **log transport**, which writes the
-message - including the verification link - to the server log. That is
-deliberate, so the flow is exercisable in development before any provider
-exists. In production the log transport counts as a **delivery failure**:
-`sendMail` reports that nothing was sent, and the UI says so rather than
-telling somebody to check an inbox that will stay empty.
+| Transport | Chosen when            | Notes                                        |
+| --------- | ---------------------- | -------------------------------------------- |
+| `smtp`    | `MAIL_HOST` is set     | Any SMTP server. STARTTLS is required, not merely offered |
+| `resend`  | `RESEND_API_KEY` is set and `MAIL_HOST` is not | HTTP API, no outbound TCP needed |
+| `none`    | neither is set         | Sending **fails**. Nothing is queued or logged |
+
+`MAIL_FROM_ADDRESS` is required alongside either transport; without a sender
+address mail counts as unconfigured.
+
+There used to be a third, `log`, which wrote the message — verification link
+included — to the server log and reported success in development. It is gone.
+It made a flow look like it worked while nothing was delivered, and it put a
+live credential in the logs. Today, when mail is unconfigured:
+
+* `sendMail` reports failure, and the log records only that no provider is
+  configured — never the recipient, the body, or a code;
+* flows that depend on delivery refuse to proceed. In particular **no Super
+  Admin account is created**: the setup screen shows an administrator-facing
+  configuration error naming the variables to set, and stops.
 
 `APP_URL` is configuration and is never derived from a request header. `Host`
 is attacker-controlled, and a poisoned value would send verification links to
 somebody else's domain.
+
+### Sender domain
+
+Whichever transport you use, the address in `MAIL_FROM_ADDRESS` must be one
+the provider is authorised to send for, with SPF and DKIM published for that
+domain. Institutional mail is filtered hard; a mismatched sender is the usual
+reason a code "never arrives" when the application reports it as delivered.
 
 ## Fresh installation
 
@@ -250,11 +298,16 @@ Laravel's queue and scheduler tables exist but were never used — there are
 no jobs, no commands beyond the framework's own, and nothing in
 `routes/console.php`. Nothing was therefore dropped.
 
-One new piece of housekeeping does exist: expired rows in `auth_sessions`.
-Expired sessions are already rejected on sight and deleted when
-encountered, so this is hygiene rather than correctness. To reclaim the
-space on a schedule, call `pruneExpiredSessions()` from
-`src/server/auth/session.ts` on a Vercel Cron.
+Three pieces of housekeeping do exist, all hygiene rather than correctness —
+every one of these rows is already rejected on sight and deleted when
+encountered. To reclaim the space on a schedule, call the following from a
+Vercel Cron:
+
+* `pruneExpiredSessions()` — `src/server/auth/session.ts`
+* `pruneExpiredTokens()` — `src/server/auth/tokens.ts`
+* `prunePendingRegistrations()` — `src/server/services/super-admin-service.ts`,
+  for Super Admin registrations that were abandoned before the code was
+  verified, or verified and then left uncompleted.
 
 ## Checklist for the first deploy
 

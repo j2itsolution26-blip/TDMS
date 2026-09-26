@@ -1,17 +1,42 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   isInstitutionalEmail,
   normalizeEmail,
   checkInstitutionalEmail,
-  INSTITUTIONAL_DOMAIN,
-  DOMAIN_REJECTION_MESSAGE,
+  allowedDomain,
+  domainRejectionMessage,
 } from './institutional-email';
+
+const INSTITUTIONAL_DOMAIN = 'asiancollege.edu.ph';
 
 /**
  * The domain rule is the gate on the whole system, so the lookalike cases
  * matter more than the happy path. Every string below that an `endsWith`
  * check would have waved through is called out.
  */
+
+/*
+ * These cases describe the RESTRICTED policy, so they switch it on
+ * explicitly. The restriction now defaults to off for development (see
+ * src/lib/domain-policy.test.ts), and a test that silently depended on the
+ * old default would quietly stop testing anything.
+ */
+let savedRestriction: string | undefined;
+let savedDomain: string | undefined;
+
+beforeEach(() => {
+  savedRestriction = process.env.GOOGLE_DOMAIN_RESTRICTION_ENABLED;
+  savedDomain = process.env.GOOGLE_ALLOWED_DOMAIN;
+  process.env.GOOGLE_DOMAIN_RESTRICTION_ENABLED = 'true';
+  process.env.GOOGLE_ALLOWED_DOMAIN = 'asiancollege.edu.ph';
+});
+
+afterEach(() => {
+  if (savedRestriction === undefined) delete process.env.GOOGLE_DOMAIN_RESTRICTION_ENABLED;
+  else process.env.GOOGLE_DOMAIN_RESTRICTION_ENABLED = savedRestriction;
+  if (savedDomain === undefined) delete process.env.GOOGLE_ALLOWED_DOMAIN;
+  else process.env.GOOGLE_ALLOWED_DOMAIN = savedDomain;
+});
 
 describe('accepts genuine institutional addresses', () => {
   const valid = [
@@ -53,7 +78,7 @@ describe('rejects other providers', () => {
       expect(isInstitutionalEmail(email)).toBe(false);
       const check = checkInstitutionalEmail(email);
       expect(check.ok).toBe(false);
-      expect(check.message).toBe(DOMAIN_REJECTION_MESSAGE);
+      expect(check.message).toBe(domainRejectionMessage());
     });
   }
 });
@@ -146,10 +171,10 @@ describe('normalisation', () => {
 
 describe('configuration', () => {
   it('defaults to the college domain', () => {
-    expect(INSTITUTIONAL_DOMAIN).toBe('asiancollege.edu.ph');
+    expect(allowedDomain()).toBe('asiancollege.edu.ph');
   });
 
   it('names the domain in the rejection message', () => {
-    expect(DOMAIN_REJECTION_MESSAGE).toContain('asiancollege.edu.ph');
+    expect(domainRejectionMessage()).toContain('asiancollege.edu.ph');
   });
 });

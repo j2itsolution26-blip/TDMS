@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { databaseUrlSource } from '@/lib/database-url';
 import { appUrl, activeTransport } from '@/server/mail/mailer';
-import { INSTITUTIONAL_DOMAIN } from '@/lib/institutional-email';
+import { describeDomainPolicy } from '@/lib/institutional-email';
+import { autoActivateNewGoogleUsers } from '@/server/services/google-auth-service';
+import { googleConfigured } from '@/server/auth/google/oauth';
 
 /**
  * GET /api/health — operational diagnostics.
@@ -113,7 +115,14 @@ export async function GET() {
        */
       appUrl: appUrl(),
       mailTransport: activeTransport(),
-      institutionalDomain: INSTITUTIONAL_DOMAIN,
+      /*
+       * Surfaced so an operator can see at a glance whether this deployment
+       * is accepting any Google account. A permissive setting that is only
+       * recorded in a document is a setting nobody notices.
+       */
+      domainPolicy: describeDomainPolicy(),
+      googleSignIn: googleConfigured() ? 'configured' : 'not configured',
+      autoActivateNewGoogleUsers: autoActivateNewGoogleUsers(),
       ...(missingRequired.length > 0 ? { missingRequiredEnv: missingRequired } : {}),
       ...(databaseEnvNamesPresent ? { databaseEnvNamesPresent } : {}),
       region: process.env.VERCEL_REGION ?? null,

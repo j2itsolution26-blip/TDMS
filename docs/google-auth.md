@@ -1,8 +1,13 @@
 # Google sign-in
 
-TDMS accepts a Google-authenticated `@asiancollege.edu.ph` identity as proof
-of who somebody is. It does not accept a typed email address as proof of
-anything.
+TDMS accepts a **Google-authenticated** identity as proof of who somebody is.
+It does not accept a typed email address as proof of anything.
+
+Which Google accounts are allowed is a policy setting, currently **open** for
+development: any real, Google-verified account works, `gmail.com` included.
+The institutional-domain restriction is implemented and tested but switched
+off — see [accounts.md](accounts.md#the-email-domain-policy) for the switch
+and why its default is what it is.
 
 The distinction that runs through this whole document: **Google
 authentication is not TDMS authorization.** Google telling us this really is
@@ -23,7 +28,7 @@ allowed in. Those are separate decisions, made in that order.
     verify the ID token signature via Google's JWKS
     check iss / aud / exp / nonce          (replay)
     check email_verified                    (Google's own check)
-    check the domain, exactly               (server-side)
+    check the domain policy                 (server-side; open in dev)
     one indexed user lookup -> one write -> one session
     302 -> /dashboard, or back to /login?error=...
 ```
@@ -105,7 +110,8 @@ how an invited account gets linked on first use.
 
 ## First sign-in
 
-A valid `@asiancollege.edu.ph` Google account that TDMS has never seen gets:
+A Google account that TDMS has never seen — any domain, while the restriction
+is off — gets:
 
 - `status = PENDING`
 - `is_active = false`
@@ -119,6 +125,24 @@ privileges, and a test asserts nothing role-shaped is written on this path.
 The account also gets an unguessable placeholder password — a random value
 hashed and discarded on the line that produces it — so the row is never
 password-less and nobody can sign in to it with credentials.
+
+### Development shortcut, as a setting
+
+`DEV_AUTO_ACTIVATE_GOOGLE_USERS=true` makes a first sign-in land on `ACTIVE`
+instead of `PENDING`, so a developer can walk the whole flow without a second
+person to approve them.
+
+It is a setting rather than a hard-coded shortcut precisely so it is visible,
+greppable and off unless asked for, and `/api/health` reports it.
+
+Note what it deliberately does **not** do: it grants no role. Activation and
+authorization are different, and a variable that handed out roles would be a
+privilege-escalation switch one typo away from production. An auto-activated
+account can sign in and reach the dashboard; every role-gated screen still
+refuses it until an administrator assigns a role.
+
+It also cannot resurrect an `INACTIVE` or `SUSPENDED` account — a test exists
+for that specifically.
 
 ## Repeat sign-in
 
@@ -158,7 +182,7 @@ The callback never shows a technical failure. It redirects to
 | Code                      | Shown as                                                     |
 | ------------------------- | ------------------------------------------------------------ |
 | `cancelled`               | Google sign-in was cancelled.                                 |
-| `wrong_domain`            | Only an @asiancollege.edu.ph account can access TDMS.         |
+| `wrong_domain`            | Names the allowed domain when the restriction is on; otherwise a neutral refusal |
 | `google_email_unverified` | That Google account has not verified its email address…       |
 | `account_created_pending` | Your account has been created and is waiting for approval…    |
 | `account_pending`         | Your account is not active yet…                               |
@@ -205,12 +229,18 @@ they are outcomes rather than faults.
      server-side redirect flow, not Google Identity Services in the browser,
      so nothing calls Google from page JavaScript.
 
-4. **Copy the client ID and secret** into the environment (below). The
+4. **Note on `hd`:** the authorization request sends the allowed domain as a
+   `hd` hint so the account chooser is less confusing, but it is only a hint —
+   Google can still return other domains, which is why the policy is applied
+   server-side after verification. While the restriction is off, the
+   Workspace `hd` claim is not consulted at all.
+
+5. **Copy the client ID and secret** into the environment (below). The
    secret is a server credential: it belongs in Vercel's environment
    variables, never in the repository and never in anything the browser can
    read.
 
-5. **Optional, recommended:** in the Workspace admin console, confirm the app
+6. **Optional, recommended:** in the Workspace admin console, confirm the app
    is permitted for the organisation so staff do not see an unverified-app
    warning.
 

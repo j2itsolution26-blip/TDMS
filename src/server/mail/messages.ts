@@ -48,6 +48,49 @@ export async function sendVerificationEmail(params: {
   });
 }
 
+/**
+ * The Super Admin registration code.
+ *
+ * A code rather than a link, because the person receiving it is sitting in
+ * front of the tab that asked for it: typing six digits keeps the whole
+ * exchange inside one browser session, with nothing clickable to forward or
+ * to be fetched by a mail scanner.
+ *
+ * It carries the code and nothing else. Never the password, never a hash,
+ * never anything about the database.
+ */
+export async function sendSuperAdminCodeEmail(params: {
+  to: string;
+  name: string;
+  code: string;
+  expiresAt: Date;
+}): Promise<MailResult> {
+  const minutes = Math.max(1, Math.round((params.expiresAt.getTime() - Date.now()) / 60_000));
+
+  return sendMail({
+    to: params.to,
+    subject: 'Verify your Super Admin account',
+    text: [
+      `Hello ${params.name},`,
+      '',
+      'You requested to create a Super Admin account for TDMS, the TVET',
+      'Diploma Management System at Asian College of Science and Technology.',
+      '',
+      'Your verification code is:',
+      '',
+      params.code,
+      '',
+      `This code expires in ${minutes} minutes and can be used once.`,
+      '',
+      'If you did not request this account, you can safely ignore this email.',
+      'Nothing has been created, and no account exists until this code is',
+      'entered.',
+      '',
+      'TDMS · Asian College of Science and Technology',
+    ].join('\n'),
+  });
+}
+
 export async function sendPasswordResetEmail(params: {
   to: string;
   name: string;

@@ -21,7 +21,7 @@ What was done, what changed, and what is deliberately still open.
 | Laravel session guard                     | `src/server/auth/session.ts`                                 |
 | `EnsureAccountIsActive` middleware        | the active check inside `getCurrentUser()`                   |
 | `EnsureSuperAdminNotBootstrapped`         | `isBootstrapAllowed()`, re-checked in the transaction        |
-| `SuperAdminBootstrapService`              | `src/server/services/super-admin-service.ts`                 |
+| `SuperAdminBootstrapService`              | `src/server/services/super-admin-service.ts` — now two-step, with email verification before any account is created |
 | `AuditLog::record()`                      | `src/server/services/audit-log.ts`                           |
 | `RateLimiter` (cache store)               | `src/server/auth/rate-limit.ts`, same `cache` table          |
 | `DatabaseSeeder`                          | `prisma/seed.ts`                                             |
@@ -138,11 +138,11 @@ institutional domain exactly - the same rule as
 
 ## Remaining work
 
-1. **Password reset email.** `MAIL_MAILER` was `log` under Laravel, so
-   reset mail never actually went anywhere. A Node mail provider (Resend,
-   SES, Postmark) needs wiring before `/forgot-password` can do more than
-   direct the user to an administrator. The `password_reset_tokens` table
-   is preserved and modelled, ready for it.
+1. ~~**Password reset email.**~~ Done. `MAIL_MAILER` was `log` under Laravel,
+   so reset mail never went anywhere. Outbound mail is now real: SMTP through
+   `MAIL_HOST`/`MAIL_PORT`, or Resend over HTTP, with no development fallback
+   — see [deployment.md](deployment.md#email-delivery). Configure one and
+   `/forgot-password` works end to end.
 2. **File storage.** The schema has `student_credentials.file_path`, but
    the Laravel application never implemented upload, download or preview —
    there is no `Storage::` call anywhere in the removed code and no
@@ -154,9 +154,10 @@ institutional domain exactly - the same rule as
    so Prisma will not drop them behind your back; removing them is a
    deliberate decision for you to make. `cache` must stay — it backs login
    throttling.
-4. **Configure a mail provider.** Until `RESEND_API_KEY` is set, invitations
-   and resets cannot be delivered; use `npm run admin:create` to provision
-   the first administrator.
+4. **Configure mail.** Until SMTP or Resend is configured, nothing can be
+   delivered: invitations, resets and the Super Admin setup code all fail
+   rather than appearing to work. Either configure it, or use
+   `npm run admin:create` to provision the first administrator out-of-band.
 
 ## Security note
 

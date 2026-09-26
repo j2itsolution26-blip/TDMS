@@ -161,8 +161,9 @@ export default function StaffScreen({
 
       {!mailConfigured && (
         <Alert type="warning" title="Email is not configured">
-          Invitations and password resets cannot be delivered until a mail provider is set up
-          (<code>RESEND_API_KEY</code>). Accounts can still be created, but the people invited
+          Invitations and password resets cannot be delivered until mail is configured
+          (<code>MAIL_HOST</code> and <code>MAIL_FROM_ADDRESS</code>, or{' '}
+          <code>RESEND_API_KEY</code>). Accounts can still be created, but the people invited
           will not receive anything.
         </Alert>
       )}

@@ -87,7 +87,7 @@ stale in the build cache.
 
 | Variable                   | Required | Notes                                                      |
 | -------------------------- | -------- | ---------------------------------------------------------- |
-| `DATABASE_URL`             | yes      | PostgreSQL connection string, pooled                        |
+| `DATABASE_URL`             | yes*     | PostgreSQL connection string, pooled. *See the fallback below |
 | `NODE_ENV`                 | yes      | `production` on Vercel; drives the `secure` cookie flag     |
 | `SESSION_LIFETIME_MINUTES` | no       | Default 120                                                 |
 | `BCRYPT_ROUNDS`            | no       | Default 12 — keep at 12 to match the existing hashes        |
@@ -96,6 +96,39 @@ stale in the build cache.
 Nothing secret is exposed to the browser: no variable is prefixed
 `NEXT_PUBLIC_`, and `DATABASE_URL` is only ever read inside `server-only`
 modules.
+
+### If only the Laravel DB_* variables are set
+
+`DATABASE_URL` is the one variable this application wants. But the Vercel
+project was originally configured for the Laravel deployment, which supplied
+the connection as separate parts, and those are still there:
+
+```
+DB_HOST  DB_PORT  DB_DATABASE  DB_USERNAME  DB_PASSWORD  DB_SSLMODE
+```
+
+Rather than require the same password to be copied into a second variable by
+hand, the runtime composes a connection string from those parts when
+`DATABASE_URL` is absent (`src/lib/database-url.ts`). Same credentials, same
+database, one fewer place for a secret to live and be mistyped.
+
+Precedence is simply: `DATABASE_URL` if set, otherwise the parts. Check which
+one is in play:
+
+```bash
+curl -s https://<deployment>/api/health | jq .databaseUrlSource
+# "DATABASE_URL" | "DB_* parts" | "none"
+```
+
+Credentials are percent-encoded when composed, which matters more than it
+sounds: an unescaped `@` or `/` in a password does not raise an error, it
+silently parses as a different host or database and reports back as "cannot
+reach the server". `src/lib/database-url.test.ts` pins that behaviour.
+
+This is a migration shim, not the destination. Setting `DATABASE_URL` and
+deleting the `DB_*` variables is tidier, and the fallback then stops being
+reachable. The Prisma **CLI** always reads `DATABASE_URL` from
+`schema.prisma`, so a machine running migrations needs it regardless.
 
 ### Connection pooling
 

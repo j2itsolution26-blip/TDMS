@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { databaseUrlSource } from '@/lib/database-url';
 
 /**
  * GET /api/health — operational diagnostics.
@@ -43,7 +44,15 @@ export async function GET() {
     env[key] = Boolean(process.env[key]);
   }
 
-  const missingRequired = REQUIRED_ENV.filter((k) => !process.env[k]);
+  const source = databaseUrlSource();
+
+  /*
+   * "Required" means a usable connection string exists, from either source —
+   * DATABASE_URL, or the Laravel DB_* parts the Vercel project still
+   * carries. Reporting DATABASE_URL as missing while the app is perfectly
+   * connected would be noise.
+   */
+  const missingRequired = source === 'none' ? [...REQUIRED_ENV] : [];
 
   /*
    * When a required variable is missing, list the NAMES of the database-ish
@@ -93,6 +102,7 @@ export async function GET() {
       ...(latencyMs !== null ? { latencyMs } : {}),
       ...(errorCode ? { errorCode } : {}),
       env,
+      databaseUrlSource: source,
       ...(missingRequired.length > 0 ? { missingRequiredEnv: missingRequired } : {}),
       ...(databaseEnvNamesPresent ? { databaseEnvNamesPresent } : {}),
       region: process.env.VERCEL_REGION ?? null,

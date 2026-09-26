@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { AuthenticationError, AuthorizationError } from '@/lib/http';
 import type { AuthUser } from '@/types/domain';
 import { loadRolesAndPermissions } from './rbac';
-import { resolveSession, destroyCurrentSession } from './session';
+import { resolveSession } from './session';
 
 /**
  * The request's principal, or null.
@@ -35,16 +35,29 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
     },
   });
 
-  // The row is gone (hard-deleted elsewhere) — treat as signed out.
-  if (!user) {
-    await destroyCurrentSession();
-    return null;
-  }
+  /*
+   * Deliberately read-only.
+   *
+   * It is tempting to clear the cookie here when the session turns out to
+   * be worthless — but this function runs during Server Component render,
+   * and Next.js does not allow cookies to be written there ("Setting
+   * cookies is not supported during Server Component rendering"; .delete()
+   * is restricted to a Server Function or Route Handler). Calling
+   * destroyCurrentSession() from here therefore throws, turning a merely
+   * stale session into a 500 on every protected page.
+   *
+   * Leaving the stale cookie in place is safe: middleware no longer treats
+   * its presence as proof of anything, an unresolvable token grants
+   * nothing, and the next successful sign-in overwrites it. Sign-out and
+   * deactivation still delete the session ROW, which is what actually
+   * revokes access.
+   */
 
-  if (!user.isActive) {
-    await destroyCurrentSession();
-    return null;
-  }
+  // The row is gone (hard-deleted elsewhere) — treat as signed out.
+  if (!user) return null;
+
+  // Deactivated mid-session: this is the EnsureAccountIsActive middleware.
+  if (!user.isActive) return null;
 
   const { roles, permissions } = await loadRolesAndPermissions(user.id);
 

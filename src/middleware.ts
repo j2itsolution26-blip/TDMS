@@ -33,9 +33,16 @@ const PUBLIC_PATHS = [
 
 const PUBLIC_API_PREFIXES = ['/api/auth/'];
 
+/**
+ * Exact public API paths. /api/health has to be reachable without a session,
+ * because it is needed precisely when nobody can sign in.
+ */
+const PUBLIC_API_PATHS = ['/api/health'];
+
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return true;
   if (PUBLIC_API_PREFIXES.some((p) => pathname.startsWith(p))) return true;
+  if (PUBLIC_API_PATHS.includes(pathname)) return true;
   return false;
 }
 
@@ -43,11 +50,22 @@ export function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const hasSessionCookie = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
 
-  // Signed-in users have no business on the login screen.
-  if (hasSessionCookie && (pathname === '/login' || pathname === '/create-super-admin')) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
-  }
-
+  /*
+   * NOTE: middleware deliberately does NOT redirect cookie-holders away
+   * from /login.
+   *
+   * Doing so on cookie *presence* causes an infinite redirect whenever the
+   * cookie is stale — expired, revoked, or pointing at a deactivated
+   * account. Middleware would send the visitor to /dashboard, the app would
+   * resolve the session for real, find it worthless and redirect back to
+   * /login, and round it would go. Only the data layer can tell a stale
+   * cookie from a live session, so only the data layer gets to make that
+   * call: /login itself redirects a genuinely-authenticated visitor to the
+   * dashboard.
+   *
+   * The reverse direction is safe here, because the worst case of being
+   * wrong is one extra hop rather than a loop.
+   */
   if (isPublic(pathname)) return NextResponse.next();
 
   if (!hasSessionCookie) {

@@ -113,6 +113,66 @@ skipped:
 Keeping one source of truth is what prevents the classic redirect loop
 where middleware trusts a session the application does not.
 
+## The /login <-> /dashboard handoff
+
+Two rules, and the split between them is the whole point:
+
+- **Middleware** may redirect traffic that looks anonymous *away from*
+  protected routes. Being wrong costs one extra hop.
+- **Only the data layer** may redirect traffic that looks authenticated
+  *away from* `/login`. Being wrong here costs an infinite loop.
+
+Middleware sees a cookie, not a session. If it redirected every
+cookie-holder from `/login` to `/dashboard`, then a stale cookie — expired,
+revoked, or belonging to a deactivated account — would bounce forever:
+middleware sends you to `/dashboard`, the app resolves the session properly,
+finds it worthless, and sends you back to `/login`. So `/login` itself calls
+`getCurrentUser()` and redirects only when the session genuinely resolves.
+
+A stale cookie is therefore harmless. It grants nothing, it is ignored, and
+the next successful sign-in overwrites it.
+
+## getCurrentUser() is read-only
+
+`getCurrentUser()` runs during Server Component render, and Next.js does not
+permit writing cookies there — "Setting cookies is not supported during
+Server Component rendering", and `.delete()` is restricted to a Server
+Function or Route Handler.
+
+So it never clears the cookie, however worthless the session turns out to
+be. An earlier version did, which meant a stale session or a mid-session
+deactivation threw during render and surfaced as a 500 on every protected
+page instead of a redirect.
+
+Revocation does not depend on clearing the cookie: sign-out, deactivation
+and administrative password resets all delete the session **row**, and a
+token that resolves to no row grants nothing.
+
+## Diagnosing a broken environment
+
+`GET /api/health` is unauthenticated, because it is needed exactly when
+nobody can sign in. It reports whether a trivial query succeeds, the Prisma
+error **code** if not (`P1001` unreachable, `P1000` credentials rejected,
+`P2021` missing table), and for each required variable whether it is **set**
+— a boolean, never a value.
+
+```bash
+curl -s https://<deployment>/api/health | jq
+```
+
+| Response                                          | Means                                  |
+| ------------------------------------------------- | -------------------------------------- |
+| `status: ok`                                      | database reachable, config present     |
+| `env.DATABASE_URL: false`                         | the variable is not set for this env   |
+| `DATABASE_URL: true` + `errorCode: P1001`         | set, but the host is unreachable       |
+| `DATABASE_URL: true` + `errorCode: P1000`         | set, but credentials were rejected     |
+
+Related: `/login` no longer fails as a whole when the database is down. The
+only query it makes is the cosmetic "does a Super Admin exist yet?" probe;
+that is now logged and degraded to a plain notice, so the form still renders
+and a sign-in attempt still reports its own error, instead of the page
+collapsing into an opaque digest.
+
 ## Rate limiting
 
 Five failed attempts per `identifier|ip`, then a 60-second lockout —

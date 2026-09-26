@@ -22,7 +22,14 @@ import Link from 'next/link';
  * Email", so type="text" is what the label has always promised. It renders
  * identically.
  */
-export default function LoginForm({ canBootstrap }: { canBootstrap: boolean }) {
+export default function LoginForm({
+  canBootstrap,
+  systemUnavailable = false,
+}: {
+  canBootstrap: boolean;
+  /** True when the server could not reach the database while rendering. */
+  systemUnavailable?: boolean;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -81,7 +88,14 @@ export default function LoginForm({ canBootstrap }: { canBootstrap: boolean }) {
 
   return (
     <div>
-      <div className="panel__status" />
+      <div className="panel__status">
+        {systemUnavailable && (
+          <p className="text-sm text-amber-700">
+            The system is temporarily unavailable. Please try again shortly, or contact an
+            administrator if this persists.
+          </p>
+        )}
+      </div>
 
       <form onSubmit={handleSubmit}>
         <div className="tdms-field">

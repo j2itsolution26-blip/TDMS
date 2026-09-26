@@ -45,6 +45,23 @@ export async function GET() {
 
   const missingRequired = REQUIRED_ENV.filter((k) => !process.env[k]);
 
+  /*
+   * When a required variable is missing, list the NAMES of the database-ish
+   * variables that ARE present. This distinguishes the three ways it goes
+   * wrong — set on the wrong environment (nothing here), a typo (a
+   * near-miss shows up), or only the old Laravel names surviving (DB_URL,
+   * DB_HOST, …) — without which you are reduced to guessing.
+   *
+   * Names only, never values, and only while something is actually broken:
+   * once the variable is set this disappears from the response.
+   */
+  const databaseEnvNamesPresent =
+    missingRequired.length > 0
+      ? Object.keys(process.env)
+          .filter((k) => /DATABASE|POSTGRES|NEON|^DB_|_URL$/i.test(k))
+          .sort()
+      : undefined;
+
   let database: 'ok' | 'unreachable' = 'unreachable';
   let errorCode: string | null = null;
   let latencyMs: number | null = null;
@@ -77,6 +94,7 @@ export async function GET() {
       ...(errorCode ? { errorCode } : {}),
       env,
       ...(missingRequired.length > 0 ? { missingRequiredEnv: missingRequired } : {}),
+      ...(databaseEnvNamesPresent ? { databaseEnvNamesPresent } : {}),
       region: process.env.VERCEL_REGION ?? null,
       commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
     },

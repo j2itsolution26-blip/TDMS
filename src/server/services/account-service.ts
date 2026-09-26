@@ -170,7 +170,7 @@ export interface InviteResult {
 /**
  * Invite a member of staff.
  *
- * The account is created PENDING_VERIFICATION with an unusable password
+ * The account is created PENDING with an unusable password
  * placeholder — a random value that is hashed and immediately forgotten, so
  * the row is never password-less and nobody, including the administrator who
  * created it, can sign in as this person. The invitee sets their own
@@ -204,7 +204,7 @@ export async function inviteAccount(
       // Unusable by construction: the plaintext is discarded on this line.
       password: await hashPassword(crypto.randomUUID() + crypto.randomUUID()),
       emailVerifiedAt: null,
-      ...stateFields('PENDING_VERIFICATION'),
+      ...stateFields('PENDING'),
       createdAt: new Date(),
     },
   });
@@ -272,7 +272,7 @@ export async function updateAccount(
       // A new address is unproven, so it must be verified again and the
       // account returns to pending until it is.
       ...(emailChanged
-        ? { emailVerifiedAt: null, ...stateFields('PENDING_VERIFICATION') }
+        ? { emailVerifiedAt: null, ...stateFields('PENDING') }
         : { updatedAt: new Date() }),
     },
   });
@@ -431,7 +431,7 @@ export type VerifyResult =
 /**
  * Complete verification.
  *
- * Sets emailVerifiedAt and promotes PENDING_VERIFICATION to ACTIVE. An
+ * Sets emailVerifiedAt and promotes PENDING to ACTIVE. An
  * account an administrator has since deactivated or suspended is verified
  * but NOT promoted — confirming an address must not undo a deliberate
  * administrative decision.
@@ -456,7 +456,7 @@ export async function verifyEmail(token: string): Promise<VerifyResult> {
   });
   if (!user) return { ok: false, message: 'That account no longer exists.' };
 
-  const promote = user.status === 'PENDING_VERIFICATION';
+  const promote = user.status === 'PENDING';
 
   await prisma.user.update({
     where: { id: user.id },
@@ -536,7 +536,7 @@ export async function resetPasswordWithToken(
       password: await hashPassword(newPassword),
       // Setting a password through a link sent to the verified address both
       // proves ownership and completes an invitation.
-      ...(user.emailVerifiedAt && user.status === 'PENDING_VERIFICATION'
+      ...(user.emailVerifiedAt && user.status === 'PENDING'
         ? stateFields('ACTIVE')
         : { updatedAt: new Date() }),
     },

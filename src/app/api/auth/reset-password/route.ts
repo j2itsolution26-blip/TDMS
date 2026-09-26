@@ -8,7 +8,7 @@ import { resetPasswordSchema } from '@/server/validation/schemas';
  * POST /api/auth/reset-password
  *
  * Sets a new password against a single-use token. Also completes an
- * invitation: an account that was PENDING_VERIFICATION with a verified
+ * invitation: an account that was PENDING with a verified
  * address becomes ACTIVE once it has a password of its own.
  */
 export const POST = withErrorHandling(async (request: NextRequest) => {

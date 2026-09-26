@@ -14,17 +14,21 @@ export const STUDENT_STATUSES = ['applicant', 'active', 'transferred', 'archived
 export const APPLICATION_STATUSES = ['submitted', 'under_review', 'approved', 'returned'] as const;
 export const CREDENTIAL_STATUSES = ['missing', 'submitted', 'under_review', 'verified', 'rejected', 'expired'] as const;
 /**
- * Account lifecycle. Only ACTIVE may authenticate, and only then with a
- * verified institutional email — the two conditions are independent and both
- * are checked (see src/server/services/auth-service.ts).
+ * Account lifecycle. Only ACTIVE may enter the application.
  *
- *   PENDING_VERIFICATION  created, email not yet confirmed
- *   ACTIVE                confirmed and permitted to sign in
- *   INACTIVE              deactivated by an administrator, reversible
- *   SUSPENDED             withdrawn for cause, reversible
+ *   PENDING    created but not yet permitted in — either the email is
+ *              unconfirmed, or an administrator has not approved it yet.
+ *              Which of the two is told apart by emailVerifiedAt, so a
+ *              separate state for each would only be noise.
+ *   ACTIVE     permitted to sign in
+ *   INACTIVE   deactivated by an administrator, reversible
+ *   SUSPENDED  withdrawn for cause, reversible
+ *
+ * Google authentication and application authorization are different things:
+ * Google proving who someone is does not make their TDMS account ACTIVE.
  */
 export const ACCOUNT_STATUSES = [
-  'PENDING_VERIFICATION',
+  'PENDING',
   'ACTIVE',
   'INACTIVE',
   'SUSPENDED',
@@ -35,7 +39,7 @@ export type AccountStatus = (typeof ACCOUNT_STATUSES)[number];
 export const accountStatusSchema = z.enum(ACCOUNT_STATUSES);
 
 export const ACCOUNT_STATUS_LABELS: Record<AccountStatus, string> = {
-  PENDING_VERIFICATION: 'Pending verification',
+  PENDING: 'Pending approval',
   ACTIVE: 'Active',
   INACTIVE: 'Inactive',
   SUSPENDED: 'Suspended',
@@ -43,7 +47,7 @@ export const ACCOUNT_STATUS_LABELS: Record<AccountStatus, string> = {
 
 /** Maps an account state onto the x-badge colour vocabulary. */
 export const ACCOUNT_STATUS_BADGE: Record<AccountStatus, string> = {
-  PENDING_VERIFICATION: 'pending',
+  PENDING: 'pending',
   ACTIVE: 'active',
   INACTIVE: 'inactive',
   SUSPENDED: 'rejected',

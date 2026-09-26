@@ -16,7 +16,7 @@ import { recordAudit, type AuditContext } from './audit-log';
  * through the web — there is no seeded administrator and no default
  * password anywhere in this codebase.
  *
- * The account is created PENDING_VERIFICATION with the password the operator
+ * The account is created PENDING with the password the operator
  * chose. It cannot sign in until the institutional address is confirmed,
  * which is what proves the person setting up the system actually holds a
  * college mailbox.
@@ -106,7 +106,7 @@ export async function createSuperAdmin(
             password: passwordHash,
             // Not verified, and therefore not yet able to sign in.
             emailVerifiedAt: null,
-            status: 'PENDING_VERIFICATION',
+            status: 'PENDING',
             isActive: false,
             createdAt: new Date(),
             updatedAt: new Date(),

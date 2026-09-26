@@ -4,6 +4,7 @@ import AuthBrandedLayout from '@/components/AuthBrandedLayout';
 import LoginForm from '@/components/LoginForm';
 import { isBootstrapAllowed } from '@/server/services/super-admin-service';
 import { getCurrentUser } from '@/server/auth/current-user';
+import { googleConfigured } from '@/server/auth/google/oauth';
 
 /**
  * /login — the branded sign-in screen.
@@ -52,7 +53,11 @@ export default async function LoginPage() {
     <AuthBrandedLayout>
       {/* useSearchParams needs a Suspense boundary during prerender. */}
       <Suspense fallback={null}>
-        <LoginForm canBootstrap={canBootstrap} systemUnavailable={systemUnavailable} />
+        <LoginForm
+          canBootstrap={canBootstrap}
+          systemUnavailable={systemUnavailable}
+          googleEnabled={googleConfigured()}
+        />
       </Suspense>
     </AuthBrandedLayout>
   );

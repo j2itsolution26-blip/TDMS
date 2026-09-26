@@ -26,8 +26,12 @@ npm run admin:create -- --name "Your Name" --email you@asiancollege.edu.ph
 …or open `/login` and use **Create Super Admin**, which emails a verification
 link (this needs a mail provider — see [accounts.md](docs/accounts.md)).
 
-Every TDMS account must be on **@asiancollege.edu.ph**, must verify its email
-address, and must be `ACTIVE` before it can sign in. Administrators invite
+Sign-in is **Continue with Google** against a real `@asiancollege.edu.ph`
+Google account, with the credential form kept beneath it for staff who have
+not linked Google. Every account must be on the institutional domain, must
+have a verified address, and must be `ACTIVE` before it can sign in — a
+first-time Google sign-in creates a `PENDING` account with **no role**, for an
+administrator to approve. Administrators invite
 colleagues from the Staff screen; nobody is ever issued a generated password.
 
 To wipe accounts and academic records while keeping roles and permissions:
@@ -70,6 +74,7 @@ including a Super Admin, can deactivate their own account.
 | -------------------------------------------- | ----------------------------------------- |
 | [architecture.md](docs/architecture.md)       | Stack, layout, request lifecycle          |
 | [accounts.md](docs/accounts.md)               | Institutional email, states, invitations  |
+| [google-auth.md](docs/google-auth.md)         | Google sign-in, Google Cloud setup        |
 | [database.md](docs/database.md)               | Prisma schema, mapping, migrations        |
 | [authentication.md](docs/authentication.md)   | Sign-in, sessions, cookies, RBAC          |
 | [api.md](docs/api.md)                         | Endpoints and the Livewire → REST map     |

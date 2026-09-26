@@ -95,6 +95,9 @@ stale in the build cache.
 | `APP_URL`                  | yes*     | Absolute base for links in email. *Once email is enabled    |
 | `RESEND_API_KEY`           | yes*     | *Required for invitations, verification and resets          |
 | `MAIL_FROM`                | no       | Defaults to `TDMS <no-reply@asiancollege.edu.ph>`          |
+| `GOOGLE_CLIENT_ID`         | yes*     | *Required for Google sign-in; see google-auth.md            |
+| `GOOGLE_CLIENT_SECRET`     | yes*     | *Server-only, never NEXT_PUBLIC_                            |
+| `GOOGLE_REDIRECT_URI`      | yes*     | *Must match the OAuth client exactly                       |
 | `EMAIL_VERIFICATION_TTL_HOURS` | no   | Default 24                                                 |
 | `PASSWORD_RESET_TTL_MINUTES`   | no   | Default 60                                                 |
 

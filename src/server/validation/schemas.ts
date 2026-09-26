@@ -297,7 +297,7 @@ export const inviteAccountSchema = z.object({
 });
 
 export const accountStatusChangeSchema = z.object({
-  status: accountStatusSchema.refine((s) => s !== 'PENDING_VERIFICATION', {
+  status: accountStatusSchema.refine((s) => s !== 'PENDING', {
     message: 'An account cannot be put back into pending verification.',
   }),
 });

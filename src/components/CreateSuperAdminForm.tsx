@@ -43,7 +43,7 @@ export default function CreateSuperAdminForm({
     }
 
     /*
-     * The account exists but cannot sign in yet: it is PENDING_VERIFICATION
+     * The account exists but cannot sign in yet: it is PENDING
      * until the emailed link is opened. Say so plainly rather than sending
      * them to a login screen that will refuse them.
      */

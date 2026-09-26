@@ -15,7 +15,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
 /**
  * Invite a member of staff. No password is generated: the account is created
- * PENDING_VERIFICATION and the invitee sets their own through the emailed
+ * PENDING and the invitee sets their own through the emailed
  * verification link.
  */
 export const POST = withErrorHandling(async (request: NextRequest) => {

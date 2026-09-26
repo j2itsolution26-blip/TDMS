@@ -43,11 +43,20 @@ model User {
   /// unchanged, so no existing account needs a password reset.
   password        String    @db.VarChar(255)
   rememberToken   String?   @map("remember_token") @db.VarChar(100)
-  /// Authoritative account state: PENDING_VERIFICATION | ACTIVE | INACTIVE
-  /// | SUSPENDED. Only ACTIVE, with emailVerifiedAt set, may authenticate.
+  /// Google's stable subject identifier (`sub`). The join key for Google
+  /// sign-in: an address can change, `sub` does not. Unique, so one Google
+  /// account cannot end up attached to two TDMS accounts.
+  googleId        String?   @unique(map: "users_google_id_unique") @map("google_id") @db.VarChar(255)
+  firstName       String?   @map("first_name") @db.VarChar(255)
+  lastName        String?   @map("last_name") @db.VarChar(255)
+  avatarUrl       String?   @map("avatar_url")
+  lastLoginAt     DateTime? @map("last_login_at") @db.Timestamp(0)
+  /// Authoritative account state: PENDING | ACTIVE | INACTIVE | SUSPENDED.
+  /// Only ACTIVE, with emailVerifiedAt set, may authenticate. Google proving
+  /// who somebody is does not by itself make their account ACTIVE.
   /// varchar rather than a Prisma enum for the same reason as every other
   /// status column here — see the note at the foot of this file.
-  status          String    @default("PENDING_VERIFICATION") @db.VarChar(32)
+  status          String    @default("PENDING") @db.VarChar(32)
   /// Superseded by `status`, retained so no migration has to drop a column
   /// on a live database. Nothing reads it; account-mutating code keeps it in
   /// step (is_active = status === 'ACTIVE') so the two can never disagree.

@@ -22,13 +22,43 @@ import Link from 'next/link';
  * Email", so type="text" is what the label has always promised. It renders
  * identically.
  */
+/**
+ * Messages for the ?error= codes the Google callback redirects with.
+ *
+ * Kept as a map here so the callback never has to put prose in a URL, and so
+ * nothing technical reaches the browser: the callback emits a short code and
+ * this turns it into a sentence.
+ */
+const ERROR_MESSAGES: Record<string, string> = {
+  cancelled: 'Google sign-in was cancelled.',
+  wrong_domain: 'Only an @asiancollege.edu.ph account can access TDMS.',
+  google_email_unverified:
+    'That Google account has not verified its email address, so it cannot be used to sign in.',
+  account_created_pending:
+    'Your account has been created and is waiting for an administrator to approve it and assign your role. You will be able to sign in once that is done.',
+  account_pending:
+    'Your account is not active yet. An administrator needs to approve it before you can sign in.',
+  account_inactive: 'Your account is inactive. Please contact the administrator.',
+  account_suspended: 'Your account has been suspended. Please contact the administrator.',
+  invalid_state: 'That sign-in attempt could not be verified. Please try again.',
+  expired: 'That sign-in attempt timed out. Please try again.',
+  google_failed: 'Google sign-in failed. Please try again.',
+  google_unavailable: 'Google sign-in is not available. Please contact the administrator.',
+};
+
+/** These are outcomes, not faults — shown in a calmer tone than an error. */
+const INFORMATIONAL = new Set(['account_created_pending', 'account_pending', 'cancelled']);
+
 export default function LoginForm({
   canBootstrap,
   systemUnavailable = false,
+  googleEnabled = false,
 }: {
   canBootstrap: boolean;
   /** True when the server could not reach the database while rendering. */
   systemUnavailable?: boolean;
+  /** True when Google OAuth is configured for this environment. */
+  googleEnabled?: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -38,6 +68,10 @@ export default function LoginForm({
   const [remember, setRemember] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const errorCode = searchParams.get('error');
+  const callbackMessage = errorCode ? (ERROR_MESSAGES[errorCode] ?? ERROR_MESSAGES.google_failed) : null;
+  const callbackIsInfo = errorCode ? INFORMATIONAL.has(errorCode) : false;
   const [submitting, setSubmitting] = useState(false);
   const [isPending, startTransition] = useTransition();
 
@@ -95,7 +129,37 @@ export default function LoginForm({
             administrator if this persists.
           </p>
         )}
+        {callbackMessage && (
+          <p className={`text-sm ${callbackIsInfo ? 'text-slate-700' : 'text-red-600'}`}>
+            {callbackMessage}
+          </p>
+        )}
       </div>
+
+      {/*
+        Google is the primary way in: the institution's accounts live in
+        Google, so this is both fewer steps and one less password. The
+        credential form below it stays because invited staff who have not
+        linked Google still need it, and because the institution may have
+        accounts that are not in Workspace.
+      */}
+      {googleEnabled && (
+        <>
+          <a href="/api/auth/google" className="tdms-google-btn" aria-label="Continue with Google">
+            <svg viewBox="0 0 48 48" aria-hidden="true">
+              <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5Z" />
+              <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65Z" />
+              <path fill="#FBBC05" d="M10.53 28.59A14.4 14.4 0 0 1 9.77 24c0-1.6.27-3.15.76-4.59l-7.98-6.19A23.94 23.94 0 0 0 0 24c0 3.88.93 7.54 2.56 10.78l7.97-6.19Z" />
+              <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.46-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48Z" />
+            </svg>
+            <span>Continue with Google</span>
+          </a>
+
+          <div className="tdms-or-divider">
+            <span>or sign in with your TDMS password</span>
+          </div>
+        </>
+      )}
 
       <form onSubmit={handleSubmit}>
         <div className="tdms-field">

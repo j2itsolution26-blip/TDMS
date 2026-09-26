@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { activeTransport, canSendMail, developmentMailMode, mailConfigurationProblem, mailFromAddress, sendMail } from './mailer';
+import { MAIL_ERROR_REMEDY, activeTransport, canSendMail, classifySmtpError, developmentMailMode, mailConfigurationProblem, mailFromAddress, sendMail } from './mailer';
 
 /**
  * Transport selection and the unconfigured path.
@@ -225,5 +225,54 @@ describe('EMAIL_VERIFICATION_MODE=development', () => {
     }
     process.env.EMAIL_VERIFICATION_MODE = 'DEVELOPMENT';
     expect(developmentMailMode()).toBe(true);
+  });
+});
+
+describe('classifySmtpError', () => {
+  /**
+   * These are the distinctions that matter operationally: a wrong password,
+   * an unreachable host and an unverified sender have three different fixes,
+   * and collapsing them into "couldn't send" is what made the original
+   * failure so hard to place.
+   */
+  const cases: [string, Record<string, unknown>, string][] = [
+    ['EAUTH from nodemailer', { code: 'EAUTH' }, 'EMAIL_AUTH_FAILED'],
+    ['SMTP 535 bad credentials', { responseCode: 535 }, 'EMAIL_AUTH_FAILED'],
+    ['SMTP 534 app password required', { responseCode: 534 }, 'EMAIL_AUTH_FAILED'],
+    ['host not found', { code: 'ENOTFOUND' }, 'EMAIL_CONNECTION_FAILED'],
+    ['connection refused', { code: 'ECONNREFUSED' }, 'EMAIL_CONNECTION_FAILED'],
+    ['TLS socket failure', { code: 'ESOCKET' }, 'EMAIL_CONNECTION_FAILED'],
+    ['timed out', { code: 'ETIMEDOUT' }, 'EMAIL_TIMEOUT'],
+    [
+      'unverified sender',
+      { responseCode: 553, response: '553 Sender address is not verified' },
+      'EMAIL_SENDER_NOT_VERIFIED',
+    ],
+    [
+      'relay denied',
+      { responseCode: 554, response: '554 Relay access denied' },
+      'EMAIL_SENDER_NOT_VERIFIED',
+    ],
+    ['generic 5xx', { responseCode: 550, response: '550 mailbox unavailable' }, 'EMAIL_PROVIDER_REJECTED'],
+    ['nothing recognisable', {}, 'EMAIL_PROVIDER_REJECTED'],
+  ];
+
+  for (const [name, shape, expected] of cases) {
+    it(`maps ${name} to ${expected}`, () => {
+      const error = Object.assign(new Error('boom'), shape);
+      expect(classifySmtpError(error)).toBe(expected);
+    });
+  }
+
+  it('has a remedy for every code, and none of them leaks a value', () => {
+    for (const [code, remedy] of Object.entries(MAIL_ERROR_REMEDY)) {
+      expect(remedy.length).toBeGreaterThan(10);
+      expect(remedy).not.toMatch(/password=|:\/\/|@[a-z0-9.-]+\.[a-z]{2,}/i);
+      expect(code).toMatch(/^EMAIL_/);
+    }
+  });
+
+  it('names App Passwords for the auth case, because that is the usual Gmail cause', () => {
+    expect(MAIL_ERROR_REMEDY.EMAIL_AUTH_FAILED).toMatch(/app password/i);
   });
 });

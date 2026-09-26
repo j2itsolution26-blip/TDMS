@@ -101,12 +101,25 @@ async function assertBootstrapAllowed(): Promise<void> {
  * forward and no explanation. The technical detail is logged; the sentence
  * shown names environment variables and never their values.
  */
+/**
+ * Progress logging for the registration flow.
+ *
+ * Development only, because in production it is noise on every request. It
+ * prints the STEP reached and nothing about the data: never the address,
+ * the code, the password or any hash — so turning it on cannot leak a
+ * credential, and the step that is missing tells you where it stopped.
+ */
+function logStep(stage: string, detail: string): void {
+  if (process.env.NODE_ENV === 'production') return;
+  console.log(`[${stage}] ${detail}`);
+}
+
 function assertMailConfigured(): void {
   if (canSendMail()) return;
 
   const problem = mailConfigurationProblem()!;
-  console.error('[TDMS] Super Admin setup blocked: mail is not configured.');
-  throw new AppError(problem, 503);
+  console.error('[EMAIL] x Super Admin setup blocked: no mail transport configured.');
+  throw new AppError(problem, 503, undefined, 'EMAIL_SERVICE_NOT_CONFIGURED');
 }
 
 // --- What the verification screen is allowed to know ------------------------
@@ -229,7 +242,11 @@ export async function startRegistration(
 
   await assertSendBudget(email, context);
 
+  logStep('REGISTRATION', 'ok request accepted and validated');
+
   const code = generateVerificationCode();
+  logStep('VERIFICATION', 'ok verification code generated');
+
   const now = new Date();
   const expiresAt = expiryFrom(now);
   const handle = generateHandle();
@@ -275,6 +292,9 @@ export async function startRegistration(
     },
   });
 
+  logStep('DATABASE', 'ok pending registration saved');
+  logStep('EMAIL', '-> sending verification email');
+
   const mail = await sendSuperAdminCodeEmail({
     to: email,
     name: row.fullName,
@@ -283,9 +303,22 @@ export async function startRegistration(
   });
 
   if (!mail.delivered) {
-    // Nothing useful was created, so leave nothing behind.
+    // Nothing useful was created, so leave nothing behind. The person can
+    // simply try again once the cause is fixed.
     await prisma.pendingAdminRegistration.deleteMany({ where: { id: row.id } });
-    throw new AppError("We couldn't send the verification email. Please try again.", 502);
+
+    /*
+     * The message stays the calm, user-facing one. The `code` alongside it is
+     * what makes the failure diagnosable — from the Network tab alone, with
+     * no access to the server log. It names a class of problem; the host, the
+     * credential and the provider's own words never leave the server.
+     */
+    throw new AppError(
+      "We couldn't send the verification email. Please try again.",
+      502,
+      undefined,
+      mail.code ?? 'EMAIL_PROVIDER_REJECTED',
+    );
   }
 
   await storeHandle(handle);

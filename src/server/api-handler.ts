@@ -97,14 +97,14 @@ export function withErrorHandling<T extends unknown[]>(
       }
 
       if (error instanceof AppError) {
-        return fail(error.message, error.status, error.errors);
+        return fail(error.message, error.status, error.errors, error.code);
       }
 
       const described = describePrismaFailure(error);
       if (described) {
         // Logged in full: the safe message above names no specifics.
         console.error('[TDMS] Database error:', error);
-        return fail(described.message, described.status);
+        return fail(described.message, described.status, undefined, 'DATABASE_ERROR');
       }
 
       console.error('[TDMS] Unhandled API error:', error);

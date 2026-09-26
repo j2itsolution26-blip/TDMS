@@ -32,6 +32,90 @@ export interface MailMessage {
 
 export type MailTransport = 'smtp' | 'resend' | 'log' | 'none';
 
+/**
+ * A stable label for the KIND of mail failure.
+ *
+ * These exist so a failure can be identified from the API response alone.
+ * Without them every mail problem looks the same from outside — "couldn't
+ * send" — and the only way to tell an unreachable host from a rejected
+ * password is to read the server log, which is not always to hand.
+ *
+ * Each names a class of problem and a remedy. None carries a host, a
+ * credential, or the provider's own text.
+ */
+export type MailErrorCode =
+  | 'EMAIL_SERVICE_NOT_CONFIGURED'
+  | 'EMAIL_AUTH_FAILED'
+  | 'EMAIL_SENDER_NOT_VERIFIED'
+  | 'EMAIL_PROVIDER_REJECTED'
+  | 'EMAIL_CONNECTION_FAILED'
+  | 'EMAIL_TIMEOUT';
+
+/** What an operator should do about each code. Safe to show on the setup screen. */
+export const MAIL_ERROR_REMEDY: Record<MailErrorCode, string> = {
+  EMAIL_SERVICE_NOT_CONFIGURED:
+    'Email delivery is not configured on the server.',
+  EMAIL_AUTH_FAILED:
+    'The mail server rejected the username or password. If this is Gmail or Google Workspace, an ordinary account password will not work — an App Password is required.',
+  EMAIL_SENDER_NOT_VERIFIED:
+    'The mail provider will not send from that sender address. Verify the sender or its domain with the provider first.',
+  EMAIL_PROVIDER_REJECTED:
+    'The mail server refused the message.',
+  EMAIL_CONNECTION_FAILED:
+    'The mail server could not be reached. Check the host and port, and that outbound SMTP is permitted.',
+  EMAIL_TIMEOUT:
+    'The mail server did not respond in time.',
+};
+
+/**
+ * Classify a transport failure.
+ *
+ * nodemailer surfaces a `code` for connection-level problems and a
+ * `responseCode` for what the SMTP server said. Both are consulted, because
+ * a wrong password and an unreachable host are different problems with
+ * different fixes and they must not collapse into one message.
+ */
+export function classifySmtpError(error: unknown): MailErrorCode {
+  const e = error as { code?: unknown; responseCode?: unknown; response?: unknown };
+  const code = typeof e?.code === 'string' ? e.code : '';
+  const responseCode = typeof e?.responseCode === 'number' ? e.responseCode : 0;
+  const response = typeof e?.response === 'string' ? e.response.toLowerCase() : '';
+
+  if (code === 'EAUTH' || responseCode === 535 || responseCode === 534 || responseCode === 530) {
+    return 'EMAIL_AUTH_FAILED';
+  }
+
+  if (code === 'ETIMEDOUT' || code === 'ESOCKETTIMEDOUT' || code === 'ECONNRESET') {
+    return 'EMAIL_TIMEOUT';
+  }
+
+  if (
+    code === 'ECONNREFUSED' ||
+    code === 'ENOTFOUND' ||
+    code === 'EDNS' ||
+    code === 'EHOSTUNREACH' ||
+    code === 'ESOCKET'
+  ) {
+    return 'EMAIL_CONNECTION_FAILED';
+  }
+
+  /*
+   * A 5xx mentioning the sender is almost always an unverified From — the
+   * single most common mistake with a hosted provider, and worth naming
+   * separately because the fix is in the provider's console, not here.
+   */
+  if (
+    /sender|from address|not verified|unverified|domain is not|relay access denied/.test(response)
+  ) {
+    return 'EMAIL_SENDER_NOT_VERIFIED';
+  }
+
+  if (responseCode >= 500) return 'EMAIL_PROVIDER_REJECTED';
+  if (responseCode >= 400) return 'EMAIL_TIMEOUT';
+
+  return 'EMAIL_PROVIDER_REJECTED';
+}
+
 export interface MailResult {
   delivered: boolean;
   transport: MailTransport;
@@ -40,6 +124,8 @@ export interface MailResult {
    * credential, a recipient, or a provider's raw error text.
    */
   detail?: string;
+  /** Present only on failure. See MailErrorCode. */
+  code?: MailErrorCode;
 }
 
 /** True when every value SMTP needs is present. */
@@ -196,6 +282,10 @@ async function sendViaSmtp(message: MailMessage): Promise<MailResult> {
     text: message.text,
   });
 
+  console.log('[EMAIL] ok verification email accepted by the mail server.', {
+    transport: 'smtp',
+    subject: message.subject,
+  });
   return { delivered: true, transport: 'smtp' };
 }
 
@@ -218,10 +308,30 @@ async function sendViaResend(message: MailMessage): Promise<MailResult> {
     // The provider's response may quote the recipient; keep it out of the
     // value we hand back to a caller that might render it.
     const status = response.status;
-    console.error('[TDMS] Resend rejected a message.', { status });
-    return { delivered: false, transport: 'resend', detail: `Mail provider returned ${status}.` };
+
+    /*
+     * Mapped from the status alone. The body is deliberately not read: it can
+     * quote the recipient, and it is not needed to tell these cases apart.
+     */
+    const code: MailErrorCode =
+      status === 401 || status === 403
+        ? 'EMAIL_AUTH_FAILED'
+        : status === 422
+          ? 'EMAIL_SENDER_NOT_VERIFIED'
+          : status === 429
+            ? 'EMAIL_PROVIDER_REJECTED'
+            : status >= 500
+              ? 'EMAIL_PROVIDER_REJECTED'
+              : 'EMAIL_PROVIDER_REJECTED';
+
+    console.error('[EMAIL] x Resend rejected the message.', { status, code });
+    return { delivered: false, transport: 'resend', code, detail: MAIL_ERROR_REMEDY[code] };
   }
 
+  console.log('[EMAIL] ok message accepted by the provider.', {
+    transport: 'resend',
+    subject: message.subject,
+  });
   return { delivered: true, transport: 'resend' };
 }
 
@@ -271,10 +381,15 @@ export async function sendMail(message: MailMessage): Promise<MailResult> {
 
   const problem = mailConfigurationProblem();
   if (problem) {
-    console.error('[TDMS] Mail not sent: no mail provider is configured.', {
+    console.error('[EMAIL] x nothing sent: no mail provider is configured.', {
       subject: message.subject,
     });
-    return { delivered: false, transport, detail: problem };
+    return {
+      delivered: false,
+      transport,
+      detail: problem,
+      code: 'EMAIL_SERVICE_NOT_CONFIGURED',
+    };
   }
 
   try {
@@ -286,17 +401,25 @@ export async function sendMail(message: MailMessage): Promise<MailResult> {
      * configuration mistake and the operator needs the detail. nodemailer's
      * errors carry the host and response code, not the password.
      */
-    console.error('[TDMS] Sending mail failed.', {
+    const code = classifySmtpError(error);
+
+    /*
+     * Logged in full on the server: an SMTP failure is nearly always a
+     * configuration mistake and the operator needs the specifics.
+     * nodemailer's error carries the host and the server's response, not the
+     * password — but the password is never in these fields anyway, and the
+     * message body (which holds the verification code) is never logged here.
+     */
+    console.error('[EMAIL] x failed to send verification email.', {
       transport,
       subject: message.subject,
+      code,
+      smtpCode: (error as { code?: unknown })?.code ?? null,
+      responseCode: (error as { responseCode?: unknown })?.responseCode ?? null,
       error: error instanceof Error ? error.message : 'unknown error',
     });
 
-    return {
-      delivered: false,
-      transport,
-      detail: 'The mail server could not be reached, or refused the message.',
-    };
+    return { delivered: false, transport, code, detail: MAIL_ERROR_REMEDY[code] };
   }
 }
 

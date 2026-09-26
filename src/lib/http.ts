@@ -9,8 +9,16 @@ export function ok<T>(data: T, status = 200) {
   return NextResponse.json({ success: true, data: toPlain(data) }, { status });
 }
 
-export function fail(message: string, status = 400, errors?: Record<string, string[]>) {
-  return NextResponse.json({ success: false, message, ...(errors ? { errors } : {}) }, { status });
+export function fail(
+  message: string,
+  status = 400,
+  errors?: Record<string, string[]>,
+  code?: string,
+) {
+  return NextResponse.json(
+    { success: false, ...(code ? { code } : {}), message, ...(errors ? { errors } : {}) },
+    { status },
+  );
 }
 
 /**
@@ -23,6 +31,16 @@ export class AppError extends Error {
     message: string,
     readonly status = 400,
     readonly errors?: Record<string, string[]>,
+    /**
+     * A stable, machine-readable label for the KIND of failure, e.g.
+     * EMAIL_AUTH_FAILED. It exists so a failure can be diagnosed from the
+     * response alone — which matters when the only view of a deployment is
+     * the browser's Network tab.
+     *
+     * It names a class of problem, never a cause in detail: no host, no
+     * credential, no provider text. Those go to the server log.
+     */
+    readonly code?: string,
   ) {
     super(message);
     this.name = 'AppError';

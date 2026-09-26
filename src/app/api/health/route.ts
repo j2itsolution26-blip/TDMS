@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { databaseUrlSource } from '@/lib/database-url';
-import { appUrl, activeTransport } from '@/server/mail/mailer';
+import { appUrl, activeTransport, canSendMail, mailFromAddress } from '@/server/mail/mailer';
 import { describeDomainPolicy } from '@/lib/institutional-email';
 import { autoActivateNewGoogleUsers } from '@/server/services/google-auth-service';
 import { googleConfigured } from '@/server/auth/google/oauth';
@@ -114,6 +114,26 @@ export async function GET() {
        * exactly that. Public information — it is this deployment's own URL.
        */
       appUrl: appUrl(),
+      /*
+       * Enough to place a mail problem without reading the server log, which
+       * is the situation an operator is usually in. Presence booleans and a
+       * hostname only — never a username, a password or an API key. The
+       * hostname is not a secret; it is typically smtp.gmail.com.
+       */
+      mail: {
+        transport: activeTransport(),
+        canSend: canSendMail(),
+        senderConfigured: mailFromAddress() !== '',
+        host: process.env.MAIL_HOST ?? null,
+        port: process.env.MAIL_PORT ?? null,
+        encryption: process.env.MAIL_ENCRYPTION ?? null,
+        credentials: {
+          username: Boolean(process.env.MAIL_USERNAME),
+          password: Boolean(process.env.MAIL_PASSWORD),
+        },
+        resendApiKey: Boolean(process.env.RESEND_API_KEY),
+        developmentMode: process.env.EMAIL_VERIFICATION_MODE === 'development',
+      },
       mailTransport: activeTransport(),
       /*
        * Surfaced so an operator can see at a glance whether this deployment

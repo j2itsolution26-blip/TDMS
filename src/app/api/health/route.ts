@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { databaseUrlSource } from '@/lib/database-url';
+import { appUrl, activeTransport } from '@/server/mail/mailer';
+import { INSTITUTIONAL_DOMAIN } from '@/lib/institutional-email';
 
 /**
  * GET /api/health — operational diagnostics.
@@ -103,6 +105,15 @@ export async function GET() {
       ...(errorCode ? { errorCode } : {}),
       env,
       databaseUrlSource: source,
+      /*
+       * Surfaced because a wrong value here breaks every verification and
+       * reset link silently: the mail sends, the link just points somewhere
+       * useless. A Laravel-era APP_URL of http://localhost:8000 would do
+       * exactly that. Public information — it is this deployment's own URL.
+       */
+      appUrl: appUrl(),
+      mailTransport: activeTransport(),
+      institutionalDomain: INSTITUTIONAL_DOMAIN,
       ...(missingRequired.length > 0 ? { missingRequiredEnv: missingRequired } : {}),
       ...(databaseEnvNamesPresent ? { databaseEnvNamesPresent } : {}),
       region: process.env.VERCEL_REGION ?? null,

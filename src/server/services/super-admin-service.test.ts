@@ -276,8 +276,16 @@ describe('registration details', () => {
   it('refuses outright when no mail transport is configured', async () => {
     const host = process.env.MAIL_HOST;
     const key = process.env.RESEND_API_KEY;
+    /*
+     * EMAIL_VERIFICATION_MODE is cleared too, because this test means "no
+     * transport at all". The development log mode counts as a transport, and
+     * .env reaches this process via the Prisma import, so leaving it set
+     * would make the assertion pass for the wrong reason.
+     */
+    const devMode = process.env.EMAIL_VERIFICATION_MODE;
     delete process.env.MAIL_HOST;
     delete process.env.RESEND_API_KEY;
+    delete process.env.EMAIL_VERIFICATION_MODE;
 
     try {
       await expect(startRegistration(DETAILS, CONTEXT)).rejects.toThrow(/MAIL_HOST/);
@@ -287,6 +295,7 @@ describe('registration details', () => {
     } finally {
       process.env.MAIL_HOST = host;
       if (key !== undefined) process.env.RESEND_API_KEY = key;
+      if (devMode !== undefined) process.env.EMAIL_VERIFICATION_MODE = devMode;
     }
   });
 });

@@ -1,11 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import {
-  activeTransport,
-  canSendMail,
-  mailConfigurationProblem,
-  mailFromAddress,
-  sendMail,
-} from './mailer';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { activeTransport, canSendMail, developmentMailMode, mailConfigurationProblem, mailFromAddress, sendMail } from './mailer';
 
 /**
  * Transport selection and the unconfigured path.
@@ -155,5 +149,81 @@ describe('sending with nothing configured', () => {
     expect(logged).not.toContain('Your verification code is');
     // It does say what is wrong, which is the whole value of the log line.
     expect(logged).toMatch(/no mail provider is configured/i);
+  });
+});
+
+describe('EMAIL_VERIFICATION_MODE=development', () => {
+  const KEYS = ['EMAIL_VERIFICATION_MODE', 'MAIL_HOST', 'MAIL_PORT', 'RESEND_API_KEY'] as const;
+
+  /** NODE_ENV is readonly in the Node types; this is the supported route. */
+  const setNodeEnv = (value: string) => vi.stubEnv('NODE_ENV', value);
+  let saved: Record<string, string | undefined>;
+
+  beforeEach(() => {
+    saved = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]));
+    for (const k of KEYS) delete process.env[k];
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    for (const k of KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+
+  it('is off unless explicitly asked for', () => {
+    expect(developmentMailMode()).toBe(false);
+    expect(activeTransport()).toBe('none');
+  });
+
+  it('is never inferred from the absence of a provider', () => {
+    // No provider configured must fail loudly, not quietly pretend to send.
+    expect(activeTransport()).toBe('none');
+    expect(canSendMail()).toBe(false);
+  });
+
+  it('activates on an explicit opt-in outside production', () => {
+    process.env.EMAIL_VERIFICATION_MODE = 'development';
+    setNodeEnv('development');
+    expect(developmentMailMode()).toBe(true);
+    expect(activeTransport()).toBe('log');
+    expect(canSendMail()).toBe(true);
+  });
+
+  it('takes precedence over a configured SMTP host', () => {
+    process.env.EMAIL_VERIFICATION_MODE = 'development';
+    setNodeEnv('development');
+    process.env.MAIL_HOST = 'smtp.example.com';
+    process.env.MAIL_PORT = '587';
+    expect(activeTransport()).toBe('log');
+  });
+
+  it('is REFUSED in production, however it is set', () => {
+    // A verification code in a production log is a credential somewhere far
+    // more people can read than the mailbox it was meant for.
+    process.env.EMAIL_VERIFICATION_MODE = 'development';
+    setNodeEnv('production');
+    expect(developmentMailMode()).toBe(false);
+    expect(activeTransport()).toBe('none');
+    expect(canSendMail()).toBe(false);
+  });
+
+  it('falls back to a real provider in production rather than the log', () => {
+    process.env.EMAIL_VERIFICATION_MODE = 'development';
+    setNodeEnv('production');
+    process.env.MAIL_HOST = 'smtp.example.com';
+    process.env.MAIL_PORT = '587';
+    expect(activeTransport()).toBe('smtp');
+  });
+
+  it('only the exact word enables it', () => {
+    setNodeEnv('development');
+    for (const value of ['dev', 'true', '1', 'DEVELOPMENTAL', '']) {
+      process.env.EMAIL_VERIFICATION_MODE = value;
+      expect(developmentMailMode()).toBe(false);
+    }
+    process.env.EMAIL_VERIFICATION_MODE = 'DEVELOPMENT';
+    expect(developmentMailMode()).toBe(true);
   });
 });

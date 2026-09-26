@@ -5,16 +5,85 @@ import { fieldErrors } from '@/server/validation/schemas';
 import type { NextRequest } from 'next/server';
 
 /**
- * Centralised error handling for route handlers (Phase 13).
+ * A Prisma failure translated into something the reader can act on.
  *
- * Exactly three things can reach the browser:
+ * The generic "Something went wrong" is the right answer for a genuinely
+ * unexpected error, but it is the wrong answer for an infrastructure fault
+ * that has an obvious remedy. A missing table means migrations have not been
+ * run; an unreachable host means the database is down or misconfigured.
+ * Saying so turns a support ticket into a one-line fix.
+ *
+ * What these messages never contain: a table or column name, a constraint
+ * name, a host, a connection string, a credential, or any part of Prisma's
+ * own message. They name a *class* of problem and a remedy, nothing more.
+ * The full error, including the stack, goes to the server log.
+ */
+function describePrismaFailure(error: unknown): { message: string; status: number } | null {
+  const e = error as { name?: unknown; code?: unknown };
+  const name = typeof e?.name === 'string' ? e.name : '';
+  const code = typeof e?.code === 'string' ? e.code : '';
+
+  // The client could not be constructed at all — almost always a missing or
+  // malformed connection string.
+  if (name === 'PrismaClientInitializationError') {
+    return {
+      message: 'The database is not configured correctly. Please contact the administrator.',
+      status: 503,
+    };
+  }
+
+  switch (code) {
+    // P2021 table missing, P2022 column missing: the schema is behind the code.
+    case 'P2021':
+    case 'P2022':
+      return {
+        message:
+          'The database schema is out of date, so this action cannot be completed. Pending migrations need to be applied.',
+        status: 503,
+      };
+
+    // Cannot reach the server / timed out.
+    case 'P1001':
+    case 'P1002':
+    case 'P1008':
+      return {
+        message: 'Unable to reach the database. Please try again in a moment.',
+        status: 503,
+      };
+
+    // Credentials rejected, or the named database does not exist.
+    case 'P1000':
+    case 'P1003':
+      return {
+        message: 'The database is not configured correctly. Please contact the administrator.',
+        status: 503,
+      };
+
+    /*
+     * A unique violation that reached here rather than being handled by the
+     * service is still worth naming, because "already exists" is actionable
+     * where "went wrong" is not. The offending field is deliberately not
+     * echoed: the service layer is where a per-field message belongs.
+     */
+    case 'P2002':
+      return { message: 'That record already exists.', status: 409 };
+
+    default:
+      return null;
+  }
+}
+
+/**
+ * Centralised error handling for route handlers.
+ *
+ * What can reach the browser:
  *   * an AppError, whose message the service author wrote for a user;
  *   * a validation failure, as { field: [messages] };
- *   * "Something went wrong." for everything else.
+ *   * a recognised infrastructure fault, described by class and remedy;
+ *   * "Something went wrong." for anything genuinely unexpected.
  *
- * Anything unrecognised is logged server-side with its stack and replaced
- * with the generic message, so a Prisma error string, a constraint name, a
- * connection URL or an absolute file path can never be echoed back.
+ * Everything is logged server-side with its stack. No Prisma message,
+ * constraint name, connection URL or file path is ever echoed back.
  */
 export function withErrorHandling<T extends unknown[]>(
   handler: (...args: T) => Promise<Response>,
@@ -29,6 +98,13 @@ export function withErrorHandling<T extends unknown[]>(
 
       if (error instanceof AppError) {
         return fail(error.message, error.status, error.errors);
+      }
+
+      const described = describePrismaFailure(error);
+      if (described) {
+        // Logged in full: the safe message above names no specifics.
+        console.error('[TDMS] Database error:', error);
+        return fail(described.message, described.status);
       }
 
       console.error('[TDMS] Unhandled API error:', error);

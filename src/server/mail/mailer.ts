@@ -30,7 +30,7 @@ export interface MailMessage {
   text: string;
 }
 
-export type MailTransport = 'smtp' | 'resend' | 'none';
+export type MailTransport = 'smtp' | 'resend' | 'log' | 'none';
 
 export interface MailResult {
   delivered: boolean;
@@ -47,7 +47,43 @@ function smtpConfigured(): boolean {
   return Boolean(process.env.MAIL_HOST && process.env.MAIL_PORT);
 }
 
+/**
+ * The development mail mode: write the message to the server log instead of
+ * sending it, so the verification flow can be walked before a provider
+ * exists.
+ *
+ * Two conditions, both required:
+ *
+ *   1. EMAIL_VERIFICATION_MODE=development — an explicit opt-in. It is never
+ *      inferred from the absence of a provider, because "no provider
+ *      configured" must fail loudly rather than quietly pretend to send.
+ *
+ *   2. NODE_ENV is not production — and this one is not overridable. A
+ *      verification code in a production log is a credential sitting in a
+ *      place far more people can read than the mailbox it was meant for.
+ *      Production requires a real provider, full stop.
+ *
+ * If it is asked for in production it is refused, loudly, rather than
+ * silently ignored — otherwise an operator would think it was on.
+ */
+export function developmentMailMode(): boolean {
+  const asked = (process.env.EMAIL_VERIFICATION_MODE ?? '').trim().toLowerCase() === 'development';
+  if (!asked) return false;
+
+  if (process.env.NODE_ENV === 'production') {
+    console.error(
+      '[TDMS] EMAIL_VERIFICATION_MODE=development is IGNORED because NODE_ENV=production. ' +
+        'Verification codes will not be written to the log. Configure a real mail provider.',
+    );
+    return false;
+  }
+
+  return true;
+}
+
 export function activeTransport(): MailTransport {
+  // Checked first, so a developer can force it even with SMTP values present.
+  if (developmentMailMode()) return 'log';
   if (smtpConfigured()) return 'smtp';
   if (process.env.RESEND_API_KEY) return 'resend';
   return 'none';
@@ -72,7 +108,11 @@ export function mailFromAddress(): string {
 
 /** True when real delivery is possible. Used to gate self-service flows. */
 export function canSendMail(): boolean {
-  return activeTransport() !== 'none' && mailFromAddress() !== '';
+  const transport = activeTransport();
+  if (transport === 'none') return false;
+  // The log transport has no recipient to satisfy, so no From is required.
+  if (transport === 'log') return true;
+  return mailFromAddress() !== '';
 }
 
 /**
@@ -84,7 +124,12 @@ export function canSendMail(): boolean {
  */
 export function mailConfigurationProblem(): string | null {
   if (activeTransport() === 'none') {
-    return 'Email delivery is not configured. Set MAIL_HOST, MAIL_PORT, MAIL_USERNAME, MAIL_PASSWORD, MAIL_FROM_ADDRESS and MAIL_FROM_NAME (or RESEND_API_KEY) in the server environment.';
+    return (
+      'Email delivery is not configured. Set MAIL_HOST, MAIL_PORT, MAIL_USERNAME, ' +
+      'MAIL_PASSWORD, MAIL_FROM_ADDRESS and MAIL_FROM_NAME (or RESEND_API_KEY) in the ' +
+      'server environment. For local development only, EMAIL_VERIFICATION_MODE=development ' +
+      'writes the code to the server log instead.'
+    );
   }
 
   if (mailFromAddress() === '') {
@@ -181,6 +226,39 @@ async function sendViaResend(message: MailMessage): Promise<MailResult> {
 }
 
 /**
+ * Development only: write the message to the server log instead of sending.
+ *
+ * This is the ONE place in the codebase that deliberately prints a
+ * verification code. It is reachable only when EMAIL_VERIFICATION_MODE is
+ * development AND NODE_ENV is not production (see developmentMailMode), and
+ * it announces itself in block capitals so a log reader cannot mistake it
+ * for normal operation.
+ */
+function sendViaLog(message: MailMessage): MailResult {
+  console.warn(
+    [
+      '',
+      '='.repeat(72),
+      'DEV EMAIL — NOT SENT. EMAIL_VERIFICATION_MODE=development.',
+      'This block prints a verification code and is disabled in production.',
+      '='.repeat(72),
+      `To:      ${message.to}`,
+      `Subject: ${message.subject}`,
+      '-'.repeat(72),
+      message.text,
+      '='.repeat(72),
+      '',
+    ].join('\n'),
+  );
+
+  return {
+    delivered: true,
+    transport: 'log',
+    detail: 'Written to the server log (development mode) — no email was sent.',
+  };
+}
+
+/**
  * Send, or report honestly that nothing was sent.
  *
  * The technical reason is logged server-side; the caller gets a short, safe
@@ -200,6 +278,7 @@ export async function sendMail(message: MailMessage): Promise<MailResult> {
   }
 
   try {
+    if (transport === 'log') return sendViaLog(message);
     return transport === 'smtp' ? await sendViaSmtp(message) : await sendViaResend(message);
   } catch (error) {
     /*

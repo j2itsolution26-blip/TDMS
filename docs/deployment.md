@@ -267,6 +267,55 @@ the provider is authorised to send for, with SPF and DKIM published for that
 domain. Institutional mail is filtered hard; a mismatched sender is the usual
 reason a code "never arrives" when the application reports it as delivered.
 
+## A migration that exists is not a migration that ran
+
+The registration flow once failed with a bare "Something went wrong" because
+`prisma/migrations/..._pending_admin_registrations` had been written and
+committed but never applied. Prisma raised P2021 ("table does not exist"), the
+error wrapper had no specific handling for it, and the generic message hid the
+one fact that would have explained it.
+
+Two things changed as a result:
+
+1. **`/api/health` is not enough on its own** — it reports that the database is
+   reachable, which it was. After pulling schema changes, check that they are
+   actually applied:
+
+   ```bash
+   npx prisma migrate status
+   npm run db:migrate      # if anything is pending
+   ```
+
+2. **Database faults now describe themselves.** A missing table or column
+   returns 503 with "The database schema is out of date … Pending migrations
+   need to be applied." An unreachable host says so. Credentials rejected
+   points at configuration. None of these messages contains a table name, a
+   host, a credential or any part of Prisma's own text — those go to the
+   server log. See `src/server/api-handler.test.ts`.
+
+## Development email mode
+
+With no mail provider configured, registration correctly refuses rather than
+pretending to send. For local work:
+
+```env
+EMAIL_VERIFICATION_MODE=development
+```
+
+The verification code is then written to the server log in a block that
+announces itself, and the flow can be completed normally.
+
+It requires an explicit opt-in **and** `NODE_ENV` not being `production`. The
+second condition cannot be overridden: a verification code in a production log
+is a credential sitting somewhere far more people can read than the mailbox it
+was meant for. Asked for in production it is refused, and the refusal is
+logged so nobody is left believing it is on.
+
+Note for this project specifically: the Vercel deployment runs with
+`NODE_ENV=production`, so development mode will **not** activate there even if
+the variable is set. Use a real provider on Vercel, or `npm run admin:create`
+to provision the first administrator without email.
+
 ## Fresh installation
 
 ```bash

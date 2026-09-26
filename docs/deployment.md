@@ -164,6 +164,21 @@ mid-session deactivation, and `/api/health`. It deactivates and restores
 the `teacher` demo account, so it refuses to run against a non-local
 `BASE` unless you pass `ALLOW_REMOTE=1`.
 
+### Production smoke test
+
+```bash
+npm run test:prod                                  # defaults to the live URL
+BASE=https://your-preview.vercel.app npm run test:prod
+```
+
+`scripts/e2e/production-flow.mjs` signs in as each of the seven demo roles
+over HTTPS and checks the whole path: login by username and by email,
+dashboard render, refresh, logout, re-login, protected-route redirects,
+rejection of bad credentials, and the cookie flags including `Secure`.
+
+It is safe to point at production: it only creates and destroys its own
+sessions, and writes nothing else.
+
 ## Scheduled work
 
 Laravel's queue and scheduler tables exist but were never used — there are

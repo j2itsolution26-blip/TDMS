@@ -120,7 +120,7 @@ export async function accessCodeMatches(code: string, hash: string): Promise<boo
 export interface AccessCodeState {
   expiresAt: Date;
   usedAt: Date | null;
-  invalidatedAt: Date | null;
+  revokedAt: Date | null;
   attemptCount: number;
   maxAttempts: number;
 }
@@ -133,14 +133,14 @@ export interface AccessCodeState {
  * that is both, because it tells them the code worked and something else is
  * wrong.
  */
-export type AccessCodeRefusal = 'used' | 'invalidated' | 'expired' | 'exhausted';
+export type AccessCodeRefusal = 'used' | 'revoked' | 'expired' | 'exhausted';
 
 export function accessCodeRefusal(
   state: AccessCodeState,
   now: Date = new Date(),
 ): AccessCodeRefusal | null {
   if (state.usedAt) return 'used';
-  if (state.invalidatedAt) return 'invalidated';
+  if (state.revokedAt) return 'revoked';
   if (state.expiresAt.getTime() <= now.getTime()) return 'expired';
   if (state.attemptCount >= state.maxAttempts) return 'exhausted';
   return null;
@@ -150,8 +150,67 @@ export function isAccessCodeLive(state: AccessCodeState, now: Date = new Date())
   return accessCodeRefusal(state, now) === null;
 }
 
-export function accessCodeExpiryFrom(now: Date = new Date()): Date {
-  return new Date(now.getTime() + accessCodeTtlMinutes() * 60_000);
+export function accessCodeExpiryFrom(
+  now: Date = new Date(),
+  minutes: number = accessCodeTtlMinutes(),
+): Date {
+  return new Date(now.getTime() + minutes * 60_000);
+}
+
+// --- Status, as the Super Admin Dashboard shows it -------------------------
+
+/**
+ * The four states a code is shown in. Exactly these, per the dashboard spec.
+ *
+ * A code burnt by too many wrong guesses is REVOKED rather than EXPIRED: it was
+ * withdrawn, not left to run out, and the dashboard shows the reason next to it.
+ */
+export const ACCESS_CODE_STATUSES = ['ACTIVE', 'USED', 'EXPIRED', 'REVOKED'] as const;
+export type AccessCodeStatus = (typeof ACCESS_CODE_STATUSES)[number];
+
+export function accessCodeStatus(state: AccessCodeState, now: Date = new Date()): AccessCodeStatus {
+  switch (accessCodeRefusal(state, now)) {
+    case null:
+      return 'ACTIVE';
+    case 'used':
+      return 'USED';
+    case 'expired':
+      return 'EXPIRED';
+    case 'revoked':
+    case 'exhausted':
+      return 'REVOKED';
+  }
+}
+
+// --- Choosing an expiry when issuing a code ---------------------------------
+
+/**
+ * The upper bound on a code's life, whatever the Super Admin picks.
+ *
+ * A code is handed over and typed straight away. Beyond an hour it stops being
+ * a one-time code and starts being a password that lives in a chat log.
+ */
+export const MAX_ACCESS_CODE_MINUTES = 60;
+
+/**
+ * The durations the Generate dialog offers, always including the configured
+ * default so ADMIN_ACCESS_CODE_EXPIRATION_MINUTES shows up as a choice.
+ */
+export function accessCodeExpiryOptions(): number[] {
+  const base = [5, 10, 15, 30, 60];
+  const fallback = Math.min(accessCodeTtlMinutes(), MAX_ACCESS_CODE_MINUTES);
+  return [...new Set([...base, fallback])].sort((a, b) => a - b);
+}
+
+/**
+ * The expiry actually used for a request: one of the offered options, or the
+ * configured default when none (or something else) was asked for. Anything
+ * outside the list is refused by validation before it gets here; this is the
+ * second line, so a hand-made request cannot mint a week-long code.
+ */
+export function resolveAccessCodeMinutes(requested?: number | null): number {
+  if (requested && accessCodeExpiryOptions().includes(requested)) return requested;
+  return Math.min(accessCodeTtlMinutes(), MAX_ACCESS_CODE_MINUTES);
 }
 
 export function loginChallengeExpiryFrom(now: Date = new Date()): Date {

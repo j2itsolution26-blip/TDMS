@@ -1,20 +1,9 @@
 import { requireUser, authorizePage } from '@/server/auth/current-user';
 import { adminAccountPolicy } from '@/server/auth/policies';
-import {
-  listAdminAccounts,
-  mailIsConfigured,
-  securityCodeIsConfigured,
-} from '@/server/services/admin-account-service';
-import { accessCodeTtlMinutes } from '@/server/auth/admin-access-code';
+import { listAdminAccounts } from '@/server/services/admin-account-service';
 import AdminAccountsScreen from '@/components/screens/AdminAccountsScreen';
 
-/**
- * Administration → Admin Accounts. Super Admin only.
- *
- * `securityCodeIsConfigured()` crosses to the browser; the code itself never
- * does. Whether a secret exists is not the secret, and the screen has to be
- * able to say why its buttons will refuse.
- */
+/** Super Admin Dashboard → Admin Accounts. Super Admin only. */
 export const dynamic = 'force-dynamic';
 
 export default async function AdminAccountsPage({
@@ -36,9 +25,6 @@ export default async function AdminAccountsPage({
       lastPage={data.lastPage}
       total={data.total}
       currentUserId={user.id}
-      mailConfigured={mailIsConfigured()}
-      securityCodeConfigured={securityCodeIsConfigured()}
-      accessCodeTtlMinutes={accessCodeTtlMinutes()}
     />
   );
 }

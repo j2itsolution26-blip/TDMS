@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api-client';
 import Modal from '@/components/Modal';
@@ -11,36 +12,22 @@ import {
 import { ACCOUNT_STATUS_LABELS, ACCOUNT_STATUS_BADGE, type AccountStatus } from '@/types/domain';
 import { PASSWORD_REQUIREMENTS, evaluatePassword } from '@/lib/password-policy';
 import { generateTemporaryPassword } from '@/lib/temporary-password';
-import { succeeded, undelivered, type Notice } from '@/lib/notice';
+import { succeeded, type Notice } from '@/lib/notice';
 import { formatDate } from '@/lib/dates';
 
 /**
- * Administration → Admin Accounts.
+ * Super Admin Dashboard → Admin Accounts.
  *
- * The Super Admin's console for administrator accounts: create one, issue it
- * an access code, reissue a temporary password, suspend it, bring it back.
+ * Create an Admin, reissue their temporary password, suspend or reactivate
+ * them. Access codes are NOT issued here: they live on Admin Access Codes, and
+ * each row links there with the Admin preselected.
  *
- * WHAT THIS SCREEN SHOWS ONCE AND NEVER AGAIN
+ * A temporary password is shown once, in the response that created it, and
+ * held only in component state — not localStorage, not the URL — so closing
+ * the panel is genuinely the end of it. The server keeps only a bcrypt hash.
  *
- * A temporary password and an access code are shown exactly once, in the
- * response to the request that created them. They are held in component
- * state and nowhere else — not in localStorage, not in the URL, not in a
- * router cache entry — so closing the panel is genuinely the end of them.
- * The server stores only bcrypt hashes and cannot reproduce either.
- *
- * That is why the panel is insistent about being read before it is dismissed.
- * "Generate a new one" is always available and costs nothing, so losing a
- * code is an inconvenience rather than a problem; the alternative — keeping
- * it retrievable — would mean a credential sitting in a database that
- * somebody can read back for the rest of the account's life.
- *
- * THE SECURITY CODE FIELD
- *
- * Each credential-issuing action asks for the static Super Admin security
- * code. It is typed here and checked on the server against an environment
- * variable; it is never fetched, never returned, and this component has no
- * way to learn it or to tell a wrong one from an unconfigured one — the
- * server says which.
+ * Nothing here asks for the static Super Admin security code. The signed-in
+ * dashboard is the trust boundary for these actions.
  */
 
 export interface AdminRow {
@@ -56,33 +43,20 @@ export interface AdminRow {
   accessCodeExpiresInSeconds: number | null;
 }
 
-interface IssuedAccount {
+interface CreatedAdmin {
   id: string;
   name: string;
   email: string;
   temporaryPassword: string;
-  accessCode: string;
-  accessCodeExpiresInSeconds: number;
-  mailDelivered: boolean;
-  mailDetail?: string;
 }
 
-interface IssuedCode {
-  adminId: string;
-  name: string;
-  email: string;
-  accessCode: string;
-  accessCodeExpiresInSeconds: number;
-  mailDelivered: boolean;
-  mailDetail?: string;
-}
-
-interface IssuedPassword {
+interface ReissuedPassword {
   adminId: string;
   name: string;
   email: string;
   temporaryPassword: string;
   activated: boolean;
+  codesRevoked: number;
 }
 
 interface Props {
@@ -91,12 +65,8 @@ interface Props {
   lastPage: number;
   total: number;
   currentUserId: string;
-  mailConfigured: boolean;
-  securityCodeConfigured: boolean;
-  accessCodeTtlMinutes: number;
 }
 
-/** mm:ss, for the code countdowns. */
 function countdown(seconds: number): string {
   const safe = Math.max(0, seconds);
   return `${String(Math.floor(safe / 60)).padStart(2, '0')}:${String(safe % 60).padStart(2, '0')}`;
@@ -107,26 +77,14 @@ const EMPTY_FORM = {
   email: '',
   temporaryPassword: '',
   temporaryPasswordConfirmation: '',
-  securityCode: '',
-  emailAccessCode: false,
 };
 
-/** Which secondary action a modal is collecting a security code for. */
-type PendingAction =
-  | { kind: 'code'; row: AdminRow }
-  | { kind: 'password'; row: AdminRow }
-  | null;
+/** Link to the Access Codes page with this Admin preselected in Generate. */
+function issueCodeHref(adminId: string): string {
+  return `/admin-access-codes?generate=${encodeURIComponent(adminId)}`;
+}
 
-export default function AdminAccountsScreen({
-  rows,
-  page,
-  lastPage,
-  total,
-  currentUserId,
-  mailConfigured,
-  securityCodeConfigured,
-  accessCodeTtlMinutes,
-}: Props) {
+export default function AdminAccountsScreen({ rows, page, lastPage, total, currentUserId }: Props) {
   const router = useRouter();
 
   const [showCreate, setShowCreate] = useState(false);
@@ -137,14 +95,12 @@ export default function AdminAccountsScreen({
   const [busy, setBusy] = useState(false);
   const [revealPassword, setRevealPassword] = useState(false);
 
-  /** The one-shot results. Only ever one of these is set at a time. */
-  const [issuedAccount, setIssuedAccount] = useState<IssuedAccount | null>(null);
-  const [issuedCode, setIssuedCode] = useState<IssuedCode | null>(null);
-  const [issuedPassword, setIssuedPassword] = useState<IssuedPassword | null>(null);
+  /** The one-shot results. */
+  const [created, setCreated] = useState<CreatedAdmin | null>(null);
+  const [reissued, setReissued] = useState<ReissuedPassword | null>(null);
 
-  const [pending, setPending] = useState<PendingAction>(null);
-  const [actionCode, setActionCode] = useState('');
-  const [actionEmail, setActionEmail] = useState(false);
+  /** The row whose password is about to be reset. */
+  const [resetTarget, setResetTarget] = useState<AdminRow | null>(null);
 
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -153,73 +109,43 @@ export default function AdminAccountsScreen({
     [form.temporaryPassword],
   );
 
-  /*
-   * A live countdown on whichever code is currently on screen.
-   *
-   * Seconds remaining, counted down locally from a value the server produced,
-   * rather than an absolute expiry time compared against the browser's clock.
-   * A machine whose clock is wrong would otherwise show a live code as
-   * expired, or worse the other way round.
-   */
-  const shownCode = issuedAccount ?? issuedCode;
-  const [secondsLeft, setSecondsLeft] = useState(0);
-
-  useEffect(() => {
-    if (!shownCode) return;
-    setSecondsLeft(shownCode.accessCodeExpiresInSeconds);
-    const timer = setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000);
-    return () => clearInterval(timer);
-  }, [shownCode]);
-
-  function reset() {
+  function clearFeedback() {
     setErrors({});
     setMessage(null);
     setNotice(null);
   }
 
   function openCreate() {
-    reset();
+    clearFeedback();
     setForm(EMPTY_FORM);
     setRevealPassword(false);
     setShowCreate(true);
   }
 
   function fillGeneratedPassword() {
-    /*
-     * Generated in the browser with Web Crypto, by the same module the server
-     * uses for a reissue — so the two cannot drift apart in alphabet, length
-     * or which policy requirements they guarantee.
-     */
+    // Web Crypto, via the same module the server uses for a reset.
     const generated = generateTemporaryPassword();
-    setForm((f) => ({
-      ...f,
-      temporaryPassword: generated,
-      temporaryPasswordConfirmation: generated,
-    }));
-    // Shown, because a password nobody can read is a password nobody can pass on.
+    setForm((f) => ({ ...f, temporaryPassword: generated, temporaryPasswordConfirmation: generated }));
     setRevealPassword(true);
     setErrors((e) => ({ ...e, temporaryPassword: [], temporaryPasswordConfirmation: [] }));
   }
 
-  async function copy(label: string, value: string) {
+  async function copy(labelText: string, value: string) {
     try {
       await navigator.clipboard.writeText(value);
-      setCopied(label);
+      setCopied(labelText);
       setTimeout(() => setCopied(null), 2000);
     } catch {
-      // Clipboard access can be refused; the value is on screen either way.
       setNotice({ tone: 'warning', text: 'Could not reach the clipboard. Copy it by hand.' });
     }
   }
 
-  // --- Create --------------------------------------------------------------
-
   async function createAdmin(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
-    reset();
+    clearFeedback();
 
-    const result = await api.post<IssuedAccount>('/api/admins', form);
+    const result = await api.post<CreatedAdmin>('/api/admins', form);
 
     setBusy(false);
     if (!result.ok) {
@@ -230,61 +156,32 @@ export default function AdminAccountsScreen({
 
     setShowCreate(false);
     setForm(EMPTY_FORM);
-    setIssuedAccount(result.data);
+    setCreated(result.data);
     router.refresh();
   }
 
-  // --- Secondary actions ---------------------------------------------------
-
-  function askFor(action: NonNullable<PendingAction>) {
-    reset();
-    setActionCode('');
-    setActionEmail(false);
-    setPending(action);
-  }
-
-  async function confirmPending(event: React.FormEvent) {
-    event.preventDefault();
-    if (!pending) return;
-
+  async function confirmReset() {
+    if (!resetTarget) return;
     setBusy(true);
-    reset();
+    clearFeedback();
 
-    if (pending.kind === 'code') {
-      const result = await api.post<IssuedCode>(`/api/admins/${pending.row.id}/access-code`, {
-        securityCode: actionCode,
-        emailAccessCode: actionEmail,
-      });
-      setBusy(false);
-      if (!result.ok) {
-        setErrors(result.errors ?? {});
-        setMessage(result.errors ? null : result.message);
-        return;
-      }
-      setPending(null);
-      setIssuedCode(result.data);
-    } else {
-      const result = await api.post<IssuedPassword>(
-        `/api/admins/${pending.row.id}/reset-password`,
-        { securityCode: actionCode },
-      );
-      setBusy(false);
-      if (!result.ok) {
-        setErrors(result.errors ?? {});
-        setMessage(result.errors ? null : result.message);
-        return;
-      }
-      setPending(null);
-      setIssuedPassword(result.data);
+    const result = await api.post<ReissuedPassword>(`/api/admins/${resetTarget.id}/reset-password`);
+
+    setBusy(false);
+    if (!result.ok) {
+      setResetTarget(null);
+      setMessage(result.message);
+      return;
     }
 
-    setActionCode('');
+    setResetTarget(null);
+    setReissued(result.data);
     router.refresh();
   }
 
   async function changeStatus(row: AdminRow, status: 'ACTIVE' | 'SUSPENDED') {
     setBusy(true);
-    reset();
+    clearFeedback();
     const result = await api.post(`/api/admins/${row.id}/status`, { status });
     setBusy(false);
     if (!result.ok) {
@@ -294,32 +191,25 @@ export default function AdminAccountsScreen({
     setNotice(
       succeeded(
         status === 'ACTIVE'
-          ? `${row.name} is active again.`
-          : `${row.name} is suspended. Their sessions and any unused access code have been cancelled.`,
+          ? `${row.name} is active again. Issue them an access code when they need to sign in.`
+          : `${row.name} is suspended. Their sessions and any unused access code have been revoked.`,
       ),
     );
     router.refresh();
   }
 
-  // --- Rendering helpers ---------------------------------------------------
-
-  function CopyButton({ label, value }: { label: string; value: string }) {
+  function CopyButton({ labelText, value }: { labelText: string; value: string }) {
     return (
-      <button
-        type="button"
-        onClick={() => copy(label, value)}
-        className={BUTTON_SECONDARY}
-      >
-        {copied === label ? 'Copied' : `Copy ${label}`}
+      <button type="button" onClick={() => copy(labelText, value)} className={BUTTON_SECONDARY}>
+        {copied === labelText ? 'Copied' : `Copy ${labelText}`}
       </button>
     );
   }
 
-  /** A credential on screen: monospaced, selectable, and clearly one-shot. */
-  function SecretValue({ label, value }: { label: string; value: string }) {
+  function SecretValue({ labelText, value }: { labelText: string; value: string }) {
     return (
       <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{labelText}</p>
         <p className="mt-1 select-all break-all rounded-lg border border-border bg-slate-50 px-3 py-2 font-mono text-sm text-navy-900">
           {value}
         </p>
@@ -331,36 +221,21 @@ export default function AdminAccountsScreen({
     <div className="space-y-6">
       <PageHeader
         title="Admin Accounts"
-        subtitle="Create administrator accounts and issue the one-time access codes they sign in with."
+        subtitle="Create administrator accounts and manage their temporary passwords. Access codes are issued from Admin Access Codes."
         actions={
-          <button type="button" onClick={openCreate} className={BUTTON_PRIMARY} disabled={busy}>
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-            Create Admin
-          </button>
+          <>
+            <Link href="/admin-access-codes" className={BUTTON_SECONDARY}>
+              Admin Access Codes
+            </Link>
+            <button type="button" onClick={openCreate} className={BUTTON_PRIMARY} disabled={busy}>
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              Create Admin
+            </button>
+          </>
         }
       />
-
-      {/*
-        Stated up front rather than only when an action fails. Without the
-        security code nothing on this screen can issue a credential, and
-        finding that out three fields into a form is worse than being told.
-      */}
-      {!securityCodeConfigured && (
-        <Alert type="warning" title="The Super Admin security code is not configured">
-          Creating an administrator, issuing an access code and reissuing a temporary password all
-          require it. Set <code>SUPER_ADMIN_STATIC_CODE</code> in the server environment — it is
-          never stored in this database and never sent to the browser.
-        </Alert>
-      )}
-
-      {!mailConfigured && (
-        <Alert type="warning" title="Email is not configured">
-          Access codes cannot be emailed, so they have to be handed over another way. The code is
-          shown on screen when it is generated, which is the only time it is available.
-        </Alert>
-      )}
 
       {message && <Alert type="danger">{message}</Alert>}
       {notice && <Alert type={notice.tone}>{notice.text}</Alert>}
@@ -369,7 +244,7 @@ export default function AdminAccountsScreen({
         {rows.length === 0 ? (
           <EmptyState
             title="No administrator accounts yet"
-            description="Create one, and hand over the temporary password and access code it produces."
+            description="Create one, then issue them an access code from Admin Access Codes."
           />
         ) : (
           <>
@@ -388,11 +263,8 @@ export default function AdminAccountsScreen({
                 <tbody className="divide-y divide-border">
                   {rows.map((row) => {
                     const isSelf = row.id === currentUserId;
-                    /*
-                     * Usable means it can actually sign in. A never-set-up
-                     * account cannot, whatever its status says, so the only
-                     * action that helps it is Reset password.
-                     */
+                    // Can actually sign in. A never-set-up account cannot,
+                    // whatever its status says.
                     const usable = row.setUp && row.status === 'ACTIVE';
                     return (
                       <tr key={row.id}>
@@ -404,9 +276,7 @@ export default function AdminAccountsScreen({
                             </p>
                           ) : (
                             row.mustChangePassword && (
-                              <p className="text-xs font-normal text-amber-700">
-                                On a temporary password
-                              </p>
+                              <p className="text-xs font-normal text-amber-700">On a temporary password</p>
                             )
                           )}
                         </td>
@@ -427,53 +297,41 @@ export default function AdminAccountsScreen({
                               label={ACCOUNT_STATUS_LABELS[row.status]}
                             />
                           ) : (
-                            // Not "Active": it cannot sign in, and the badge
-                            // must not say otherwise.
                             <Badge status="pending" label="Not set up" />
                           )}
                         </td>
                         <td className="px-6 py-3.5 text-sm text-slate-500">
                           {row.accessCodeExpiresInSeconds === null ? (
-                            <span className="text-slate-400">None issued</span>
+                            <span className="text-slate-400">None active</span>
                           ) : (
-                            /*
-                             * Time remaining, never the code. The code left
-                             * this server once, when it was generated.
-                             */
                             <span className="font-mono text-xs">
-                              Live · {countdown(row.accessCodeExpiresInSeconds)} left
+                              Active · {countdown(row.accessCodeExpiresInSeconds)} left
                             </span>
                           )}
                         </td>
                         <td className="px-6 py-3.5 text-right text-sm">
                           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
-                            {/*
-                              Hidden for oneself, and refused by the server too:
-                              a Super Admin suspending their own account locks
-                              the institution out of its own system.
-                            */}
                             {!isSelf && usable && (
-                              <button
-                                type="button"
-                                onClick={() => askFor({ kind: 'code', row })}
-                                disabled={busy}
-                                className="font-medium text-slate-600 hover:text-indigo-600 disabled:opacity-50"
+                              <Link
+                                href={issueCodeHref(row.id)}
+                                className="font-medium text-slate-600 hover:text-indigo-600"
                               >
-                                Generate code
-                              </button>
+                                Issue code
+                              </Link>
                             )}
-
                             {!isSelf && (
                               <button
                                 type="button"
-                                onClick={() => askFor({ kind: 'password', row })}
+                                onClick={() => {
+                                  clearFeedback();
+                                  setResetTarget(row);
+                                }}
                                 disabled={busy}
                                 className="font-medium text-slate-600 hover:text-indigo-600 disabled:opacity-50"
                               >
                                 Reset password
                               </button>
                             )}
-
                             {!isSelf && row.status === 'ACTIVE' && row.setUp && (
                               <button
                                 type="button"
@@ -484,7 +342,6 @@ export default function AdminAccountsScreen({
                                 Suspend
                               </button>
                             )}
-
                             {!isSelf && row.status !== 'ACTIVE' && row.setUp && (
                               <button
                                 type="button"
@@ -495,7 +352,6 @@ export default function AdminAccountsScreen({
                                 Reactivate
                               </button>
                             )}
-
                             {isSelf && <span className="text-xs text-slate-400">(you)</span>}
                           </div>
                         </td>
@@ -570,11 +426,7 @@ export default function AdminAccountsScreen({
               {revealPassword ? 'Hide' : 'Show'}
             </button>
 
-            {/*
-              The same checklist as every other password field, built from the
-              same PASSWORD_REQUIREMENTS list the server validates against. A
-              temporary password is temporary, not exempt.
-            */}
+            {/* The same PASSWORD_REQUIREMENTS the server validates against. */}
             <ul className="mt-2 space-y-1 text-xs" aria-live="polite">
               {PASSWORD_REQUIREMENTS.map((requirement) => {
                 const met = requirements[requirement.id];
@@ -598,51 +450,17 @@ export default function AdminAccountsScreen({
               type={revealPassword ? 'text' : 'password'}
               className={`${INPUT_CLASS} font-mono`}
               value={form.temporaryPasswordConfirmation}
-              onChange={(e) =>
-                setForm({ ...form, temporaryPasswordConfirmation: e.target.value })
-              }
+              onChange={(e) => setForm({ ...form, temporaryPasswordConfirmation: e.target.value })}
               required
               autoComplete="new-password"
             />
             <FieldError messages={errors.temporaryPasswordConfirmation} />
           </div>
 
-          <label className="flex items-start gap-2 text-sm text-slate-600">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={form.emailAccessCode}
-              onChange={(e) => setForm({ ...form, emailAccessCode: e.target.checked })}
-              disabled={!mailConfigured}
-            />
-            <span>
-              Email the access code to them.
-              <span className="block text-xs text-slate-500">
-                The temporary password is never emailed — hand that over yourself, so one mailbox
-                is never a complete set of credentials.
-              </span>
-            </span>
-          </label>
-
-          <div className="border-t border-border pt-4">
-            <label className={LABEL_CLASS} htmlFor="admin-security-code">
-              Super Admin security code
-            </label>
-            <input
-              id="admin-security-code"
-              type="password"
-              className={INPUT_CLASS}
-              value={form.securityCode}
-              onChange={(e) => setForm({ ...form, securityCode: e.target.value })}
-              required
-              autoComplete="off"
-            />
-            <p className="mt-1 text-xs text-slate-500">
-              Confirms it is you and not a borrowed session. Checked on the server; it is not
-              stored in this database.
-            </p>
-            <FieldError messages={errors.securityCode} />
-          </div>
+          <p className="text-sm text-slate-500">
+            The account is created Active. They will also need an access code to sign in — issue
+            one from Admin Access Codes once the account exists.
+          </p>
 
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={() => setShowCreate(false)} className={BUTTON_SECONDARY}>
@@ -655,190 +473,80 @@ export default function AdminAccountsScreen({
         </form>
       </Modal>
 
-      {/* --- Security code prompt for the secondary actions ------------- */}
+      {/* --- Reset temporary password: confirm -------------------------- */}
 
       <Modal
-        open={pending !== null}
-        onClose={() => setPending(null)}
-        title={pending?.kind === 'code' ? 'Generate access code' : 'Reset temporary password'}
+        open={resetTarget !== null}
+        onClose={() => setResetTarget(null)}
+        title="Reset temporary password"
         maxWidth="sm:max-w-lg"
       >
-        {pending && (
-          <form onSubmit={confirmPending} className="space-y-4">
+        {resetTarget && (
+          <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              For <span className="font-medium text-navy-900">{pending.row.name}</span>{' '}
-              &lt;{pending.row.email}&gt;.
+              For <span className="font-medium text-navy-900">{resetTarget.name}</span>{' '}
+              &lt;{resetTarget.email}&gt;
             </p>
 
-            {pending.kind === 'code' ? (
+            <p className="text-sm text-slate-600">
+              A new temporary password will be generated and shown once. Their sessions are signed
+              out, any unused access code is revoked, and they will choose a permanent password the
+              next time they sign in.
+            </p>
+
+            {!resetTarget.setUp && (
               <Alert type="info">
-                Any unused code this administrator already has is cancelled. The new code is shown
-                once, lasts {accessCodeTtlMinutes} minutes, and works a single time.
-              </Alert>
-            ) : (
-              <Alert type="warning">
-                A new temporary password is generated and shown once. Every session for this
-                account is signed out, any half-finished sign-in is dropped, and they will be asked
-                to choose a permanent password the next time they get in.
-                {!pending.row.setUp && (
-                  <span className="mt-2 block">
-                    This account has never been set up: its address is unconfirmed, which would stop
-                    the new password working. Issuing one confirms the address on your authority and
-                    activates the account — the audit trail records that it was you who confirmed
-                    it, not them.
-                  </span>
-                )}
+                This account has never been set up. Resetting its password also confirms the address
+                on your authority and activates it — the audit trail records that you confirmed it.
               </Alert>
             )}
-
-            {pending.kind === 'code' && (
-              <label className="flex items-center gap-2 text-sm text-slate-600">
-                <input
-                  type="checkbox"
-                  checked={actionEmail}
-                  onChange={(e) => setActionEmail(e.target.checked)}
-                  disabled={!mailConfigured}
-                />
-                Email the code to them as well
-              </label>
-            )}
-
-            <div>
-              <label className={LABEL_CLASS} htmlFor="pending-security-code">
-                Super Admin security code
-              </label>
-              <input
-                id="pending-security-code"
-                type="password"
-                className={INPUT_CLASS}
-                value={actionCode}
-                onChange={(e) => setActionCode(e.target.value)}
-                required
-                autoFocus
-                autoComplete="off"
-              />
-              <FieldError messages={errors.securityCode} />
-            </div>
 
             <div className="flex justify-end gap-3">
-              <button type="button" onClick={() => setPending(null)} className={BUTTON_SECONDARY}>
+              <button type="button" onClick={() => setResetTarget(null)} className={BUTTON_SECONDARY}>
                 Cancel
               </button>
-              <button type="submit" className={BUTTON_PRIMARY} disabled={busy}>
-                {busy ? 'Working…' : pending.kind === 'code' ? 'Generate code' : 'Reset password'}
-              </button>
-            </div>
-          </form>
-        )}
-      </Modal>
-
-      {/* --- One-shot: a created account -------------------------------- */}
-
-      <Modal
-        open={issuedAccount !== null}
-        onClose={() => setIssuedAccount(null)}
-        title="Admin created successfully"
-      >
-        {issuedAccount && (
-          <div className="space-y-4">
-            <Alert type="warning" title="Read this before closing">
-              The password and code below are shown once and cannot be retrieved afterwards — only
-              their hashes are stored. Copy them now. A new code can always be generated; the
-              password would have to be reset.
-            </Alert>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Name</p>
-                <p className="mt-1 text-sm text-navy-900">{issuedAccount.name}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Email</p>
-                <p className="mt-1 break-all text-sm text-navy-900">{issuedAccount.email}</p>
-              </div>
-            </div>
-
-            <SecretValue label="Temporary password" value={issuedAccount.temporaryPassword} />
-            <SecretValue label="Access code" value={issuedAccount.accessCode} />
-
-            <p className="text-sm text-slate-600">
-              Code expires in{' '}
-              <span className="font-mono font-medium text-navy-900">{countdown(secondsLeft)}</span>
-              {secondsLeft === 0 && ' — generate a new one from the table.'}
-            </p>
-
-            {issuedAccount.mailDelivered && (
-              <Alert type="success">The access code has also been emailed to {issuedAccount.email}.</Alert>
-            )}
-            {!issuedAccount.mailDelivered && issuedAccount.mailDetail && (
-              <Alert type="warning">
-                {undelivered('The access code could not be emailed', issuedAccount.mailDetail).text}
-              </Alert>
-            )}
-
-            <div className="flex flex-wrap justify-end gap-3 border-t border-border pt-4">
-              <CopyButton label="password" value={issuedAccount.temporaryPassword} />
-              <CopyButton label="code" value={issuedAccount.accessCode} />
-              <CopyButton
-                label="credentials"
-                value={[
-                  `TDMS administrator account`,
-                  `Name: ${issuedAccount.name}`,
-                  `Email: ${issuedAccount.email}`,
-                  `Temporary password: ${issuedAccount.temporaryPassword}`,
-                  `Access code: ${issuedAccount.accessCode}`,
-                  `The code expires ${accessCodeTtlMinutes} minutes after it was generated and works once.`,
-                  `Change the password as soon as you are in.`,
-                ].join('\n')}
-              />
-              <button
-                type="button"
-                onClick={() => setIssuedAccount(null)}
-                className={BUTTON_PRIMARY}
-              >
-                Done
+              <button type="button" onClick={confirmReset} className={BUTTON_PRIMARY} disabled={busy}>
+                {busy ? 'Resetting…' : 'Reset password'}
               </button>
             </div>
           </div>
         )}
       </Modal>
 
-      {/* --- One-shot: a reissued code ---------------------------------- */}
+      {/* --- One-shot: a created account -------------------------------- */}
 
-      <Modal
-        open={issuedCode !== null}
-        onClose={() => setIssuedCode(null)}
-        title="Access code generated"
-        maxWidth="sm:max-w-lg"
-      >
-        {issuedCode && (
+      <Modal open={created !== null} onClose={() => setCreated(null)} title="Admin created successfully">
+        {created && (
           <div className="space-y-4">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Admin</p>
-              <p className="mt-1 text-sm text-navy-900">{issuedCode.name}</p>
-              <p className="break-all text-sm text-slate-500">{issuedCode.email}</p>
+            <Alert type="warning" title="Shown once">
+              Copy the temporary password now. Only its hash is stored, so it cannot be shown again —
+              it would have to be reset.
+            </Alert>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Name</p>
+                <p className="mt-1 text-sm text-navy-900">{created.name}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Email</p>
+                <p className="mt-1 break-all text-sm text-navy-900">{created.email}</p>
+              </div>
             </div>
 
-            <SecretValue label="Access code" value={issuedCode.accessCode} />
+            <SecretValue labelText="Temporary password" value={created.temporaryPassword} />
 
             <p className="text-sm text-slate-600">
-              Expires in{' '}
-              <span className="font-mono font-medium text-navy-900">{countdown(secondsLeft)}</span>.
-              It works once, and any previous unused code has been cancelled.
+              Next, issue {created.name} an access code. They need the password and the code together
+              to sign in.
             </p>
 
-            {issuedCode.mailDelivered && (
-              <Alert type="success">It has also been emailed to {issuedCode.email}.</Alert>
-            )}
-            {!issuedCode.mailDelivered && issuedCode.mailDetail && (
-              <Alert type="warning">
-                {undelivered('The code could not be emailed', issuedCode.mailDetail).text}
-              </Alert>
-            )}
-
             <div className="flex flex-wrap justify-end gap-3 border-t border-border pt-4">
-              <CopyButton label="code" value={issuedCode.accessCode} />
-              <button type="button" onClick={() => setIssuedCode(null)} className={BUTTON_PRIMARY}>
+              <CopyButton labelText="password" value={created.temporaryPassword} />
+              <Link href={issueCodeHref(created.id)} className={BUTTON_PRIMARY}>
+                Generate access code →
+              </Link>
+              <button type="button" onClick={() => setCreated(null)} className={BUTTON_SECONDARY}>
                 Done
               </button>
             </div>
@@ -849,45 +557,45 @@ export default function AdminAccountsScreen({
       {/* --- One-shot: a reissued temporary password -------------------- */}
 
       <Modal
-        open={issuedPassword !== null}
-        onClose={() => setIssuedPassword(null)}
+        open={reissued !== null}
+        onClose={() => setReissued(null)}
         title="Temporary password reset"
         maxWidth="sm:max-w-lg"
       >
-        {issuedPassword && (
+        {reissued && (
           <div className="space-y-4">
             <Alert type="warning" title="Shown once">
-              Copy it now. Only its hash is stored, so it cannot be shown again — it would have to
-              be reset a second time.
+              Copy it now. Only its hash is stored, so it cannot be shown again.
             </Alert>
 
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Admin</p>
-              <p className="mt-1 text-sm text-navy-900">{issuedPassword.name}</p>
-              <p className="break-all text-sm text-slate-500">{issuedPassword.email}</p>
+              <p className="mt-1 text-sm text-navy-900">{reissued.name}</p>
+              <p className="break-all text-sm text-slate-500">{reissued.email}</p>
             </div>
 
-            <SecretValue label="Temporary password" value={issuedPassword.temporaryPassword} />
+            <SecretValue labelText="Temporary password" value={reissued.temporaryPassword} />
 
-            {issuedPassword.activated && (
+            {reissued.activated && (
               <Alert type="success">
                 The account had never been set up and is now active. You confirmed the address, and
-                the audit trail says so. Generate an access code next.
+                the audit trail says so.
               </Alert>
             )}
 
             <p className="text-sm text-slate-600">
-              They will also need a live access code to sign in. Generate one from the table when
-              you are ready to hand both over.
+              {reissued.codesRevoked > 0
+                ? 'Their unused access code was revoked with the old password. '
+                : ''}
+              They need a new access code to sign in.
             </p>
 
             <div className="flex flex-wrap justify-end gap-3 border-t border-border pt-4">
-              <CopyButton label="password" value={issuedPassword.temporaryPassword} />
-              <button
-                type="button"
-                onClick={() => setIssuedPassword(null)}
-                className={BUTTON_PRIMARY}
-              >
+              <CopyButton labelText="password" value={reissued.temporaryPassword} />
+              <Link href={issueCodeHref(reissued.adminId)} className={BUTTON_PRIMARY}>
+                Generate access code →
+              </Link>
+              <button type="button" onClick={() => setReissued(null)} className={BUTTON_SECONDARY}>
                 Done
               </button>
             </div>

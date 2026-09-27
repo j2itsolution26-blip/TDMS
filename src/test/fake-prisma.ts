@@ -361,7 +361,9 @@ export function createFakePrisma(): FakePrisma {
     auditLog: model('auditLogs'),
     adminAccessCode: model('adminAccessCodes', () => ({
       usedAt: null,
-      invalidatedAt: null,
+      revokedAt: null,
+      revokedReason: null,
+      revokedBy: null,
       attemptCount: 0,
       createdAt: new Date(),
     })),

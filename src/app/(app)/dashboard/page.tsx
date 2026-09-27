@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { requireUser } from '@/server/auth/current-user';
 import { getDashboardData } from '@/server/services/dashboard-service';
-import { studentPolicy, userPolicy, applicationPolicy } from '@/server/auth/policies';
+import { studentPolicy, userPolicy, applicationPolicy, adminAccountPolicy } from '@/server/auth/policies';
+import { adminAccessOverview, type AdminAccessOverview } from '@/server/services/admin-account-service';
 import { Card, StatCard, EmptyState, Badge } from '@/components/ui';
 import { diffForHumans, humanizeAction } from '@/lib/dates';
 
@@ -55,9 +56,93 @@ function weeklyChange(n: number | null): string {
   return n ? `+${n} this week` : 'No change this week';
 }
 
+/**
+ * The Super Admin's control point: Admin accounts and the access codes they
+ * sign in with. Counts and status only — never a code, never the static
+ * security code, only whether it is configured.
+ */
+function AdminAccessPanel({ overview }: { overview: AdminAccessOverview }) {
+  const stat = (label: string, value: number, tone: string) => (
+    <div>
+      <p className="text-sm text-slate-500">{label}</p>
+      <p className={`mt-1 text-2xl font-semibold ${tone}`}>{value}</p>
+    </div>
+  );
+
+  return (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <Card className="lg:col-span-2">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Admin access</p>
+            <h2 className="mt-1 text-base font-semibold text-navy-900">Admin Access Codes</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Admins sign in with their password and a one-time code issued here.
+            </p>
+          </div>
+          <span className="rounded-lg bg-indigo-50 p-2 text-indigo-600">{ICON.shield}</span>
+        </div>
+
+        <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {stat('Active Admins', overview.activeAdmins, 'text-navy-900')}
+          {stat('Active Access Codes', overview.activeCodes, 'text-green-700')}
+          {stat('Expired Codes', overview.expiredCodes, 'text-slate-600')}
+          {stat('Used Codes', overview.usedCodes, 'text-blue-700')}
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-3">
+          <Link
+            href="/admin-access-codes"
+            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+          >
+            Manage Access Codes
+          </Link>
+          <Link
+            href="/admin-access-codes?generate=new"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            {ICON.plus} Generate Access Code
+          </Link>
+          <Link
+            href="/admins"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Admin Accounts
+          </Link>
+        </div>
+      </Card>
+
+      <Card>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Root security</p>
+        <h2 className="mt-1 text-base font-semibold text-navy-900">Super Admin security code</h2>
+        <p className="mt-3">
+          {overview.securityCodeConfigured ? (
+            <Badge status="active" label="Configured" />
+          ) : (
+            <Badge status="pending" label="Not configured" />
+          )}
+        </p>
+        <p className="mt-3 text-sm text-slate-500">
+          A separate, root-level secret. It is not an Admin login code and is never asked for when
+          issuing codes or resetting passwords.{' '}
+          {overview.securityCodeConfigured
+            ? 'Its value is held in the server environment and is never shown here.'
+            : (
+              <>
+                Set <code className="text-xs">SUPER_ADMIN_STATIC_CODE</code> in the server
+                environment to configure it.
+              </>
+            )}
+        </p>
+      </Card>
+    </div>
+  );
+}
+
 export default async function DashboardPage() {
   const user = await requireUser();
   const data = await getDashboardData(user);
+  const accessOverview = adminAccountPolicy.manageAccessCodes(user) ? await adminAccessOverview() : null;
   const s = data.stats;
 
   const showKpis =
@@ -81,6 +166,8 @@ export default async function DashboardPage() {
           Here&apos;s what&apos;s happening in your TDMS account today — {data.today}.
         </p>
       </div>
+
+      {accessOverview && <AdminAccessPanel overview={accessOverview} />}
 
       {data.student && (
         <>

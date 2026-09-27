@@ -114,8 +114,8 @@ hidden from them), and nobody can suspend or deactivate their own account.
   needed a reset.
 - Before deploying, read the security note in
   [migration.md](docs/migration.md) about the demo accounts.
-- **Administrator accounts** are created by a Super Admin, who sets a temporary
-  password and issues a one-time access code. There is no approval queue. The
-  three credential-issuing actions need `SUPER_ADMIN_STATIC_CODE` in the server
-  environment and refuse until it is set — see
-  [admin-accounts.md](docs/admin-accounts.md).
+- **Administrator accounts** are created by a Super Admin from the dashboard.
+  Admins sign in with email, password, and a one-time access code the Super
+  Admin issues from **Admin Access Codes**. There is no approval queue and no
+  invitation. `SUPER_ADMIN_STATIC_CODE` is a separate root secret that no
+  routine action asks for — see [admin-accounts.md](docs/admin-accounts.md).

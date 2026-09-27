@@ -366,26 +366,18 @@ export const accountStatusChangeSchema = z.object({
 
 // --- Administrator accounts and access codes -------------------------------
 
-/**
- * The static Super Admin security code, as submitted.
- *
- * Only shape is checked: present, and bounded so a multi-megabyte string
- * cannot be fed to the hash. Nothing here knows or asserts anything about
- * the real code's length or contents — a schema that did would be a hint
- * about the secret sitting in the client bundle.
+/*
+ * No field here asks for the static Super Admin security code. The signed-in
+ * Super Admin Dashboard is the trust boundary for these operations, and that
+ * code is a separate server-only secret that is never typed into a form.
  */
-export const securityCodeSchema = z
-  .string()
-  .min(1, 'Enter the Super Admin security code.')
-  .max(200, 'That security code is too long.');
 
 /**
  * Creating an Admin account.
  *
  * The temporary password goes through the SAME `strongPassword` rule as any
  * other password in the system. It is temporary, not exempt: it is a live
- * credential from the moment it is created, and "it will be changed soon" is
- * how a weak one ends up surviving for a year.
+ * credential from the moment it is created.
  */
 export const createAdminSchema = z
   .object({
@@ -393,24 +385,29 @@ export const createAdminSchema = z
     email: institutionalEmail,
     temporaryPassword: strongPassword,
     temporaryPasswordConfirmation: z.string(),
-    securityCode: securityCodeSchema,
-    /** Also email the access code to them. Never the password. */
-    emailAccessCode: z.boolean().default(false),
   })
   .refine((d) => d.temporaryPassword === d.temporaryPasswordConfirmation, {
     message: 'The password confirmation does not match.',
     path: ['temporaryPasswordConfirmation'],
   });
 
-/** Issuing or re-issuing an access code for an existing Admin. */
+/**
+ * Generating an access code from the dashboard: which Admin, for how long.
+ *
+ * The expiry is bounded here (1–60 minutes) and then snapped to one of the
+ * offered options in the service, so a hand-made request cannot mint a
+ * long-lived code.
+ */
 export const generateAccessCodeSchema = z.object({
-  securityCode: securityCodeSchema,
+  adminId: idSchema,
+  expiresInMinutes: z.coerce
+    .number()
+    .int()
+    .min(1, 'Choose how long the code should last.')
+    .max(60, 'An access code can last at most an hour.')
+    .optional(),
+  /** Also email the code to them. Never the password. */
   emailAccessCode: z.boolean().default(false),
-});
-
-/** Replacing an Admin's temporary password with a fresh one. */
-export const resetAdminPasswordSchema = z.object({
-  securityCode: securityCodeSchema,
 });
 
 /**

@@ -16,14 +16,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 /**
  * POST /api/admins — create an administrator account.
  *
- * The response is the ONLY time the temporary password and the first access
- * code exist outside the Super Admin's screen. Both are returned in plaintext
- * here by design, because they have to be handed over; only their bcrypt
- * hashes are stored, and neither can be retrieved again afterwards.
- *
- * 201, and deliberately not cached anywhere: the route is dynamic, the
- * response has no cache headers that would let it be replayed, and the client
- * shows it once without persisting it.
+ * The response carries the temporary password in plaintext exactly once, so it
+ * can be handed over; only its bcrypt hash is stored. No access code is issued
+ * here — that is done from the dashboard's Admin Access Codes, as its own step.
  */
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const user = await requireApiUser();
@@ -32,13 +27,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   const result = await createAdminAccount(
     user,
-    {
-      name: input.name,
-      email: input.email,
-      temporaryPassword: input.temporaryPassword,
-      securityCode: input.securityCode,
-      emailAccessCode: input.emailAccessCode,
-    },
+    { name: input.name, email: input.email, temporaryPassword: input.temporaryPassword },
     requestContext(request),
   );
 

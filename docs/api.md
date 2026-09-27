@@ -115,20 +115,21 @@ refuses outright unless the pending registration's `verified_at` is set. See
 
 Added after the Laravel migration, so these have no Livewire ancestor. Every
 route here is **Super Admin only** — checked with `isSuperAdmin` directly rather
-than through `accounts.manage`, which the `admin` role holds. The
-three that issue a credential additionally require the static Super Admin
-security code in the body. See
-[admin-accounts.md](admin-accounts.md).
+than through `accounts.manage`, which the `admin` role holds. None asks for the
+static Super Admin security code. See [admin-accounts.md](admin-accounts.md).
 
-| Endpoint                                | Does                                        | Needs security code |
-| --------------------------------------- | ------------------------------------------- | ------------------- |
-| `GET /api/admins?page=`                 | List administrator accounts                 | no                  |
-| `POST /api/admins`                      | Create one, with a temporary password and a first access code | **yes** |
-| `POST /api/admins/:id/access-code`      | Issue a code, cancelling any unused one     | **yes**             |
-| `POST /api/admins/:id/reset-password`   | Issue a fresh temporary password            | **yes**             |
-| `POST /api/admins/:id/status`           | Suspend or reactivate                       | no                  |
+| Endpoint                                     | Does                                              |
+| -------------------------------------------- | ------------------------------------------------- |
+| `GET /api/admins?page=`                      | List Admin accounts                               |
+| `POST /api/admins`                           | Create one with a temporary password (no code)    |
+| `POST /api/admins/:id/reset-password`        | New temporary password; revokes live codes; no body |
+| `POST /api/admins/:id/status`                | Suspend or reactivate                             |
+| `GET /api/admin-access-codes?page=`          | List codes with status — never the code           |
+| `POST /api/admin-access-codes`               | `{ adminId, expiresInMinutes?, emailAccessCode? }` — issue a code |
+| `GET /api/admin-access-codes/:id`            | View one code's history — never the code          |
+| `POST /api/admin-access-codes/:id/revoke`    | Revoke an ACTIVE code (409 otherwise)             |
 
-The create and access-code responses carry the plaintext password and code
+The create and generate responses carry the plaintext password or code
 **once**; only bcrypt hashes are stored and neither can be fetched again.
 
 The sign-in half is reachable **without a session** — the caller has passed the

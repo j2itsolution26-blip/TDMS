@@ -1,9 +1,9 @@
 import type { NextRequest } from 'next/server';
 import { ok } from '@/lib/http';
-import { withErrorHandling, parseJson, requestContext } from '@/server/api-handler';
+import { withErrorHandling, requestContext } from '@/server/api-handler';
 import { requireApiUser, authorize } from '@/server/auth/current-user';
 import { adminAccountPolicy } from '@/server/auth/policies';
-import { resetAdminPasswordSchema, idSchema } from '@/server/validation/schemas';
+import { idSchema } from '@/server/validation/schemas';
 import { resetAdminTemporaryPassword } from '@/server/services/admin-account-service';
 
 type Params = { params: Promise<{ id: string }> };
@@ -11,11 +11,10 @@ type Params = { params: Promise<{ id: string }> };
 /**
  * POST /api/admins/:id/reset-password — issue a fresh temporary password.
  *
- * Generated on the server, not chosen here: this exists for "they have lost
- * it", and there is no reason for the replacement to be picked by hand. Every
- * session and any half-finished sign-in for that account is dropped, because
- * the usual reason for doing this is that the old credential is in the wrong
- * hands.
+ * No body and no security code: the signed-in Super Admin is the authority.
+ * The password is generated on the server and returned once. Every session,
+ * any half-finished sign-in and any unspent access code for that Admin are
+ * ended with it.
  */
 export const POST = withErrorHandling(async (request: NextRequest, { params }: Params) => {
   const user = await requireApiUser();
@@ -26,14 +25,5 @@ export const POST = withErrorHandling(async (request: NextRequest, { params }: P
     adminAccountPolicy.resetTemporaryPassword(user, { id: targetId.toString(), roles: [] }),
   );
 
-  const input = await parseJson(request, resetAdminPasswordSchema);
-
-  return ok(
-    await resetAdminTemporaryPassword(
-      user,
-      targetId,
-      { securityCode: input.securityCode },
-      requestContext(request),
-    ),
-  );
+  return ok(await resetAdminTemporaryPassword(user, targetId, requestContext(request)));
 });

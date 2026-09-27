@@ -230,16 +230,19 @@ export const adminAccountPolicy = {
   viewAny: (u: AuthUser) => isSuperAdmin(u),
   create: (u: AuthUser) => isSuperAdmin(u),
 
-  /** Issue or re-issue an access code for an Admin. */
-  generateAccessCode: (u: AuthUser, target: TargetUser) =>
-    isSuperAdmin(u) && target.id !== u.id,
-
   /** Replace an Admin's password with a fresh temporary one. */
   resetTemporaryPassword: (u: AuthUser, target: TargetUser) =>
     isSuperAdmin(u) && target.id !== u.id,
 
   /** Suspend or reactivate. Reversible, and never against oneself. */
   setStatus: (u: AuthUser, target: TargetUser) => isSuperAdmin(u) && target.id !== u.id,
+
+  /**
+   * The Access Codes page: list, view, generate, revoke. The service refuses
+   * any target that is not an ordinary Admin, so a Super Admin can never issue
+   * a code to themselves or to another Super Admin.
+   */
+  manageAccessCodes: (u: AuthUser) => isSuperAdmin(u),
 };
 
 /**

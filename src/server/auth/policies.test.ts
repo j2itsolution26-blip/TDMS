@@ -234,7 +234,7 @@ describe('adminAccountPolicy', () => {
   it('is Super Admin only, for every operation', () => {
     expect(adminAccountPolicy.viewAny(superAdmin)).toBe(true);
     expect(adminAccountPolicy.create(superAdmin)).toBe(true);
-    expect(adminAccountPolicy.generateAccessCode(superAdmin, targetAdmin)).toBe(true);
+    expect(adminAccountPolicy.manageAccessCodes(superAdmin)).toBe(true);
     expect(adminAccountPolicy.resetTemporaryPassword(superAdmin, targetAdmin)).toBe(true);
     expect(adminAccountPolicy.setStatus(superAdmin, targetAdmin)).toBe(true);
   });
@@ -250,7 +250,7 @@ describe('adminAccountPolicy', () => {
 
     expect(adminAccountPolicy.viewAny(admin)).toBe(false);
     expect(adminAccountPolicy.create(admin)).toBe(false);
-    expect(adminAccountPolicy.generateAccessCode(admin, targetAdmin)).toBe(false);
+    expect(adminAccountPolicy.manageAccessCodes(admin)).toBe(false);
     expect(adminAccountPolicy.resetTemporaryPassword(admin, targetAdmin)).toBe(false);
     expect(adminAccountPolicy.setStatus(admin, targetAdmin)).toBe(false);
   });
@@ -265,7 +265,7 @@ describe('adminAccountPolicy', () => {
     for (const principal of [coordinator, secretary, teacher, student]) {
       expect(adminAccountPolicy.viewAny(principal)).toBe(false);
       expect(adminAccountPolicy.create(principal)).toBe(false);
-      expect(adminAccountPolicy.generateAccessCode(principal, targetAdmin)).toBe(false);
+      expect(adminAccountPolicy.manageAccessCodes(principal)).toBe(false);
     }
   });
 
@@ -278,7 +278,6 @@ describe('adminAccountPolicy', () => {
      */
     const self = { id: superAdmin.id, roles: ['super_admin'] };
     expect(adminAccountPolicy.setStatus(superAdmin, self)).toBe(false);
-    expect(adminAccountPolicy.generateAccessCode(superAdmin, self)).toBe(false);
     expect(adminAccountPolicy.resetTemporaryPassword(superAdmin, self)).toBe(false);
   });
 });

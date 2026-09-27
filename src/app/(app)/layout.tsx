@@ -65,6 +65,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       icon: 'admins',
     });
   }
+  if (adminAccountPolicy.manageAccessCodes(user)) {
+    items.push({
+      label: 'Access Codes',
+      href: '/admin-access-codes',
+      match: ['/admin-access-codes'],
+      icon: 'keys',
+    });
+  }
 
   return (
     <div className="min-h-screen">

@@ -33,6 +33,10 @@ const {
   accessCodeMaxAttempts,
   loginChallengeTtlMinutes,
   accessCodeExpiryFrom,
+  accessCodeStatus,
+  accessCodeExpiryOptions,
+  resolveAccessCodeMinutes,
+  MAX_ACCESS_CODE_MINUTES,
   secondsUntil,
   ACCESS_CODE_LENGTH,
 } = await import('./admin-access-code');
@@ -62,7 +66,7 @@ function live(overrides: Partial<Parameters<typeof accessCodeRefusal>[0]> = {}) 
   return {
     expiresAt: new Date(Date.now() + 60_000),
     usedAt: null,
-    invalidatedAt: null,
+    revokedAt: null,
     attemptCount: 0,
     maxAttempts: 5,
     ...overrides,
@@ -151,7 +155,7 @@ describe('lifecycle', () => {
   });
 
   it('refuses a cancelled code', () => {
-    expect(accessCodeRefusal(live({ invalidatedAt: new Date() }))).toBe('invalidated');
+    expect(accessCodeRefusal(live({ revokedAt: new Date() }))).toBe('revoked');
   });
 
   it('refuses an expired code, on the boundary as well as past it', () => {
@@ -229,5 +233,40 @@ describe('configuration', () => {
   it('floors a countdown at zero rather than going negative', () => {
     const now = new Date();
     expect(secondsUntil(new Date(now.getTime() - 60_000), now)).toBe(0);
+  });
+});
+
+describe('dashboard status', () => {
+  it('shows the four states the dashboard uses, and only those', () => {
+    const now = new Date();
+    expect(accessCodeStatus(live(), now)).toBe('ACTIVE');
+    expect(accessCodeStatus(live({ usedAt: now }), now)).toBe('USED');
+    expect(accessCodeStatus(live({ expiresAt: new Date(now.getTime() - 1) }), now)).toBe('EXPIRED');
+    expect(accessCodeStatus(live({ revokedAt: now }), now)).toBe('REVOKED');
+  });
+
+  it('shows a code burnt by wrong guesses as REVOKED, not EXPIRED', () => {
+    expect(accessCodeStatus(live({ attemptCount: 5, maxAttempts: 5 }))).toBe('REVOKED');
+  });
+});
+
+describe('choosing an expiry', () => {
+  it('offers the configured default among the options', () => {
+    process.env.ADMIN_ACCESS_CODE_EXPIRATION_MINUTES = '7';
+    expect(accessCodeExpiryOptions()).toContain(7);
+    expect(resolveAccessCodeMinutes(undefined)).toBe(7);
+  });
+
+  it('honours an offered option and ignores anything else', () => {
+    expect(resolveAccessCodeMinutes(30)).toBe(30);
+    // Not offered, so it falls back rather than being trusted.
+    expect(resolveAccessCodeMinutes(10_080)).toBe(10);
+    expect(resolveAccessCodeMinutes(-5)).toBe(10);
+  });
+
+  it('never exceeds an hour, even if the default is configured higher', () => {
+    process.env.ADMIN_ACCESS_CODE_EXPIRATION_MINUTES = '600';
+    expect(resolveAccessCodeMinutes(undefined)).toBe(MAX_ACCESS_CODE_MINUTES);
+    expect(Math.max(...accessCodeExpiryOptions())).toBe(MAX_ACCESS_CODE_MINUTES);
   });
 });

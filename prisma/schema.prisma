@@ -86,6 +86,7 @@ model User {
   enrollmentChanges       EnrollmentStatusHistory[] @relation("EnrollmentStatusActor")
   accessCodes             AdminAccessCode[]         @relation("AdminAccessCodeSubject")
   issuedAccessCodes       AdminAccessCode[]         @relation("AdminAccessCodeIssuer")
+  revokedAccessCodes      AdminAccessCode[]         @relation("AdminAccessCodeRevoker")
   loginChallenges         AdminLoginChallenge[]
 
   @@map("users")
@@ -215,10 +216,11 @@ model PendingAdminRegistration {
 ///   * `usedAt` is what makes the code single use. It is stamped inside the
 ///     same transaction that creates the session, so two requests racing on
 ///     one code cannot both win.
-///   * `invalidatedAt` is a different fact from `usedAt`: it marks a code
-///     that was superseded by a newer one, or burnt by too many wrong
-///     guesses. Keeping them apart is what lets the audit trail say which
-///     happened.
+///   * `revokedAt` is a different fact from `usedAt`: the code was withdrawn
+///     before anyone used it — by a Super Admin, by a newer code superseding
+///     it, by too many wrong guesses, or by the account being suspended or
+///     its password reset. `revokedReason` says which and `revokedBy` who, so
+///     the dashboard and the audit trail can tell them apart.
 ///   * `attemptCount` / `maxAttempts` are the per-code guess budget. At this
 ///     entropy the attempt cap, not the length, is what protects the code.
 ///
@@ -233,7 +235,11 @@ model AdminAccessCode {
   codeHash      String    @map("code_hash") @db.VarChar(255)
   expiresAt     DateTime  @map("expires_at")
   usedAt        DateTime? @map("used_at")
-  invalidatedAt DateTime? @map("invalidated_at")
+  revokedAt     DateTime? @map("revoked_at")
+  /// revoked | superseded | attempts_exhausted | account_suspended | password_reset
+  revokedReason String?   @map("revoked_reason") @db.VarChar(32)
+  /// The Super Admin who revoked it by hand. Null for automatic revocations.
+  revokedBy     BigInt?   @map("revoked_by")
   attemptCount  Int       @default(0) @map("attempt_count")
   /// Copied from configuration at issue time, so changing the limit later
   /// cannot retroactively revive a code that was already burnt.
@@ -243,8 +249,9 @@ model AdminAccessCode {
   createdBy     BigInt?   @map("created_by")
   createdAt     DateTime  @default(now()) @map("created_at")
 
-  admin  User  @relation("AdminAccessCodeSubject", fields: [adminUserId], references: [id], onDelete: Cascade)
-  issuer User? @relation("AdminAccessCodeIssuer", fields: [createdBy], references: [id], onDelete: SetNull)
+  admin   User  @relation("AdminAccessCodeSubject", fields: [adminUserId], references: [id], onDelete: Cascade)
+  issuer  User? @relation("AdminAccessCodeIssuer", fields: [createdBy], references: [id], onDelete: SetNull)
+  revoker User? @relation("AdminAccessCodeRevoker", fields: [revokedBy], references: [id], onDelete: SetNull)
 
   @@index([adminUserId])
   @@index([expiresAt])

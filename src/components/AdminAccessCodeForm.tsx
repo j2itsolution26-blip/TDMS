@@ -261,9 +261,9 @@ export default function AdminAccessCodeForm() {
 
       setNotice(
         result.data.notified
-          ? 'The system administrator has been told you need a new code. They will pass it on to you.'
+          ? 'The Super Admin has been told you need a new code. They will issue one from their dashboard and pass it on to you.'
           : (result.data.detail ??
-            'Your request has been recorded. Please contact the system administrator for a new code.'),
+            'Your request has been recorded. Please contact the Super Admin for a new code.'),
       );
     });
   }
@@ -288,15 +288,15 @@ export default function AdminAccessCodeForm() {
 
   return (
     <div>
-      <p className="tdms-verify-title">Administrator verification</p>
+      <p className="tdms-verify-title">Administrator Access Verification</p>
       <p className="tdms-verify-lead">
-        Your administrator account needs an access code from the system administrator.
+        Your account requires an access code issued by the Super Admin.
         <span className="tdms-verify-email">{challenge.email}</span>
       </p>
 
       <form onSubmit={submit}>
         <div className="tdms-field">
-          <label htmlFor="access-code-0">Enter your {CODE_LENGTH}-digit access code</label>
+          <label htmlFor="access-code-0">Enter Access Code</label>
           <div className="tdms-code-inputs">
             {code.map((digit, index) => (
               <input
@@ -345,7 +345,7 @@ export default function AdminAccessCodeForm() {
             ? `Code expires in ${formatCountdown(codeSeconds!)}`
             : codeSeconds === null
               ? 'No access code has been issued for your account yet.'
-              : 'That access code has expired. Ask for a new one.'}
+              : 'That access code has expired. Ask the Super Admin for a new one.'}
         </p>
 
         {hasLiveCode && challenge.attemptsRemaining < 3 && (
@@ -376,7 +376,7 @@ export default function AdminAccessCodeForm() {
           not have one.
         */}
         <p className="tdms-resend__timer">
-          This asks the system administrator to issue one. It cannot create a code itself.
+          This asks the Super Admin to issue one. It cannot create a code itself.
           {!challenge.canRequestNewCode &&
             ' Email is not configured on this deployment, so contact them directly.'}
         </p>

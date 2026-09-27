@@ -158,7 +158,7 @@ async function loadCurrentCode(userId: bigint) {
       codeHash: true,
       expiresAt: true,
       usedAt: true,
-      invalidatedAt: true,
+      revokedAt: true,
       attemptCount: true,
       maxAttempts: true,
     },
@@ -251,12 +251,11 @@ export interface AccessCodeVerified {
 }
 
 const REFUSAL_MESSAGES: Record<NonNullable<ReturnType<typeof accessCodeRefusal>>, string> = {
-  used: 'That access code has already been used. Ask the system administrator for a new one.',
-  invalidated:
-    'That access code has been cancelled. Ask the system administrator for a new one.',
-  expired: 'That access code has expired. Ask the system administrator for a new one.',
+  used: 'That access code has already been used. Ask the Super Admin for a new one.',
+  revoked: 'That access code has been revoked. Ask the Super Admin for a new one.',
+  expired: 'That access code has expired. Ask the Super Admin for a new one.',
   exhausted:
-    'Too many incorrect attempts were made against that code, so it has been cancelled. Ask the system administrator for a new one.',
+    'Too many incorrect attempts were made against that code, so it has been revoked. Ask the Super Admin for a new one.',
 };
 
 export async function verifyAdminAccessCode(
@@ -324,7 +323,7 @@ export async function verifyAdminAccessCode(
       context,
     });
     throw new AppError(
-      'No access code has been issued for this account yet. Ask the system administrator for one.',
+      'No access code has been issued for this account yet. Ask the Super Admin for one.',
       422,
       undefined,
       'NO_ACCESS_CODE',
@@ -334,7 +333,7 @@ export async function verifyAdminAccessCode(
   const refusal = accessCodeRefusal(code);
   if (refusal) {
     await recordAudit({
-      action: refusal === 'expired' ? 'ADMIN_ACCESS_CODE_EXPIRED' : 'ADMIN_LOGIN_FAILED',
+      action: refusal === 'expired' ? 'ACCESS_CODE_EXPIRED' : 'ADMIN_LOGIN_FAILED',
       actor: `${admin.name} <${admin.email}>`,
       target: `${admin.name} <${admin.email}>`,
       details: { reason: refusal },
@@ -361,8 +360,8 @@ export async function verifyAdminAccessCode(
     const burnt = updated.attemptCount >= updated.maxAttempts;
     if (burnt) {
       await prisma.adminAccessCode.updateMany({
-        where: { id: code.id, usedAt: null, invalidatedAt: null },
-        data: { invalidatedAt: new Date(), codeHash: '' },
+        where: { id: code.id, usedAt: null, revokedAt: null },
+        data: { revokedAt: new Date(), revokedReason: 'attempts_exhausted', codeHash: '' },
       });
     }
 
@@ -373,7 +372,7 @@ export async function verifyAdminAccessCode(
       details: {
         reason: 'incorrect_access_code',
         attempts_used: updated.attemptCount,
-        code_invalidated: burnt,
+        code_revoked: burnt,
       },
       context,
     });
@@ -400,7 +399,7 @@ export async function verifyAdminAccessCode(
   const now = new Date();
 
   const claimedCode = await prisma.adminAccessCode.updateMany({
-    where: { id: code.id, usedAt: null, invalidatedAt: null },
+    where: { id: code.id, usedAt: null, revokedAt: null },
     data: { usedAt: now },
   });
   if (claimedCode.count !== 1) {
@@ -429,7 +428,7 @@ export async function verifyAdminAccessCode(
   await clearChallengeHandle();
 
   await recordAudit({
-    action: 'ADMIN_ACCESS_CODE_USED',
+    action: 'ACCESS_CODE_USED',
     actor: `${admin.name} <${admin.email}>`,
     target: `${admin.name} <${admin.email}>`,
     details: { code_id: code.id.toString() },

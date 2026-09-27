@@ -69,12 +69,13 @@ export async function sendSuperAdminCodeEmail(params: {
 
   return sendMail({
     to: params.to,
-    subject: 'Verify your Super Admin account',
+    subject: 'Verify your administrator account',
     text: [
       `Hello ${params.name},`,
       '',
-      'You requested to create a Super Admin account for TDMS, the TVET',
-      'Diploma Management System at Asian College of Science and Technology.',
+      'You requested to create the first administrator account for TDMS, the',
+      'TVET Diploma Management System at Asian College of Science and',
+      'Technology.',
       '',
       'Your verification code is:',
       '',
@@ -82,7 +83,7 @@ export async function sendSuperAdminCodeEmail(params: {
       '',
       `This code expires in ${minutes} minutes and can be used once.`,
       '',
-      'If you did not request this account, you can safely ignore this email.',
+      'If you did not initiate this setup, you can safely ignore this email.',
       'Nothing has been created, and no account exists until this code is',
       'entered.',
       '',

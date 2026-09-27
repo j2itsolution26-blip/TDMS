@@ -88,6 +88,17 @@ function matches(row: Row, where: Row | undefined): boolean {
        * unverified row — which is a pruning query that deletes registrations
        * somebody is still using.
        */
+      if ('in' in operators) {
+        const allowed = operators.in as unknown[];
+        // Compared as strings so a BigInt id matches its own value.
+        if (!allowed.some((candidate) => String(candidate) === String(value))) return false;
+      }
+
+      if ('startsWith' in operators) {
+        if (typeof value !== 'string') return false;
+        if (!value.startsWith(String(operators.startsWith))) return false;
+      }
+
       if ('lte' in operators) {
         if (value === null || value === undefined) return false;
         const bound = operators.lte as Date | number;
@@ -105,7 +116,7 @@ function matches(row: Row, where: Row | undefined): boolean {
       }
 
       const unsupported = Object.keys(operators).filter(
-        (op) => !['not', 'lte', 'gte'].includes(op),
+        (op) => !['not', 'lte', 'gte', 'in', 'startsWith'].includes(op),
       );
       if (unsupported.length > 0) {
         throw new Error(`fake-prisma: unsupported operator(s) ${unsupported.join(', ')}`);
@@ -181,6 +192,9 @@ export function createFakePrisma(): FakePrisma {
 
       findFirst: async ({ where }: { where?: Row }) =>
         clone(table(name).find((row) => matches(row, where)) ?? null),
+
+      findMany: async ({ where }: { where?: Row } = {}) =>
+        clone(table(name).filter((row) => matches(row, where))),
 
       create: async ({ data }: { data: Row }) => {
         const row: Row = { id: nextId++, ...defaults(), ...data };

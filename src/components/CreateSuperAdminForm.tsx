@@ -40,10 +40,18 @@ function formatCountdown(totalSeconds: number): string {
 }
 
 export default function CreateSuperAdminForm({
-  domain,
+  domainRestricted,
+  allowedDomain,
   mailProblem,
 }: {
-  domain: string;
+  /**
+   * Whether the institutional domain is enforced, from
+   * GOOGLE_DOMAIN_RESTRICTION_ENABLED. Resolved on the server and passed in,
+   * so this form and the endpoint behind it apply the same rule.
+   */
+  domainRestricted: boolean;
+  /** The domain enforced when the restriction is on. */
+  allowedDomain: string;
   /**
    * An administrator-facing configuration error, or null when mail is ready.
    * Names environment variables; never their values.
@@ -95,16 +103,35 @@ export default function CreateSuperAdminForm({
   const confirmationTouched = form.passwordConfirmation.length > 0;
   const passwordsMatch = form.password === form.passwordConfirmation;
 
-  const emailLooksInstitutional = useMemo(() => {
+  /**
+   * Is the address acceptable?
+   *
+   * Well-formedness is always required. The domain is required only when the
+   * restriction is on — and that is the whole point of taking the policy as a
+   * prop: hard-coding the institutional domain here made the button refuse
+   * addresses the server was perfectly willing to accept, which is exactly
+   * what "restriction disabled for development" is supposed to permit.
+   *
+   * This is a convenience for the person typing. The rule is enforced on the
+   * server, by the same policy module, on every request.
+   */
+  const emailAcceptable = useMemo(() => {
     const value = form.email.trim().toLowerCase();
+    if (/\s/.test(value)) return false;
+
     const at = value.lastIndexOf('@');
-    if (at <= 0) return false;
-    return value.slice(at + 1) === domain.toLowerCase() && !/\s/.test(value);
-  }, [form.email, domain]);
+    if (at <= 0 || at === value.length - 1) return false;
+
+    const domain = value.slice(at + 1);
+    if (domainRestricted) return domain === allowedDomain.toLowerCase();
+
+    // A dot in the domain, so "a@b" does not read as complete while typing.
+    return /^[^.]+(\.[^.]+)+$/.test(domain);
+  }, [form.email, domainRestricted, allowedDomain]);
 
   const detailsComplete =
     form.name.trim().length > 0 &&
-    emailLooksInstitutional &&
+    emailAcceptable &&
     passwordComplete &&
     confirmationTouched &&
     passwordsMatch;
@@ -461,19 +488,28 @@ export default function CreateSuperAdminForm({
           </div>
 
           <div className="tdms-field">
-            <label htmlFor="email">Institutional Email</label>
+            <label htmlFor="email">{domainRestricted ? 'Institutional Email' : 'Email Address'}</label>
             <div className="tdms-input-wrap">
               <input
                 id="email"
                 type="email"
                 required
                 autoComplete="username"
-                placeholder={`name@${domain}`}
+                placeholder={domainRestricted ? `name@${allowedDomain}` : 'you@example.com'}
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
               />
             </div>
-            <p className="mt-1 text-xs text-slate-500">Must be an @{domain} address.</p>
+            {/*
+              The hint states the rule actually in force. Saying "must be an
+              @institution address" while the server accepts any address is
+              how a setup screen ends up looking broken.
+            */}
+            <p className="mt-1 text-xs text-slate-500">
+              {domainRestricted
+                ? `Must be an @${allowedDomain} address.`
+                : `The verification code is sent here, so use an inbox you can read. The @${allowedDomain} restriction is currently off for development.`}
+            </p>
             <FieldError messages={errors.email} />
           </div>
 
@@ -590,7 +626,7 @@ export default function CreateSuperAdminForm({
           {!detailsComplete && !busy && (
             <p className="tdms-submit-hint">
               Complete every password requirement to continue. We will email a verification code to
-              your institutional address.
+              the address above.
             </p>
           )}
         </form>

@@ -284,3 +284,75 @@ describe('verificationCodeSchema', () => {
     }
   });
 });
+
+/**
+ * First-administrator registration with the domain restriction OFF.
+ *
+ * The outer beforeEach in this file forces the restriction ON, because most of
+ * these assertions are about lookalike domains. This block turns it off, which
+ * is the development setting the system currently runs under, and checks that
+ * the switch actually reaches the registration schema — the server accepting a
+ * personal address while the form refused to submit one was the whole
+ * complaint.
+ *
+ * Well-formedness is NOT part of the switch. It is always enforced.
+ */
+describe('superAdminRegistrationSchema with the domain restriction disabled', () => {
+  const valid = {
+    name: 'James C. Tan',
+    email: 'jctan@asiancollege.edu.ph',
+    password: 'Institution#2026',
+    passwordConfirmation: 'Institution#2026',
+  };
+
+  beforeEach(() => {
+    process.env.GOOGLE_DOMAIN_RESTRICTION_ENABLED = 'false';
+  });
+
+  it('accepts a development address on any domain', () => {
+    for (const email of [
+      'developer@gmail.com',
+      'jm.tan@outlook.com',
+      'tester+setup@example.dev',
+      'first.admin@asiancollege.edu.ph',
+    ]) {
+      const result = superAdminRegistrationSchema.safeParse({ ...valid, email });
+      expect(result.success, email).toBe(true);
+    }
+  });
+
+  it('still normalises the address it stores', () => {
+    const parsed = superAdminRegistrationSchema.parse({
+      ...valid,
+      email: '  Developer@Gmail.COM ',
+    });
+    expect(parsed.email).toBe('developer@gmail.com');
+  });
+
+  it('still rejects an address that is not an address', () => {
+    for (const email of ['not-an-email', 'a@b', '@gmail.com', 'two@at@gmail.com', 'sp ace@gmail.com', '']) {
+      const result = superAdminRegistrationSchema.safeParse({ ...valid, email });
+      expect(result.success, email).toBe(false);
+    }
+  });
+
+  it('still applies every password rule — only the domain is relaxed', () => {
+    expect(
+      superAdminRegistrationSchema.safeParse({
+        ...valid,
+        email: 'developer@gmail.com',
+        password: 'weak',
+        passwordConfirmation: 'weak',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('enforces the domain again the moment the switch is turned on', () => {
+    process.env.GOOGLE_DOMAIN_RESTRICTION_ENABLED = 'true';
+
+    expect(
+      superAdminRegistrationSchema.safeParse({ ...valid, email: 'developer@gmail.com' }).success,
+    ).toBe(false);
+    expect(superAdminRegistrationSchema.safeParse(valid).success).toBe(true);
+  });
+});

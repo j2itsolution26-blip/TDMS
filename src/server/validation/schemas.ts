@@ -7,7 +7,7 @@ import {
   accountStatusSchema,
   ROLES,
 } from '@/types/domain';
-import { checkInstitutionalEmail, INSTITUTIONAL_DOMAIN } from '@/lib/institutional-email';
+import { checkInstitutionalEmail, allowedDomain } from '@/lib/institutional-email';
 import { passwordProblems } from '@/lib/password-policy';
 
 /**
@@ -155,8 +155,10 @@ export const updateProfileSchema = z.object({
  * Identical rules to every other account in the system, with one difference
  * that is presentation only: the domain refusal is worded for somebody who is
  * registering rather than signing in. The check itself is the shared one, so
- * the lookalike domains it rejects (see institutional-email.ts) are rejected
- * here too.
+ * the domain restriction is honoured exactly as it is everywhere else —
+ * enforced when GOOGLE_DOMAIN_RESTRICTION_ENABLED is on, and the lookalike
+ * domains it rejects (see institutional-email.ts) are rejected here too.
+ * Well-formedness is always required, restriction or not.
  *
  * Passing this schema creates nothing. It is the gate in front of sending a
  * verification code, and the account is created only after that code comes
@@ -176,7 +178,7 @@ const registrationEmail = z
       message:
         value.trim() === '' || value.trim().length > 255
           ? check.message!
-          : `Please use your @${INSTITUTIONAL_DOMAIN} institutional email.`,
+          : `Please use your @${allowedDomain()} institutional email.`,
     });
   })
   .transform((v) => checkInstitutionalEmail(v).email);

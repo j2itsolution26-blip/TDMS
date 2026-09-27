@@ -599,3 +599,60 @@ describe('pruning', () => {
     expect(store.pending).toHaveLength(1);
   });
 });
+
+/**
+ * An orphaned role assignment must not pass for an administrator.
+ *
+ * `model_has_roles` is Spatie's polymorphic table and has no foreign key to
+ * `users`, so deleting an administrator leaves its assignment behind. This was
+ * found the hard way: a throwaway administrator created during an end-to-end
+ * run was deleted, the assignment stayed, and First Administrator Setup refused
+ * to reopen — a system with no administrator and no way to make one, short of
+ * shell access.
+ */
+describe('a role assignment whose user no longer exists', () => {
+  async function assignSuperAdminTo(modelId: bigint) {
+    const role = await prisma.role.upsert({
+      where: { name_guardName: { name: 'super_admin', guardName: 'web' } },
+      create: { name: 'super_admin', guardName: 'web' },
+      update: {},
+    });
+    await prisma.modelHasRole.create({
+      data: { roleId: role.id, modelType: 'App\\Models\\User', modelId },
+    });
+    return role;
+  }
+
+  it('does not count as an administrator, so setup reopens', async () => {
+    // An assignment pointing at a user id that is not in the table.
+    await assignSuperAdminTo(9999n);
+
+    expect(await isBootstrapAllowed()).toBe(true);
+  });
+
+  it('still lets the flow complete, and does not collide on the primary key', async () => {
+    await assignSuperAdminTo(9999n);
+
+    await startRegistration(DETAILS, CONTEXT);
+    await verifyCode(lastCode(), CONTEXT);
+    await completeRegistration(CONTEXT);
+
+    expect(store.users).toHaveLength(1);
+    // The stale row is gone and exactly one real assignment remains.
+    expect(store.modelHasRoles).toHaveLength(1);
+    expect(String((store.modelHasRoles[0] as Record<string, unknown>).modelId)).toBe(
+      String((store.users[0] as Record<string, unknown>).id),
+    );
+    expect(await isBootstrapAllowed()).toBe(false);
+  });
+
+  it('a REAL administrator still closes setup', async () => {
+    const user = await prisma.user.create({
+      data: { name: 'Real', email: 'real.admin@asiancollege.edu.ph', password: '$2y$12$x' },
+    });
+    await assignSuperAdminTo(user.id);
+
+    expect(await isBootstrapAllowed()).toBe(false);
+    await expect(startRegistration(DETAILS, CONTEXT)).rejects.toThrow('already been completed');
+  });
+});

@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import AuthBrandedLayout from '@/components/AuthBrandedLayout';
 import CreateSuperAdminForm from '@/components/CreateSuperAdminForm';
 import { isBootstrapAllowed } from '@/server/services/super-admin-service';
-import { INSTITUTIONAL_DOMAIN } from '@/lib/institutional-email';
+import { describeDomainPolicy } from '@/lib/institutional-email';
 import { mailConfigurationProblem } from '@/server/mail/mailer';
 
 /**
@@ -16,16 +16,25 @@ import { mailConfigurationProblem } from '@/server/mail/mailer';
  * each request, so an operator whose environment is incomplete is told before
  * they type a password rather than after. The message names environment
  * variables; it never contains their values.
+ *
+ * The domain policy is read here and passed down, rather than the form
+ * assuming the institutional domain. The form used to hard-code it, so with
+ * the restriction switched off for development the server would accept a
+ * personal address while the browser still refused to submit one — the
+ * validation has to come from one place to behave as one rule.
  */
 export const dynamic = 'force-dynamic';
 
 export default async function CreateSuperAdminPage() {
   if (!(await isBootstrapAllowed())) redirect('/login');
 
+  const policy = describeDomainPolicy();
+
   return (
     <AuthBrandedLayout>
       <CreateSuperAdminForm
-        domain={INSTITUTIONAL_DOMAIN}
+        domainRestricted={policy.enabled}
+        allowedDomain={policy.allowedDomain}
         mailProblem={mailConfigurationProblem()}
       />
     </AuthBrandedLayout>

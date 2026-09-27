@@ -71,19 +71,49 @@ const SEND_LIMIT_PER_EMAIL = { max: 6, windowSeconds: 3600 };
 const SEND_LIMIT_PER_IP = { max: 10, windowSeconds: 3600 };
 const VERIFY_LIMIT_PER_IP = { max: 20, windowSeconds: 900 };
 
-export async function isBootstrapAllowed(): Promise<boolean> {
-  const role = await prisma.role.findFirst({
+/**
+ * Does a Super Admin actually exist?
+ *
+ * Deliberately NOT "is there a row in model_has_roles". That table is
+ * Spatie's polymorphic one and carries no foreign key to `users`, so deleting
+ * an administrator leaves its role assignment behind. A presence check on the
+ * assignment alone therefore treats an orphan row as an administrator, and
+ * First Administrator Setup stays closed forever with nobody able to sign in —
+ * recoverable only from a shell. This was found by deleting a test
+ * administrator and watching setup refuse to reopen.
+ *
+ * So the assignment has to resolve to a user row that is really there. The
+ * security property is unchanged: a genuine administrator still closes
+ * bootstrap. Reopening it requires deleting a row from `users`, which needs
+ * database credentials — a strictly higher bar than any web flow.
+ */
+async function existingSuperAdminIds(client: {
+  role: typeof prisma.role;
+  modelHasRole: typeof prisma.modelHasRole;
+  user: typeof prisma.user;
+}): Promise<bigint[]> {
+  const role = await client.role.findFirst({
     where: { name: SUPER_ADMIN_ROLE, guardName: GUARD },
     select: { id: true },
   });
-  if (!role) return true;
+  if (!role) return [];
 
-  const existing = await prisma.modelHasRole.findFirst({
+  const assignments = await client.modelHasRole.findMany({
     where: { roleId: role.id, modelType: USER_MODEL_TYPE },
     select: { modelId: true },
   });
+  if (assignments.length === 0) return [];
 
-  return existing === null;
+  const users = await client.user.findMany({
+    where: { id: { in: assignments.map((a) => a.modelId) } },
+    select: { id: true },
+  });
+
+  return users.map((u) => u.id);
+}
+
+export async function isBootstrapAllowed(): Promise<boolean> {
+  return (await existingSuperAdminIds(prisma)).length === 0;
 }
 
 const ALREADY_BOOTSTRAPPED =
@@ -581,11 +611,28 @@ export async function completeRegistration(context: AuditContext): Promise<Creat
           update: {},
         });
 
-        const already = await tx.modelHasRole.findFirst({
+        /*
+         * The same question as isBootstrapAllowed(), asked again inside the
+         * transaction so the slot cannot be won twice, and asked the same way
+         * — an assignment whose user no longer exists is not an administrator.
+         */
+        const already = await existingSuperAdminIds(tx);
+        if (already.length > 0) throw new AppError(ALREADY_BOOTSTRAPPED, 409);
+
+        /*
+         * An orphaned assignment for this role would collide on the primary
+         * key when the new one is written, so clear any that are left. Only
+         * rows already proven to point at no user are removed.
+         */
+        const orphans = await tx.modelHasRole.findMany({
           where: { roleId: role.id, modelType: USER_MODEL_TYPE },
           select: { modelId: true },
         });
-        if (already) throw new AppError(ALREADY_BOOTSTRAPPED, 409);
+        for (const orphan of orphans) {
+          await tx.modelHasRole.deleteMany({
+            where: { roleId: role.id, modelType: USER_MODEL_TYPE, modelId: orphan.modelId },
+          });
+        }
 
         const clash = await tx.user.findUnique({
           where: { email: row.email },

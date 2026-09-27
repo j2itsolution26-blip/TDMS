@@ -20,7 +20,7 @@ import {
  * unthrottled endpoint is a way to flood somebody's inbox.
  */
 const SAME_ANSWER =
-  'If that institutional address has a TDMS account, a password reset link is on its way.';
+  'If that address has a TDMS account, a password reset link is on its way.';
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const { email } = await parseJson(request, forgotPasswordSchema);

@@ -45,7 +45,8 @@ interface Props {
   currentUserId: string;
   canCreate: boolean;
   mailConfigured: boolean;
-  institutionalDomain: string;
+  /** Enforced domain, or null when the restriction is off. */
+  institutionalDomain: string | null;
 }
 
 export default function StaffScreen({
@@ -148,7 +149,11 @@ export default function StaffScreen({
     <div className="space-y-6">
       <PageHeader
         title="Staff"
-        subtitle={`Institutional accounts. Every address must be @${institutionalDomain}.`}
+        subtitle={
+          institutionalDomain
+            ? `Institutional accounts. Every address must be @${institutionalDomain}.`
+            : 'Staff accounts. Invitations are sent to the address you enter.'
+        }
         actions={canCreate ? (
           <button type="button" className={BUTTON_PRIMARY} onClick={openCreate}>
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -174,7 +179,11 @@ export default function StaffScreen({
         {rows.length === 0 ? (
           <EmptyState
             title="No staff accounts yet"
-            description="Invite a colleague using their institutional email address."
+            description={
+              institutionalDomain
+                ? 'Invite a colleague using their institutional email address.'
+                : 'Invite a colleague using their email address.'
+            }
           />
         ) : (
           <>
@@ -183,7 +192,7 @@ export default function StaffScreen({
                 <thead className="bg-slate-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Name</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Institutional Email</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Email</th>
                     <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Role</th>
                     <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Status</th>
                     <th className="px-6 py-3 text-right text-xs font-medium uppercase text-slate-500">Actions</th>
@@ -277,12 +286,16 @@ export default function StaffScreen({
           </div>
 
           <div>
-            <label className={LABEL_CLASS} htmlFor="sf-email">Institutional Email</label>
+            <label className={LABEL_CLASS} htmlFor="sf-email">
+              {institutionalDomain ? 'Institutional Email' : 'Email Address'}
+            </label>
             <input id="sf-email" type="email" className={INPUT_CLASS} maxLength={255} value={form.email}
-              placeholder={`name@${institutionalDomain}`}
+              placeholder={institutionalDomain ? `name@${institutionalDomain}` : 'name@example.com'}
               onChange={(e) => setForm({ ...form, email: e.target.value })} required />
             <p className="mt-1 text-xs text-slate-500">
-              Must end in @{institutionalDomain}. This is checked on the server.
+              {institutionalDomain
+                ? `Must end in @${institutionalDomain}. This is checked on the server.`
+                : 'Any valid email address. The format is checked on the server.'}
             </p>
             <FieldError messages={errors.email} />
           </div>

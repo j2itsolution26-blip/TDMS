@@ -1,6 +1,6 @@
 import AuthBrandedLayout from '@/components/AuthBrandedLayout';
 import ForgotPasswordForm from '@/components/ForgotPasswordForm';
-import { INSTITUTIONAL_DOMAIN } from '@/lib/institutional-email';
+import { allowedDomain, domainRestrictionEnabled } from '@/lib/institutional-email';
 
 /**
  * /forgot-password — self-service reset, reachable from the login screen.
@@ -14,7 +14,7 @@ export const metadata = { title: 'Forgot Password · TDMS' };
 export default function ForgotPasswordPage() {
   return (
     <AuthBrandedLayout>
-      <ForgotPasswordForm domain={INSTITUTIONAL_DOMAIN} />
+      <ForgotPasswordForm domain={domainRestrictionEnabled() ? allowedDomain() : null} />
     </AuthBrandedLayout>
   );
 }

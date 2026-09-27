@@ -60,6 +60,8 @@ export type MailErrorCode =
   | 'EMAIL_SERVICE_NOT_CONFIGURED'
   | 'EMAIL_AUTH_FAILED'
   | 'EMAIL_SENDER_NOT_VERIFIED'
+  | 'EMAIL_RECIPIENT_NOT_ALLOWED'
+  | 'EMAIL_RATE_LIMITED'
   | 'EMAIL_PROVIDER_REJECTED'
   | 'EMAIL_CONNECTION_FAILED'
   | 'EMAIL_TIMEOUT';
@@ -72,6 +74,18 @@ export const MAIL_ERROR_REMEDY: Record<MailErrorCode, string> = {
     'The mail server rejected the username or password. If this is Gmail or Google Workspace, an ordinary account password will not work — an App Password is required.',
   EMAIL_SENDER_NOT_VERIFIED:
     'The mail provider will not send from that sender address. Verify the sender or its domain with the provider first.',
+  /*
+   * Kept distinct from EMAIL_SENDER_NOT_VERIFIED, because the two look alike
+   * and have opposite fixes. A Resend account with no verified domain may send
+   * from onboarding@resend.dev, but ONLY to the address that owns the account.
+   * The sender is fine in that case; the recipient is the problem, and telling
+   * an operator to "verify the sender" sends them to fix something that is not
+   * broken. This is the wall every new Resend account hits first.
+   */
+  EMAIL_RECIPIENT_NOT_ALLOWED:
+    'The mail provider is in testing mode and will only deliver to the address that owns the provider account. Verify a domain with the provider and set EMAIL_FROM to an address on it to email anybody else.',
+  EMAIL_RATE_LIMITED:
+    'The mail provider is rate limiting this account. Wait a moment and try again.',
   EMAIL_PROVIDER_REJECTED:
     'The mail server refused the message.',
   EMAIL_CONNECTION_FAILED:
@@ -160,7 +174,20 @@ function logEmail(
   reason: string,
   extra: Record<string, unknown> = {},
 ): void {
-  const lines = ['[EMAIL]', `Provider: ${provider}`, `Status: ${status}`, `Reason: ${reason}`];
+  /*
+   * The sender is included because it is configuration, not a secret, and it
+   * is the value most often at fault — a sender the provider will not accept
+   * is invisible from the outside otherwise. The RECIPIENT is never logged.
+   */
+  const sender = mailFromAddress();
+
+  const lines = [
+    '[EMAIL]',
+    `Provider: ${provider}`,
+    ...(sender ? [`From: ${sender}`] : []),
+    `Status: ${status}`,
+    `Reason: ${reason}`,
+  ];
 
   for (const [key, value] of Object.entries(extra)) {
     if (value === null || value === undefined) continue;
@@ -532,16 +559,18 @@ function classifyResendError(status: number, name: string, text: string): MailEr
   if (status === 401) return 'EMAIL_AUTH_FAILED';
 
   /*
-   * The two sender problems, which look different but read the same to an
-   * operator: the domain is not verified, or the account is still in Resend's
-   * testing mode, where only the account owner's own address may be written to.
+   * Checked BEFORE the sender case, because Resend's testing-mode refusal also
+   * mentions verifying a domain — and matching that first would blame the
+   * sender for a recipient restriction.
    */
-  if (/not verified|verify a domain|domain is not|testing emails|own email address/.test(lower)) {
+  if (/testing emails|own email address/.test(lower)) return 'EMAIL_RECIPIENT_NOT_ALLOWED';
+
+  if (/not verified|verify a domain|domain is not/.test(lower)) {
     return 'EMAIL_SENDER_NOT_VERIFIED';
   }
 
+  if (status === 429 || /rate.?limit|too many/.test(lower)) return 'EMAIL_RATE_LIMITED';
   if (status === 403 || status === 422) return 'EMAIL_SENDER_NOT_VERIFIED';
-  if (status === 429 || /rate.?limit/.test(lower)) return 'EMAIL_PROVIDER_REJECTED';
   if (status >= 500) return 'EMAIL_PROVIDER_REJECTED';
 
   return 'EMAIL_PROVIDER_REJECTED';

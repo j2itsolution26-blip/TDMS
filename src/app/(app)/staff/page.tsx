@@ -1,7 +1,7 @@
 import { requireUser, authorizePage } from '@/server/auth/current-user';
 import { userPolicy } from '@/server/auth/policies';
 import { listAccounts, assignableRoles, mailIsConfigured } from '@/server/services/account-service';
-import { INSTITUTIONAL_DOMAIN } from '@/lib/institutional-email';
+import { allowedDomain, domainRestrictionEnabled } from '@/lib/institutional-email';
 import StaffScreen from '@/components/screens/StaffScreen';
 
 /** Account administration. */
@@ -30,7 +30,7 @@ export default async function StaffPage({
       currentUserId={user.id}
       canCreate={userPolicy.create(user)}
       mailConfigured={mailIsConfigured()}
-      institutionalDomain={INSTITUTIONAL_DOMAIN}
+      institutionalDomain={domainRestrictionEnabled() ? allowedDomain() : null}
     />
   );
 }

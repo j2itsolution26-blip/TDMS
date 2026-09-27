@@ -58,7 +58,7 @@ export default function VerifyEmailPanel() {
   return (
     <div>
       {state === 'working' || state === 'idle' ? (
-        <p className="text-sm text-slate-600">Verifying your institutional email address…</p>
+        <p className="text-sm text-slate-600">Verifying your email address…</p>
       ) : null}
 
       {state === 'done' && (

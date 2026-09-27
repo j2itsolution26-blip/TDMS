@@ -12,6 +12,7 @@ import {
 } from '@/server/auth/tokens';
 import { sendVerificationEmail, sendPasswordResetEmail } from '@/server/mail/messages';
 import { canSendMail } from '@/server/mail/mailer';
+import { consumeRateLimit } from '@/server/auth/rate-limit';
 import { checkInstitutionalEmail } from '@/lib/institutional-email';
 import { recordAudit, actorLabel, type AuditContext } from './audit-log';
 import type { AuthUser, AccountStatus } from '@/types/domain';
@@ -347,6 +348,19 @@ export async function setAccountStatus(
   return status;
 }
 
+/**
+ * Budgets for re-sending an invitation.
+ *
+ * The action is already behind authentication and a policy check, so this is
+ * not about an anonymous attacker. It is about the two ways a well-meaning
+ * administrator causes harm by clicking: filling an invitee's inbox with
+ * duplicates, and burning the mail provider's quota for everybody else. The
+ * per-account budget is the one that protects the invitee; the per-actor one
+ * bounds the damage across accounts.
+ */
+const RESEND_LIMIT_PER_ACCOUNT = { max: 5, windowSeconds: 3600 };
+const RESEND_LIMIT_PER_ACTOR = { max: 20, windowSeconds: 3600 };
+
 /** Re-send the verification email for an account that has not confirmed. */
 export async function resendVerification(
   actor: AuthUser,
@@ -359,6 +373,31 @@ export async function resendVerification(
     throw new AppError('That account has already verified its email address.', 422);
   }
 
+  const perAccount = await consumeRateLimit('invite-resend', target.email, RESEND_LIMIT_PER_ACCOUNT);
+  if (perAccount.limited) {
+    throw new AppError(
+      'That invitation has been re-sent several times already. Please wait a while before trying again.',
+      429,
+      undefined,
+      'EMAIL_RATE_LIMITED',
+    );
+  }
+
+  const perActor = await consumeRateLimit('invite-resend-actor', actor.id, RESEND_LIMIT_PER_ACTOR);
+  if (perActor.limited) {
+    throw new AppError(
+      'Too many invitations have been re-sent from this account. Please wait a while before trying again.',
+      429,
+      undefined,
+      'EMAIL_RATE_LIMITED',
+    );
+  }
+
+  /*
+   * Issuing a new token invalidates the outstanding one for this user (see
+   * tokens.ts), so a re-sent invitation supersedes the previous link rather
+   * than leaving two live.
+   */
   const { token, expiresAt } = await issueEmailVerificationToken(id, target.email);
   const mail = await sendVerificationEmail({
     to: target.email,

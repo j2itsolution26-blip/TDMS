@@ -327,9 +327,18 @@ the verification code are never logged by any path.
 
 The browser gets the calm sentence — "We couldn't send the verification email.
 Please try again." — plus a `code` in the JSON envelope, so a failure can be
-identified from the Network tab alone. The codes are `EMAIL_SERVICE_NOT_CONFIGURED`,
-`EMAIL_AUTH_FAILED`, `EMAIL_SENDER_NOT_VERIFIED`, `EMAIL_PROVIDER_REJECTED`,
-`EMAIL_CONNECTION_FAILED` and `EMAIL_TIMEOUT`.
+identified from the Network tab alone:
+
+| Code | Means | Fix |
+| ---- | ----- | --- |
+| `EMAIL_SERVICE_NOT_CONFIGURED` | no usable transport | set `RESEND_API_KEY` and `EMAIL_FROM` |
+| `EMAIL_AUTH_FAILED` | the provider rejected the key | new key, or check it was copied whole |
+| `EMAIL_SENDER_NOT_VERIFIED` | the provider will not send **from** `EMAIL_FROM` | verify the domain, or use `onboarding@resend.dev` |
+| `EMAIL_RECIPIENT_NOT_ALLOWED` | Resend testing mode: only the account owner may be written **to** | verify a domain and change `EMAIL_FROM` |
+| `EMAIL_RATE_LIMITED` | the provider is throttling | wait and retry |
+| `EMAIL_PROVIDER_REJECTED` | anything else the provider refused | read the `Reason:` line |
+| `EMAIL_CONNECTION_FAILED` | the provider could not be reached | DNS or egress |
+| `EMAIL_TIMEOUT` | no response in time | retry; check the host |
 
 One Resend quirk worth knowing, because it is confirmed against the live API
 and defeats the obvious check: a **malformed** key returns `400` with
@@ -344,11 +353,44 @@ domain. Institutional mail is filtered hard; a mismatched sender is the usual
 reason a code "never arrives" when the application reports it as delivered.
 
 With Resend this is enforced: add the domain under Domains, publish the DNS
-records it gives you, and wait for `verified`. Until then the account may only
-send to the address that owns it, and anything else is refused with a 403 —
-surfaced as `EMAIL_SENDER_NOT_VERIFIED`. `npm run mail:check` compares
-`EMAIL_FROM` against the verified list, so this is caught before a user meets
-it.
+records it gives you, and wait for `verified`. `npm run mail:check` compares
+`EMAIL_FROM` against the verified list, so a bad sender is caught before a user
+meets it.
+
+### Resend testing mode — the wall every new account hits
+
+A Resend account with **no verified domain** can still send, using the shared
+sender `onboarding@resend.dev`:
+
+```env
+EMAIL_PROVIDER=resend
+RESEND_API_KEY=re_...
+EMAIL_FROM="TDMS <onboarding@resend.dev>"
+```
+
+The catch is the **recipient**, not the sender: such an account may only deliver
+to the email address that owns the Resend account. Anything else is refused:
+
+```
+403 You can only send testing emails to your own email address (owner@example.com).
+    To send emails to other recipients, please verify a domain at resend.com/domains…
+```
+
+The application reports that as `EMAIL_RECIPIENT_NOT_ALLOWED`, kept separate
+from `EMAIL_SENDER_NOT_VERIFIED` on purpose — the two look alike and have
+opposite fixes, and being told to "verify your sender" when the sender is fine
+sends you to repair something that is not broken.
+
+What this means in practice while developing:
+
+* first-administrator setup works, **provided the administrator's email is the
+  Resend account owner's address**;
+* inviting anybody else from the Staff screen creates the account as `PENDING`
+  and reports that the invitation could not be sent. That is correct behaviour,
+  not a bug: the invitee cannot sign in, and "Resend invite" will deliver once a
+  domain is verified;
+* to email anyone else, verify a domain and change `EMAIL_FROM` to an address on
+  it. Nothing in the application changes.
 
 ## A migration that exists is not a migration that ran
 

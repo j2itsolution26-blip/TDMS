@@ -11,7 +11,12 @@ import { FieldError } from '@/components/ui';
  * The response is identical whether or not an account exists, so this form
  * cannot be used to discover which addresses are registered.
  */
-export default function ForgotPasswordForm({ domain }: { domain: string }) {
+/**
+ * `domain` is the enforced domain, or null when the restriction is off. The
+ * page decides which, so this component never advertises a rule that is not
+ * actually being applied.
+ */
+export default function ForgotPasswordForm({ domain }: { domain: string | null }) {
   const [email, setEmail] = useState('');
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [sent, setSent] = useState<string | null>(null);
@@ -44,7 +49,7 @@ export default function ForgotPasswordForm({ domain }: { domain: string }) {
     <div>
       <form onSubmit={submit}>
         <div className="tdms-field">
-          <label htmlFor="email">Institutional Email</label>
+          <label htmlFor="email">{domain ? 'Institutional Email' : 'Email Address'}</label>
           <div className="tdms-input-wrap">
             <svg className="tdms-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <rect x="2" y="4" width="20" height="16" rx="2" />
@@ -56,7 +61,7 @@ export default function ForgotPasswordForm({ domain }: { domain: string }) {
               required
               autoFocus
               autoComplete="username"
-              placeholder={`name@${domain}`}
+              placeholder={domain ? `name@${domain}` : 'name@example.com'}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />

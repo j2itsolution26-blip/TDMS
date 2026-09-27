@@ -552,13 +552,26 @@ describe('sending through Resend', () => {
       { name: 'validation_error', message: 'The tdms.test domain is not verified. Please verify a domain before sending.' },
       'EMAIL_SENDER_NOT_VERIFIED',
     ],
+    /*
+     * The exact body a live Resend account with no verified domain returns.
+     * Captured from the provider, not invented — and it is deliberately NOT
+     * EMAIL_SENDER_NOT_VERIFIED: onboarding@resend.dev is a perfectly good
+     * sender, it is the RECIPIENT that is restricted, and "verify your sender"
+     * would send an operator to fix something that is not broken. Note the
+     * message mentions verifying a domain too, which is why the recipient case
+     * has to be matched first.
+     */
     [
-      'an account still in testing mode',
+      'a Resend account still in testing mode',
       403,
-      { name: 'validation_error', message: 'You can only send testing emails to your own email address (owner@example.com).' },
-      'EMAIL_SENDER_NOT_VERIFIED',
+      {
+        name: 'validation_error',
+        message:
+          'You can only send testing emails to your own email address (owner@example.com). To send emails to other recipients, please verify a domain at resend.com/domains, and change the `from` address to an email using this domain.',
+      },
+      'EMAIL_RECIPIENT_NOT_ALLOWED',
     ],
-    ['rate limiting', 429, { name: 'rate_limit_exceeded', message: 'Too many requests.' }, 'EMAIL_PROVIDER_REJECTED'],
+    ['rate limiting', 429, { name: 'rate_limit_exceeded', message: 'Too many requests.' }, 'EMAIL_RATE_LIMITED'],
     ['a provider outage', 503, { name: 'internal_server_error', message: 'Something went wrong.' }, 'EMAIL_PROVIDER_REJECTED'],
   ];
 
@@ -639,5 +652,56 @@ describe('redactAddresses', () => {
 
   it('handles several addresses in one message', () => {
     expect(redactAddresses('a@b.com and c.d+tag@e.co.uk')).toBe('[address] and [address]');
+  });
+});
+
+describe('the [EMAIL] log block', () => {
+  beforeEach(() => {
+    process.env.RESEND_API_KEY = 're_liveKey_abc123';
+    process.env.EMAIL_FROM = 'TDMS <onboarding@resend.dev>';
+  });
+
+  it('records the sender, because that is the value most often at fault', async () => {
+    let logged = '';
+    for (const method of ['log', 'error'] as const) {
+      vi.spyOn(console, method).mockImplementation((...args: unknown[]) => {
+        logged += `${args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')}\n`;
+      });
+    }
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 403,
+        json: async () => ({
+          name: 'validation_error',
+          message: 'You can only send testing emails to your own email address (owner@example.com).',
+        }),
+      })),
+    );
+
+    const result = await sendMail({
+      to: 'someone.else@example.dev',
+      subject: 'Verify your administrator account',
+      text: 'Your verification code is:\n\n481902\n',
+    });
+
+    expect(result.code).toBe('EMAIL_RECIPIENT_NOT_ALLOWED');
+    expect(logged).toMatch(/From: TDMS <onboarding@resend\.dev>/);
+    expect(logged).toMatch(/Status: FAILED/);
+
+    // The sender is configuration. The recipient and the code are not logged.
+    expect(logged).not.toContain('someone.else@example.dev');
+    expect(logged).not.toContain('owner@example.com');
+    expect(logged).not.toContain('481902');
+    expect(logged).not.toContain('re_liveKey_abc123');
+  });
+
+  it('names the remedy that actually applies to a testing-mode account', () => {
+    expect(MAIL_ERROR_REMEDY.EMAIL_RECIPIENT_NOT_ALLOWED).toMatch(/testing mode/i);
+    expect(MAIL_ERROR_REMEDY.EMAIL_RECIPIENT_NOT_ALLOWED).toMatch(/EMAIL_FROM/);
+    // And does not misdirect to the sender, which is the old behaviour.
+    expect(MAIL_ERROR_REMEDY.EMAIL_RECIPIENT_NOT_ALLOWED).not.toMatch(/will not send from/);
   });
 });

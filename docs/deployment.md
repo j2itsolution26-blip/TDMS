@@ -376,6 +376,37 @@ Two things changed as a result:
    host, a credential or any part of Prisma's own text — those go to the
    server log. See `src/server/api-handler.test.ts`.
 
+## Resend: the sender is constrained until a domain is verified
+
+With **no verified domain** on the Resend account, two limits apply, and both
+look like application bugs if you do not know about them:
+
+- the sender must be exactly `onboarding@resend.dev`; any other address is
+  refused, surfacing as `EMAIL_SENDER_NOT_VERIFIED`;
+- messages are only delivered to the Resend account owner's own address.
+
+So this works immediately, for setup and testing:
+
+```env
+RESEND_API_KEY=re_...
+EMAIL_FROM="TDMS <onboarding@resend.dev>"
+```
+
+and `EMAIL_FROM="TDMS <no-reply@asiancollege.edu.ph>"` does **not**, until
+`asiancollege.edu.ph` (or a subdomain such as `tdms.asiancollege.edu.ph`) is
+added in Resend and its DNS records are published. Verify the domain before
+inviting anyone other than yourself, or their invitations will be accepted by
+the API and never arrive.
+
+Check what the account currently allows:
+
+```bash
+curl -s -H "Authorization: Bearer $RESEND_API_KEY" https://api.resend.com/domains
+```
+
+`RESEND_API_KEY` and `MAIL_HOST` must not both be set: SMTP takes precedence,
+so leaving a stale `MAIL_HOST` in place silently ignores the Resend key.
+
 ## Diagnosing a mail failure
 
 `/api/health` reports the mail configuration — enough to place a problem

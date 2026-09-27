@@ -13,6 +13,7 @@ import {
   type RoleName, type AccountStatus,
 } from '@/types/domain';
 import { formatDate } from '@/lib/dates';
+import { succeeded, undelivered, type Notice } from '@/lib/notice';
 
 /**
  * Account administration.
@@ -59,7 +60,13 @@ export default function StaffScreen({
   const [form, setForm] = useState({ name: '', email: '', role: 'secretary' });
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [message, setMessage] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  /*
+   * A notice carries its tone, not just its text. It used to be a bare
+   * string rendered unconditionally as a success alert, so "Could not send
+   * the email" appeared in green with a tick — the one case where the
+   * styling contradicted the words.
+   */
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [busy, setBusy] = useState(false);
 
   function reset() { setErrors({}); setMessage(null); setNotice(null); }
@@ -99,11 +106,18 @@ export default function StaffScreen({
       const d = result.data as { mailDelivered: boolean; mailDetail?: string };
       setNotice(
         d.mailDelivered
-          ? `Invitation sent to ${form.email}. They will set their own password from the link.`
-          : `Account created, but the invitation email could not be sent${d.mailDetail ? ` — ${d.mailDetail}` : ''}. Use "Resend invite" once email is configured.`,
+          ? succeeded(
+              `Invitation sent to ${form.email}. They will set their own password from the link.`,
+            )
+          : undelivered(
+              `Account created for ${form.email}, but the invitation could not be sent`,
+              `${d.mailDetail ?? ''} Use "Resend invite" once that is resolved.`.trim(),
+            ),
       );
     } else if ((result.data as { emailChanged: boolean }).emailChanged) {
-      setNotice('Email changed. The account must verify the new address before signing in again.');
+      setNotice(
+        succeeded('Email changed. The account must verify the new address before signing in again.'),
+      );
     }
     router.refresh();
   }
@@ -113,7 +127,7 @@ export default function StaffScreen({
     const result = await api.post(`/api/staff/${row.id}/status`, { status });
     setBusy(false);
     if (!result.ok) { setMessage(result.message); return; }
-    setNotice(`${row.name} is now ${ACCOUNT_STATUS_LABELS[status].toLowerCase()}.`);
+    setNotice(succeeded(`${row.name} is now ${ACCOUNT_STATUS_LABELS[status].toLowerCase()}.`));
     router.refresh();
   }
 
@@ -126,8 +140,8 @@ export default function StaffScreen({
     if (!result.ok) { setMessage(result.message); return; }
     setNotice(
       result.data.mailDelivered
-        ? `Verification email re-sent to ${row.email}.`
-        : `Could not send the email${result.data.mailDetail ? ` — ${result.data.mailDetail}` : ''}.`,
+        ? succeeded(`Verification email re-sent to ${row.email}.`)
+        : undelivered('Could not send the email', result.data.mailDetail),
     );
   }
 
@@ -140,8 +154,10 @@ export default function StaffScreen({
     if (!result.ok) { setMessage(result.message); return; }
     setNotice(
       result.data.mailDelivered
-        ? `Password reset link sent to ${row.email}. Their sessions have been signed out.`
-        : `Could not send the email${result.data.mailDetail ? ` — ${result.data.mailDetail}` : ''}.`,
+        ? succeeded(
+            `Password reset link sent to ${row.email}. Their sessions have been signed out.`,
+          )
+        : undelivered('Could not send the email', result.data.mailDetail),
     );
   }
 
@@ -173,7 +189,7 @@ export default function StaffScreen({
       )}
 
       {message && <Alert type="danger">{message}</Alert>}
-      {notice && <Alert type="success">{notice}</Alert>}
+      {notice && <Alert type={notice.tone}>{notice.text}</Alert>}
 
       <Card padding="p-0">
         {rows.length === 0 ? (

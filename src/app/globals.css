@@ -1214,3 +1214,21 @@
     font-size: 0.8rem;
     color: #6B7280;
 }
+
+/*
+ * The command shown when email is unconfigured and setup must fall back to
+ * provisioning from the server. Monospaced and wrapping, because it has to
+ * be readable and copyable inside a narrow auth panel.
+ */
+.tdms-config-error__command {
+    margin: 0.5rem 0;
+    padding: 0.6rem 0.7rem;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.06);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.72rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}

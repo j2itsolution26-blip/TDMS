@@ -463,8 +463,29 @@ export default function CreateSuperAdminForm({
             <p className="tdms-config-error__title">Email delivery is not configured</p>
             <p>{mailProblem}</p>
             <p className="tdms-config-error__note">
-              Setup cannot continue until a verification code can be delivered. No account is
+              Setup cannot continue here until a verification code can be delivered. No account is
               created while this is unresolved.
+            </p>
+
+            {/*
+              Without this the screen is a dead end: the one action it offers
+              cannot succeed, and the only way out is to already know that a
+              second route exists. Provisioning from the server needs no email
+              at all, because shell plus database access is itself proof of
+              control — a strictly higher bar than receiving a code. It is not
+              a bypass and not a fallback the page can trigger; it is an
+              instruction for whoever installs the system.
+            */}
+            <p className="tdms-config-error__note">
+              To set up without email, run this on a machine with the server&apos;s{' '}
+              <code>DATABASE_URL</code>:
+            </p>
+            <pre className="tdms-config-error__command">
+              npm run admin:create -- --name &quot;Your Name&quot; --email you@example.com
+            </pre>
+            <p className="tdms-config-error__note">
+              It asks for a password without echoing it, and creates one active administrator.
+              It refuses to run once an administrator exists.
             </p>
           </div>
         )}

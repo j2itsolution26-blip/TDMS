@@ -2,23 +2,36 @@ import 'server-only';
 import nodemailer, { type Transporter } from 'nodemailer';
 
 /**
- * Outbound email.
+ * Outbound email. The only place in the application that talks to a mail
+ * provider; everything else goes through the message helpers in messages.ts
+ * (`sendVerificationEmail`, `sendSuperAdminCodeEmail`, …), so the provider
+ * stays replaceable and no component ever holds a credential.
  *
- * Two real transports, chosen from the environment, plus an explicit
- * "unconfigured" state:
+ * Transports:
  *
- *   * `smtp`   — used when MAIL_HOST is set. Any institutional mail server or
- *                provider that speaks SMTP, credentials from the environment.
- *   * `resend` — used when RESEND_API_KEY is set and MAIL_HOST is not. An HTTP
- *                API, which needs no outbound TCP connection.
- *   * `none`   — nothing is configured. Sending FAILS. It does not pretend.
+ *   * `resend` — RESEND_API_KEY. An HTTP API: no outbound SMTP connection, no
+ *                connection pool, nothing to keep warm. This is the
+ *                production transport, and the default whenever a key exists.
+ *   * `smtp`   — MAIL_HOST + MAIL_PORT. For an institutional mail server, or a
+ *                local mail catcher during development. Opt-in only now: see
+ *                the precedence note below.
+ *   * `log`    — development only, explicitly asked for, writes the message to
+ *                the server log instead of sending it.
+ *   * `none`   — nothing usable is configured. Sending FAILS. It does not
+ *                pretend, and callers refuse to proceed.
  *
- * `none` is the important one. This module used to carry a `log` transport
- * that wrote the message — verification link included — to the server log and
- * reported success in development. That made a flow appear to work while
- * nothing was delivered, and it put a live credential in the logs. Both are
- * gone: when mail is unconfigured, `sendMail` reports failure, callers refuse
- * to proceed, and the log records only that no provider is configured.
+ * PRECEDENCE, AND WHY RESEND COMES FIRST
+ *
+ * Selection used to be "SMTP if MAIL_HOST is set, else Resend". That is the
+ * bug this ordering fixes. A deployment that had once been pointed at a local
+ * mail catcher still carried `MAIL_HOST=127.0.0.1` in its environment, so SMTP
+ * won, and every send in production tried to reach a mail server inside the
+ * serverless function's own sandbox — where nothing is listening and nothing
+ * ever could be.
+ *
+ * So a Resend key now wins by default, and a leftover SMTP host cannot hijack
+ * delivery. EMAIL_PROVIDER overrides the default explicitly in either
+ * direction, which is the only way to get SMTP while a key is present.
  *
  * No credential is ever hard-coded, defaulted, or written to a log line.
  */
@@ -116,6 +129,49 @@ export function classifySmtpError(error: unknown): MailErrorCode {
   return 'EMAIL_PROVIDER_REJECTED';
 }
 
+/** How a transport is named in a log line. */
+function providerLabel(transport: MailTransport): string {
+  if (transport === 'resend') return 'Resend';
+  if (transport === 'smtp') return 'SMTP';
+  if (transport === 'log') return 'development log';
+  return 'none';
+}
+
+/**
+ * The one shape every mail outcome is logged in.
+ *
+ * Fixed and greppable, because this is what somebody reads at two in the
+ * morning when a code did not arrive:
+ *
+ *   [EMAIL]
+ *   Provider: Resend
+ *   Status: FAILED
+ *   Reason: The domain example.com is not verified.
+ *
+ * What is in it: the provider, the outcome, the provider's own reason, and
+ * identifiers that help trace a message. What is never in it: the API key, the
+ * SMTP password, the recipient, the subject's message body, or the verification
+ * code — the body is not passed to this function at all, and addresses are
+ * redacted out of provider text before it arrives.
+ */
+function logEmail(
+  status: 'SENT' | 'FAILED' | 'SKIPPED',
+  provider: string,
+  reason: string,
+  extra: Record<string, unknown> = {},
+): void {
+  const lines = ['[EMAIL]', `Provider: ${provider}`, `Status: ${status}`, `Reason: ${reason}`];
+
+  for (const [key, value] of Object.entries(extra)) {
+    if (value === null || value === undefined) continue;
+    lines.push(`${key}: ${String(value)}`);
+  }
+
+  const text = lines.join('\n');
+  if (status === 'SENT') console.log(text);
+  else console.error(text);
+}
+
 export interface MailResult {
   delivered: boolean;
   transport: MailTransport;
@@ -131,6 +187,39 @@ export interface MailResult {
 /** True when every value SMTP needs is present. */
 function smtpConfigured(): boolean {
   return Boolean(process.env.MAIL_HOST && process.env.MAIL_PORT);
+}
+
+/**
+ * The provider an operator asked for, if any.
+ *
+ * EMAIL_PROVIDER is the explicit switch:
+ *
+ *   resend       use the HTTP API. Required in production.
+ *   smtp         use MAIL_HOST/MAIL_PORT even though a Resend key exists.
+ *   development  write the message to the server log instead of sending it.
+ *                Refused in production — see developmentMailMode().
+ *
+ * Unset means "decide from what is configured", which prefers Resend. An
+ * unrecognised value is ignored rather than fatal, and says so once, because a
+ * typo here must not take email down in a deployment that is otherwise
+ * correctly configured.
+ */
+export type EmailProvider = 'resend' | 'smtp' | 'development';
+
+export function configuredProvider(): EmailProvider | null {
+  const raw = (process.env.EMAIL_PROVIDER ?? '').trim().toLowerCase();
+  if (raw === '') return null;
+
+  if (raw === 'resend' || raw === 'smtp' || raw === 'development') return raw;
+
+  // 'log' is accepted as a synonym: it is what the transport is called.
+  if (raw === 'log') return 'development';
+
+  console.error(
+    `[EMAIL] EMAIL_PROVIDER="${raw}" is not recognised and is being ignored. ` +
+      'Use resend, smtp or development.',
+  );
+  return null;
 }
 
 /**
@@ -153,7 +242,9 @@ function smtpConfigured(): boolean {
  * silently ignored — otherwise an operator would think it was on.
  */
 export function developmentMailMode(): boolean {
-  const asked = (process.env.EMAIL_VERIFICATION_MODE ?? '').trim().toLowerCase() === 'development';
+  const asked =
+    configuredProvider() === 'development' ||
+    (process.env.EMAIL_VERIFICATION_MODE ?? '').trim().toLowerCase() === 'development';
   if (!asked) return false;
 
   if (process.env.NODE_ENV === 'production') {
@@ -168,21 +259,53 @@ export function developmentMailMode(): boolean {
 }
 
 export function activeTransport(): MailTransport {
-  // Checked first, so a developer can force it even with SMTP values present.
+  // Checked first, so a developer can force it even with a provider present.
   if (developmentMailMode()) return 'log';
-  if (smtpConfigured()) return 'smtp';
+
+  const asked = configuredProvider();
+
+  if (asked === 'resend') return process.env.RESEND_API_KEY ? 'resend' : 'none';
+  if (asked === 'smtp') return smtpConfigured() ? 'smtp' : 'none';
+
+  /*
+   * No explicit choice. Resend first — a leftover MAIL_HOST must not be able
+   * to take over delivery from a working API key. See the note at the top.
+   */
   if (process.env.RESEND_API_KEY) return 'resend';
+
+  /*
+   * SMTP only if it could actually work. A loopback host on a deployment is
+   * not a transport, it is a mistake; falling through to `none` reports that
+   * mail is unconfigured, which is both true and actionable, instead of
+   * attempting a connection to the function's own sandbox.
+   */
+  if (smtpConfigured()) {
+    if (isLoopbackHost(process.env.MAIL_HOST!) && isDeployedRuntime()) return 'none';
+    return 'smtp';
+  }
+
   return 'none';
 }
 
 /**
- * The From header, assembled from configuration.
+ * The From header, assembled from configuration and never hard-coded.
  *
- * MAIL_FROM_ADDRESS + MAIL_FROM_NAME are the documented pair; MAIL_FROM is
- * still read as a pre-composed fallback so an existing deployment does not
- * break on this change.
+ * EMAIL_FROM is the documented variable and is already a complete header:
+ *
+ *   EMAIL_FROM="TDMS <no-reply@yourdomain.com>"
+ *
+ * The older MAIL_FROM_ADDRESS + MAIL_FROM_NAME pair, and the pre-composed
+ * MAIL_FROM, are still read in that order so an existing deployment does not
+ * lose its sender when only EMAIL_FROM is added.
+ *
+ * Whichever is used, the address has to be one the provider will send for.
+ * With Resend that means a verified domain — an arbitrary address is rejected
+ * with a 403, which surfaces as EMAIL_SENDER_NOT_VERIFIED.
  */
 export function mailFromAddress(): string {
+  const composed = process.env.EMAIL_FROM?.trim();
+  if (composed) return composed;
+
   const address = process.env.MAIL_FROM_ADDRESS;
   if (address) {
     const name = process.env.MAIL_FROM_NAME;
@@ -241,34 +364,81 @@ function isLoopbackHost(host: string): boolean {
   );
 }
 
+/** True when MAIL_HOST names this machine on a deployment, where it cannot work. */
+function loopbackWhenDeployed(): boolean {
+  const host = process.env.MAIL_HOST;
+  return Boolean(host && isLoopbackHost(host) && isDeployedRuntime());
+}
+
+const NOT_CONFIGURED =
+  'Email delivery is not configured. Set RESEND_API_KEY and EMAIL_FROM in the server ' +
+  'environment — on Vercel, in Project Settings → Environment Variables, for the ' +
+  'environment you are testing, then redeploy. An institutional SMTP server can be used ' +
+  'instead with EMAIL_PROVIDER=smtp plus MAIL_HOST and MAIL_PORT. For local development ' +
+  'only, EMAIL_PROVIDER=development writes the code to the server log.';
+
+function loopbackProblem(): string {
+  const host = (process.env.MAIL_HOST ?? '').trim();
+  return (
+    `MAIL_HOST is set to a loopback address (${host}), which cannot work in a deployed ` +
+    'environment — it refers to the server itself, where no mail server is running. Set ' +
+    'RESEND_API_KEY and EMAIL_FROM and remove MAIL_HOST from this environment. A loopback ' +
+    'address is only valid for a local mail catcher during development.'
+  );
+}
+
 export function mailConfigurationProblem(): string | null {
-  if (activeTransport() === 'none') {
-    return (
-      'Email delivery is not configured. Set MAIL_HOST, MAIL_PORT, MAIL_USERNAME, ' +
-      'MAIL_PASSWORD, MAIL_FROM_ADDRESS and MAIL_FROM_NAME (or RESEND_API_KEY) in the ' +
-      'server environment. For local development only, EMAIL_VERIFICATION_MODE=development ' +
-      'writes the code to the server log instead.'
-    );
+  const transport = activeTransport();
+
+  if (transport === 'none') {
+    /*
+     * Name the actual mistake when there is one. Told only that email is
+     * "not configured", an operator looking at an environment that plainly
+     * contains MAIL_HOST would have no reason to suspect the value.
+     */
+    return loopbackWhenDeployed() ? loopbackProblem() : NOT_CONFIGURED;
   }
 
   // The log transport has no recipient to satisfy, so no From is required.
-  if (activeTransport() !== 'log' && mailFromAddress() === '') {
-    return 'Email delivery is not configured: no sender address. Set MAIL_FROM_ADDRESS (and MAIL_FROM_NAME) in the server environment.';
+  if (transport !== 'log' && mailFromAddress() === '') {
+    return (
+      'Email delivery is not configured: no sender address. Set EMAIL_FROM in the server ' +
+      'environment, for example EMAIL_FROM="TDMS <no-reply@yourdomain.com>", using a ' +
+      'sender the provider is verified to send for.'
+    );
   }
 
   /*
-   * Caught here rather than left to fail at connect time. Attempting it would
-   * produce a bare connection error, which reads as "the network is broken"
-   * when in fact the address can never work in a deployed environment.
+   * SMTP asked for explicitly, pointed at loopback, on a deployment. Caught
+   * here rather than left to fail at connect time: attempting it produces a
+   * bare connection error, which reads as "the network is broken" when in fact
+   * the address can never work.
    */
-  const host = process.env.MAIL_HOST;
-  if (host && isLoopbackHost(host) && isDeployedRuntime()) {
+  if (transport === 'smtp' && loopbackWhenDeployed()) return loopbackProblem();
+
+  return null;
+}
+
+/**
+ * A configuration oddity that is not fatal, for the health endpoint.
+ *
+ * The case this exists for is the one that caused the outage: a deployment
+ * carrying `MAIL_HOST=127.0.0.1` from an earlier local setup. Now that Resend
+ * takes precedence, that value is inert — but it is still wrong, still
+ * confusing to the next person who reads the environment, and worth saying so
+ * somewhere visible rather than silently ignoring.
+ */
+export function mailConfigurationWarning(): string | null {
+  if (activeTransport() === 'resend' && loopbackWhenDeployed()) {
     return (
-      `MAIL_HOST is set to a loopback address (${host.trim()}), which cannot work in a ` +
-      'deployed environment — it refers to the server itself, where no mail server is ' +
-      'running. Set MAIL_HOST to a reachable SMTP host, or use RESEND_API_KEY instead. ' +
-      'A loopback address is only valid for a local mail catcher during development.'
+      `MAIL_HOST is set to a loopback address (${(process.env.MAIL_HOST ?? '').trim()}) and is ` +
+      'being IGNORED: mail is going through Resend. Remove MAIL_HOST from this environment ' +
+      'to avoid confusion.'
     );
+  }
+
+  if (activeTransport() === 'log') {
+    return 'Development mail mode is on: verification codes are written to the server log and no email is sent.';
   }
 
   return null;
@@ -331,13 +501,61 @@ async function sendViaSmtp(message: MailMessage): Promise<MailResult> {
     text: message.text,
   });
 
-  console.log('[EMAIL] ok verification email accepted by the mail server.', {
-    transport: 'smtp',
-    subject: message.subject,
-  });
+  logEmail('SENT', 'SMTP', 'accepted by the mail server');
   return { delivered: true, transport: 'smtp' };
 }
 
+/**
+ * Strip full email addresses out of text bound for a log line.
+ *
+ * Resend quotes the recipient in some refusals — "you can only send testing
+ * emails to your own address (someone@example.com)" — and a verification
+ * recipient does not belong in a log. Domains are left intact: `example.com is
+ * not verified` is exactly the sentence an operator needs, and a domain is not
+ * a secret.
+ */
+export function redactAddresses(text: string): string {
+  return text.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[address]');
+}
+
+/**
+ * Turn a Resend error body into a stable code.
+ *
+ * Both the status and the body's `name` are consulted, because the statuses
+ * overlap: a missing key and an unverified sender are both 403, and they have
+ * completely different fixes.
+ */
+function classifyResendError(status: number, name: string, text: string): MailErrorCode {
+  const lower = `${name} ${text}`.toLowerCase();
+
+  if (/api[_ -]?key/.test(lower)) return 'EMAIL_AUTH_FAILED';
+  if (status === 401) return 'EMAIL_AUTH_FAILED';
+
+  /*
+   * The two sender problems, which look different but read the same to an
+   * operator: the domain is not verified, or the account is still in Resend's
+   * testing mode, where only the account owner's own address may be written to.
+   */
+  if (/not verified|verify a domain|domain is not|testing emails|own email address/.test(lower)) {
+    return 'EMAIL_SENDER_NOT_VERIFIED';
+  }
+
+  if (status === 403 || status === 422) return 'EMAIL_SENDER_NOT_VERIFIED';
+  if (status === 429 || /rate.?limit/.test(lower)) return 'EMAIL_PROVIDER_REJECTED';
+  if (status >= 500) return 'EMAIL_PROVIDER_REJECTED';
+
+  return 'EMAIL_PROVIDER_REJECTED';
+}
+
+/**
+ * Send through Resend's HTTP API.
+ *
+ * The API rather than the SDK: this is one POST with a JSON body, the SDK
+ * wraps exactly that, and a serverless function is a place to be frugal about
+ * what gets bundled. The key travels in an Authorization header, from
+ * process.env, in a `server-only` module — it is never referenced from client
+ * code and never appears in a log line or a response.
+ */
 async function sendViaResend(message: MailMessage): Promise<MailResult> {
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -353,34 +571,34 @@ async function sendViaResend(message: MailMessage): Promise<MailResult> {
     }),
   });
 
+  /*
+   * The body is read on both paths. On failure it carries the only statement
+   * of what actually went wrong — without it, every refusal from 403 to 429
+   * looks the same from the server log, which is the position this system was
+   * in. On success it carries the message id, which is what makes a delivery
+   * traceable in the Resend dashboard afterwards.
+   */
+  const body = (await response.json().catch(() => null)) as {
+    id?: string;
+    name?: string;
+    message?: string;
+  } | null;
+
   if (!response.ok) {
-    // The provider's response may quote the recipient; keep it out of the
-    // value we hand back to a caller that might render it.
-    const status = response.status;
+    const name = body?.name ?? '';
+    const reason = redactAddresses(body?.message ?? `HTTP ${response.status}`);
+    const code = classifyResendError(response.status, name, body?.message ?? '');
 
-    /*
-     * Mapped from the status alone. The body is deliberately not read: it can
-     * quote the recipient, and it is not needed to tell these cases apart.
-     */
-    const code: MailErrorCode =
-      status === 401 || status === 403
-        ? 'EMAIL_AUTH_FAILED'
-        : status === 422
-          ? 'EMAIL_SENDER_NOT_VERIFIED'
-          : status === 429
-            ? 'EMAIL_PROVIDER_REJECTED'
-            : status >= 500
-              ? 'EMAIL_PROVIDER_REJECTED'
-              : 'EMAIL_PROVIDER_REJECTED';
+    logEmail('FAILED', 'Resend', reason, {
+      status: response.status,
+      providerError: name || null,
+      code,
+    });
 
-    console.error('[EMAIL] x Resend rejected the message.', { status, code });
     return { delivered: false, transport: 'resend', code, detail: MAIL_ERROR_REMEDY[code] };
   }
 
-  console.log('[EMAIL] ok message accepted by the provider.', {
-    transport: 'resend',
-    subject: message.subject,
-  });
+  logEmail('SENT', 'Resend', 'accepted for delivery', { messageId: body?.id ?? null });
   return { delivered: true, transport: 'resend' };
 }
 
@@ -410,6 +628,8 @@ function sendViaLog(message: MailMessage): MailResult {
     ].join('\n'),
   );
 
+  logEmail('SENT', 'development log', 'written to the server log; no email was sent');
+
   return {
     delivered: true,
     transport: 'log',
@@ -430,9 +650,7 @@ export async function sendMail(message: MailMessage): Promise<MailResult> {
 
   const problem = mailConfigurationProblem();
   if (problem) {
-    console.error('[EMAIL] x nothing sent: no mail provider is configured.', {
-      subject: message.subject,
-    });
+    logEmail('SKIPPED', providerLabel(transport), problem);
     return {
       delivered: false,
       transport,
@@ -453,19 +671,21 @@ export async function sendMail(message: MailMessage): Promise<MailResult> {
     const code = classifySmtpError(error);
 
     /*
-     * Logged in full on the server: an SMTP failure is nearly always a
-     * configuration mistake and the operator needs the specifics.
-     * nodemailer's error carries the host and the server's response, not the
-     * password — but the password is never in these fields anyway, and the
-     * message body (which holds the verification code) is never logged here.
+     * The provider's own words, on the server only. An SMTP failure is nearly
+     * always a configuration mistake and the operator needs the specifics;
+     * nodemailer's message carries the host and the server's response, never
+     * the password. Addresses are redacted anyway, and the message body — which
+     * holds the verification code — is not passed in here at all.
+     *
+     * A fetch failure on the Resend path lands here too, which is how a DNS or
+     * egress problem gets named rather than reported as "couldn't send".
      */
-    console.error('[EMAIL] x failed to send verification email.', {
-      transport,
-      subject: message.subject,
+    const reason = redactAddresses(error instanceof Error ? error.message : 'unknown error');
+
+    logEmail('FAILED', providerLabel(transport), reason, {
       code,
       smtpCode: (error as { code?: unknown })?.code ?? null,
       responseCode: (error as { responseCode?: unknown })?.responseCode ?? null,
-      error: error instanceof Error ? error.message : 'unknown error',
     });
 
     return { delivered: false, transport, code, detail: MAIL_ERROR_REMEDY[code] };

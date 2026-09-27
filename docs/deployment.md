@@ -95,13 +95,15 @@ stale in the build cache.
 | `GOOGLE_ALLOWED_DOMAIN`    | no       | Enforced domain when the above is true                      |
 | `DEV_AUTO_ACTIVATE_GOOGLE_USERS` | no | Default false. Development only; grants no role             |
 | `APP_URL`                  | yes*     | Absolute base for links in email. *Once email is enabled    |
-| `MAIL_HOST`                | yes*     | *SMTP host. Either this or `RESEND_API_KEY` is required     |
+| `RESEND_API_KEY`           | yes*     | *The production mail transport. Server-side only            |
+| `EMAIL_FROM`               | yes*     | *Complete From header. Domain must be verified with Resend  |
+| `EMAIL_PROVIDER`           | no       | `resend` \| `smtp` \| `development`. Derived when unset       |
+| `MAIL_HOST`                | no       | SMTP host, if used instead of Resend. **Never loopback when deployed** |
 | `MAIL_PORT`                | yes*     | *With `MAIL_HOST`. 587 for STARTTLS, 465 for implicit TLS   |
 | `MAIL_USERNAME`            | no       | Omit only for a relay that needs no authentication          |
 | `MAIL_PASSWORD`            | no       | With `MAIL_USERNAME`. Never committed                       |
 | `MAIL_ENCRYPTION`          | no       | Derived from the port when unset                            |
-| `RESEND_API_KEY`           | yes*     | *Alternative to SMTP, used when `MAIL_HOST` is unset        |
-| `MAIL_FROM_ADDRESS`        | yes*     | *Required once mail is configured; no default sender        |
+| `MAIL_FROM_ADDRESS`        | no       | Superseded by `EMAIL_FROM`; still read for older deployments |
 | `MAIL_FROM_NAME`           | no       | Display name on the From header                             |
 | `MAIL_FROM`                | no       | Deprecated pre-composed form, honoured if the pair is unset  |
 | `GOOGLE_CLIENT_ID`         | yes*     | *Required for Google sign-in; see google-auth.md            |
@@ -232,40 +234,121 @@ sessions, and writes nothing else.
 
 ## Email delivery
 
-Invitations, email verification, password resets and the Super Admin setup
-code all need real mail. There are two transports, chosen from the
-environment, and **no development fallback**:
+Invitations, email verification, password resets and the Super Admin setup code
+all need real mail. **Resend** is the production transport; SMTP remains for an
+institutional mail server. There is no silent fallback.
 
-| Transport | Chosen when            | Notes                                        |
-| --------- | ---------------------- | -------------------------------------------- |
-| `smtp`    | `MAIL_HOST` is set     | Any SMTP server. STARTTLS is required, not merely offered |
-| `resend`  | `RESEND_API_KEY` is set and `MAIL_HOST` is not | HTTP API, no outbound TCP needed |
-| `none`    | neither is set         | Sending **fails**. Nothing is queued or logged |
+| Transport | Chosen when | Notes |
+| --------- | ----------- | ----- |
+| `resend` | `RESEND_API_KEY` is set, or `EMAIL_PROVIDER=resend` | HTTP API. No outbound SMTP, nothing to keep warm. **Production** |
+| `smtp` | `EMAIL_PROVIDER=smtp`, or `MAIL_HOST`+`MAIL_PORT` with no Resend key | Any SMTP server. STARTTLS is required, not merely offered |
+| `log` | `EMAIL_PROVIDER=development` | Writes the code to the server log. **Refused when `NODE_ENV=production`** |
+| `none` | nothing usable is configured | Sending **fails**. Nothing is queued |
 
-`MAIL_FROM_ADDRESS` is required alongside either transport; without a sender
-address mail counts as unconfigured.
+`EMAIL_FROM` is required alongside either real transport; without a sender
+address mail counts as unconfigured. `MAIL_FROM_ADDRESS`/`MAIL_FROM_NAME` and
+the pre-composed `MAIL_FROM` are still read, in that order, so an older
+deployment keeps its sender.
 
-There used to be a third, `log`, which wrote the message — verification link
-included — to the server log and reported success in development. It is gone.
-It made a flow look like it worked while nothing was delivered, and it put a
-live credential in the logs. Today, when mail is unconfigured:
+### Why Resend takes precedence over SMTP
 
-* `sendMail` reports failure, and the log records only that no provider is
-  configured — never the recipient, the body, or a code;
-* flows that depend on delivery refuse to proceed. In particular **no Super
-  Admin account is created**: the setup screen shows an administrator-facing
-  configuration error naming the variables to set, and stops.
+This is a fix, not a preference. Selection used to be "SMTP if `MAIL_HOST` is
+set, else Resend", and a deployment that had once been pointed at a local mail
+catcher still carried `MAIL_HOST=127.0.0.1` in its Vercel environment. SMTP
+therefore won, and every send in production tried to reach a mail server inside
+the serverless function's own sandbox — where nothing is listening and nothing
+ever could be. Verification email stopped working, and the failure looked like
+a network problem rather than the stale variable it was.
 
-`APP_URL` is configuration and is never derived from a request header. `Host`
-is attacker-controlled, and a poisoned value would send verification links to
-somebody else's domain.
+So a Resend key now wins by default and a leftover SMTP host cannot hijack
+delivery. Specifically:
+
+* with a Resend key present, a loopback `MAIL_HOST` is **ignored**, and
+  `/api/health` reports it as a warning so the stale value can be seen and
+  removed;
+* with no key, a loopback `MAIL_HOST` on a deployment is a **configuration
+  fault**, named as such, rather than a connection attempt that cannot succeed;
+* `EMAIL_PROVIDER=resend` without a key resolves to `none`. It never falls
+  through to SMTP — falling through is how a deployment ends up on a host
+  nobody chose.
+
+`EMAIL_PROVIDER=smtp` is the only way to get SMTP while a key is present.
+
+### Setting it up on Vercel
+
+Environment variables in Vercel are per-environment and are read at build and
+run time, so **a change does nothing until a redeploy picks it up**. Editing
+`.env` locally has no effect on a deployment.
+
+1. Project Settings → Environment Variables. Add, for Production, Preview and
+   Development:
+
+   ```
+   RESEND_API_KEY=re_xxxxxxxxxxxxxxxx
+   EMAIL_FROM=TDMS <no-reply@yourdomain.com>
+   EMAIL_PROVIDER=resend
+   ```
+
+2. **Remove `MAIL_HOST`** (and the other `MAIL_*` values) from the deployment,
+   unless an institutional SMTP server is genuinely in use. They are inert once
+   Resend is configured, but a loopback value left there is what caused the
+   outage this section describes.
+3. Redeploy.
+4. Confirm what the deployment actually resolved:
+
+   ```bash
+   npm run mail:check -- --base https://your-app.vercel.app
+   ```
+
+   It reads the target's own `/api/health`, then asks Resend for its verified
+   domains and compares them with `EMAIL_FROM`. It sends nothing and prints no
+   secret. `transport: resend` with `MAIL_HOST` still listed is the evidence
+   that the stale value is no longer being used.
+
+### Diagnosing a failure
+
+Every outcome is logged in one fixed shape, so it can be found in the Vercel
+log without knowing what to grep for:
+
+```
+[EMAIL]
+Provider: Resend
+Status: FAILED
+Reason: The example.com domain is not verified. Please verify a domain before sending.
+code: EMAIL_SENDER_NOT_VERIFIED
+```
+
+The `Reason` is the provider's own words — which is the point, because
+"couldn't send" is not a diagnosis. Email addresses are redacted from it first:
+Resend quotes the recipient in some refusals, and a verification recipient does
+not belong in a log. Domains survive, because a domain is not a secret and is
+usually the whole answer. The API key, the SMTP password, the message body and
+the verification code are never logged by any path.
+
+The browser gets the calm sentence — "We couldn't send the verification email.
+Please try again." — plus a `code` in the JSON envelope, so a failure can be
+identified from the Network tab alone. The codes are `EMAIL_SERVICE_NOT_CONFIGURED`,
+`EMAIL_AUTH_FAILED`, `EMAIL_SENDER_NOT_VERIFIED`, `EMAIL_PROVIDER_REJECTED`,
+`EMAIL_CONNECTION_FAILED` and `EMAIL_TIMEOUT`.
+
+One Resend quirk worth knowing, because it is confirmed against the live API
+and defeats the obvious check: a **malformed** key returns `400` with
+`"API key is invalid"`, while a **missing** key returns `401`. Classification
+therefore reads the response body rather than trusting the status.
 
 ### Sender domain
 
-Whichever transport you use, the address in `MAIL_FROM_ADDRESS` must be one
-the provider is authorised to send for, with SPF and DKIM published for that
+Whichever transport you use, the address in `EMAIL_FROM` must be one the
+provider is authorised to send for, with SPF and DKIM published for that
 domain. Institutional mail is filtered hard; a mismatched sender is the usual
 reason a code "never arrives" when the application reports it as delivered.
+
+With Resend this is enforced: add the domain under Domains, publish the DNS
+records it gives you, and wait for `verified`. Until then the account may only
+send to the address that owns it, and anything else is refused with a 403 —
+surfaced as `EMAIL_SENDER_NOT_VERIFIED`. `npm run mail:check` compares
+`EMAIL_FROM` against the verified list, so this is caught before a user meets
+it.
 
 ## A migration that exists is not a migration that ran
 

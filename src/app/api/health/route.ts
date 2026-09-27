@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server';
 import { databaseUrlSource } from '@/lib/database-url';
-import { appUrl, activeTransport, canSendMail, mailFromAddress } from '@/server/mail/mailer';
+import {
+  appUrl,
+  activeTransport,
+  canSendMail,
+  configuredProvider,
+  mailConfigurationProblem,
+  mailConfigurationWarning,
+  mailFromAddress,
+} from '@/server/mail/mailer';
 import { describeDomainPolicy } from '@/lib/institutional-email';
 import { autoActivateNewGoogleUsers } from '@/server/services/google-auth-service';
 import { googleConfigured } from '@/server/auth/google/oauth';
@@ -123,16 +131,29 @@ export async function GET() {
       mail: {
         transport: activeTransport(),
         canSend: canSendMail(),
+        /* What EMAIL_PROVIDER asked for, or null when the choice is derived. */
+        provider: configuredProvider(),
         senderConfigured: mailFromAddress() !== '',
-        host: process.env.MAIL_HOST ?? null,
-        port: process.env.MAIL_PORT ?? null,
-        encryption: process.env.MAIL_ENCRYPTION ?? null,
-        credentials: {
-          username: Boolean(process.env.MAIL_USERNAME),
-          password: Boolean(process.env.MAIL_PASSWORD),
-        },
         resendApiKey: Boolean(process.env.RESEND_API_KEY),
-        developmentMode: process.env.EMAIL_VERIFICATION_MODE === 'development',
+        /*
+         * Present so a leftover value can be SEEN rather than deduced. A
+         * deployment carrying MAIL_HOST=127.0.0.1 is exactly the fault that
+         * broke verification, and `transport: "resend"` alongside it is the
+         * evidence it is no longer being used.
+         */
+        smtp: {
+          host: process.env.MAIL_HOST ?? null,
+          port: process.env.MAIL_PORT ?? null,
+          encryption: process.env.MAIL_ENCRYPTION ?? null,
+          credentials: {
+            username: Boolean(process.env.MAIL_USERNAME),
+            password: Boolean(process.env.MAIL_PASSWORD),
+          },
+        },
+        developmentMode: activeTransport() === 'log',
+        /* The fix to make, when there is one. Names variables, never values. */
+        problem: mailConfigurationProblem(),
+        warning: mailConfigurationWarning(),
       },
       mailTransport: activeTransport(),
       /*

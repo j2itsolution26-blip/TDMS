@@ -29,10 +29,14 @@ export function hasAnyRole(user: AuthUser, roles: readonly string[]): boolean {
  * here rather than being quietly dropped — omitting it would strip the
  * Super Admin of access the Laravel app gave them.
  *
- * Note the one place it deliberately does NOT apply: userPolicy.toggleActive
- * keeps its self-targeting guard, exactly as the Laravel Staff component
- * had to re-assert with abort_if(), because Gate::before would otherwise let
- * a Super Admin deactivate their own account and lock themselves out.
+ * It deliberately does NOT apply in two places:
+ *
+ *   * userPolicy as a whole. Staff accounts are managed by the Admin, and the
+ *     Super Admin's role is system maintenance — creating Admins, not
+ *     Teachers. See `managesStaff` below.
+ *   * adminAccountPolicy's self-targeting guards, because Gate::before would
+ *     otherwise let a Super Admin suspend their own account and lock the
+ *     institution out.
  */
 export function isSuperAdmin(user: AuthUser): boolean {
   return user.roles.includes('super_admin');
@@ -149,21 +153,48 @@ export interface TargetUser {
   roles: string[];
 }
 
+/**
+ * Who manages staff accounts: the Admin.
+ *
+ *   SUPER ADMIN   system maintenance — creates and controls Admins
+ *        │
+ *      ADMIN       creates and manages staff
+ *        ├── Director, Coordinator, Secretary, Teacher
+ *
+ * Two things this deliberately does not use:
+ *
+ *   * `can()`. Its Gate::before short-circuit would hand the Super Admin the
+ *     Staff screen, and the Super Admin's job is maintaining the system, not
+ *     staffing it. The permission is read straight off the principal instead.
+ *
+ *   * a role check. Access follows `accounts.manage`, so moving staff
+ *     management to another role later is a permission change in the database
+ *     rather than a code change. Only `admin` holds it — see the migration
+ *     20260927010000_staff_management_admin_only.
+ *
+ * The Super Admin exclusion is explicit rather than relying on their role not
+ * holding the permission, so a stray grant in the database cannot quietly
+ * bring it back.
+ */
+export function managesStaff(u: AuthUser): boolean {
+  if (isSuperAdmin(u)) return false;
+  return u.permissions.includes('accounts.manage');
+}
+
 export const userPolicy = {
-  viewAny: (u: AuthUser) => can(u, 'accounts.manage'),
-  view: (u: AuthUser) => can(u, 'accounts.manage'),
-  create: (u: AuthUser) => can(u, 'accounts.manage'),
+  viewAny: (u: AuthUser) => managesStaff(u),
+  view: (u: AuthUser) => managesStaff(u),
+  create: (u: AuthUser) => managesStaff(u),
 
   /**
-   * Admins may manage staff, but only a Super Admin may touch another
-   * Super Admin or an Admin. This is the rule that keeps peer admins from
-   * escalating against each other.
+   * Never a privileged account. Admins are managed by the Super Admin from
+   * Admin Accounts, so a staff manager touching one here would let peer Admins
+   * escalate against each other.
    */
   update: (u: AuthUser, target: TargetUser) => {
-    if (!can(u, 'accounts.manage')) return false;
+    if (!managesStaff(u)) return false;
     const targetIsPrivileged = target.roles.some((r) => r === 'super_admin' || r === 'admin');
-    if (targetIsPrivileged && !hasRole(u, 'super_admin')) return false;
-    return true;
+    return !targetIsPrivileged;
   },
 
   /** Nobody may deactivate their own account and lock themselves out. */
@@ -174,7 +205,8 @@ export const userPolicy = {
 
   resetPassword: (u: AuthUser, target: TargetUser) => userPolicy.update(u, target),
 
-  delete: (u: AuthUser) => isSuperAdmin(u),
+  /** Staff accounts are deactivated or suspended, never deleted. */
+  delete: () => false,
 };
 
 // --- AdminAccountPolicy ----------------------------------------------------

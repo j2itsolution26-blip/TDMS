@@ -21,7 +21,14 @@ const GUARD = 'web';
 
 /**
  * The role/permission matrix from
- * database/seeders/RolesAndPermissionsSeeder.php, copied without change.
+ * database/seeders/RolesAndPermissionsSeeder.php, with one deliberate change:
+ * `accounts.manage` is held by `admin` alone.
+ *
+ * Staff accounts are the Admin's to manage. The Super Admin maintains the
+ * system and creates Admins (Administration → Admin Accounts, which checks the
+ * role directly), and the Director no longer staffs the institution alongside
+ * the Admin. Migration 20260927010000_staff_management_admin_only makes the
+ * same change to an existing database.
  */
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   super_admin: [
@@ -35,7 +42,6 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'graduation.evaluate',
     'reports.view.full',
     'audit-logs.view',
-    'accounts.manage',
     'system.configure',
   ],
   admin: [
@@ -65,7 +71,6 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'graduation.evaluate',
     'reports.view.full',
     'audit-logs.view',
-    'accounts.manage',
   ],
   coordinator: [
     'dashboard.view.institutional',

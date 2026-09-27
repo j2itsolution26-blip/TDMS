@@ -248,6 +248,24 @@ class name, so existing assignment rows stay valid.
 
 `AppServiceProvider` registered `Gate::before(… super_admin ? true : null)`,
 granting a Super Admin every ability. That blanket grant is reproduced in
-`policies.ts`. It has exactly one deliberate exception, the same one
-Laravel had to re-assert by hand: a Super Admin still cannot deactivate
-their own account.
+`policies.ts`, with two deliberate exceptions:
+
+- **Staff accounts.** The Super Admin maintains the system and creates Admins;
+  the Admin staffs the institution. `userPolicy` is built on `managesStaff()`,
+  which reads `accounts.manage` straight off the principal and excludes the
+  Super Admin explicitly — so the blanket grant cannot let them in, and neither
+  can a stray grant of the permission to their role. Only `admin` holds
+  `accounts.manage` (migration `20260927010000_staff_management_admin_only`
+  removed it from `super_admin` and `director`).
+- **Self-targeting.** Nobody, a Super Admin included, can suspend or deactivate
+  their own account.
+
+```
+SUPER ADMIN   system maintenance — creates and controls Admins
+     │
+   ADMIN      creates and manages staff accounts
+     ├── Director
+     ├── Coordinator
+     ├── Secretary
+     └── Teacher
+```

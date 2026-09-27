@@ -12,6 +12,7 @@ import {
   enrollmentPolicy,
   studentCredentialPolicy,
   userPolicy,
+  managesStaff,
   adminAccountPolicy,
   requiresAdminAccessCode,
 } from './policies';
@@ -37,7 +38,10 @@ function user(roles: string[], permissions: string[] = []): AuthUser {
 
 const superAdmin = user(['super_admin']);
 const admin = user(['admin'], ['accounts.manage', 'programs.manage', 'subjects.manage', 'students.manage', 'students.enroll', 'applications.review', 'credentials.verify']);
-const director = user(['director'], ['programs.manage', 'subjects.manage', 'accounts.manage']);
+// Matches prisma/seed.ts: the Director no longer holds accounts.manage.
+const director = user(['director'], ['programs.manage', 'subjects.manage']);
+/** A Director given the permission directly — a stray or deliberate grant. */
+const directorWithGrant = user(['director'], ['programs.manage', 'subjects.manage', 'accounts.manage']);
 const coordinator = user(['coordinator'], ['programs.manage', 'subjects.manage']);
 const secretary = user(['secretary'], ['applications.review', 'credentials.verify', 'students.manage', 'students.enroll']);
 const teacher = user(['teacher'], ['grades.enter', 'attendance.record']);
@@ -48,7 +52,6 @@ describe('Gate::before super_admin grant', () => {
     expect(isSuperAdmin(superAdmin)).toBe(true);
     expect(can(superAdmin, 'anything.at.all')).toBe(true);
     expect(programPolicy.create(superAdmin)).toBe(true);
-    expect(userPolicy.viewAny(superAdmin)).toBe(true);
     // Even the deletes, which are flat false for everyone else.
     expect(programPolicy.delete(superAdmin)).toBe(true);
   });
@@ -131,15 +134,7 @@ describe('UserPolicy privilege boundaries', () => {
     expect(userPolicy.update(admin, targetSuper)).toBe(false);
   });
 
-  it('lets a super admin manage anyone', () => {
-    expect(userPolicy.update(superAdmin, targetAdmin)).toBe(true);
-    expect(userPolicy.update(superAdmin, targetSuper)).toBe(true);
-  });
-
-  it('refuses self-deactivation even for a super admin', () => {
-    // The one place the Gate::before blanket grant must NOT win, or an
-    // account can lock itself out of the system.
-    expect(userPolicy.toggleActive(superAdmin, { id: superAdmin.id, roles: ['super_admin'] })).toBe(false);
+  it('refuses self-deactivation', () => {
     expect(userPolicy.toggleActive(admin, { id: admin.id, roles: ['admin'] })).toBe(false);
   });
 
@@ -150,8 +145,84 @@ describe('UserPolicy privilege boundaries', () => {
   it('requires accounts.manage at all', () => {
     expect(userPolicy.viewAny(teacher)).toBe(false);
     expect(userPolicy.viewAny(secretary)).toBe(false);
+    expect(userPolicy.viewAny(coordinator)).toBe(false);
+  });
+});
+
+/*
+ * The hierarchy:
+ *
+ *   SUPER ADMIN   system maintenance — creates and controls Admins
+ *        |
+ *      ADMIN       creates and manages staff
+ *        +-- Director, Coordinator, Secretary, Teacher
+ */
+describe('staff management belongs to the Admin', () => {
+  const targetStaff = { id: '97', roles: ['teacher'] };
+
+  it('gives the Admin the whole Staff screen', () => {
+    expect(managesStaff(admin)).toBe(true);
+    expect(userPolicy.viewAny(admin)).toBe(true);
+    expect(userPolicy.create(admin)).toBe(true);
+    expect(userPolicy.update(admin, targetStaff)).toBe(true);
+    expect(userPolicy.toggleActive(admin, targetStaff)).toBe(true);
+    expect(userPolicy.resetPassword(admin, targetStaff)).toBe(true);
+  });
+
+  it('keeps the Super Admin out of it, blanket grant notwithstanding', () => {
+    /*
+     * THE test for this rule. can() would let the Super Admin through, so the
+     * policy must not be built on it. The Super Admin creates Admins; Admins
+     * staff the institution.
+     */
+    expect(can(superAdmin, 'accounts.manage')).toBe(true);
+
+    expect(managesStaff(superAdmin)).toBe(false);
+    expect(userPolicy.viewAny(superAdmin)).toBe(false);
+    expect(userPolicy.view(superAdmin)).toBe(false);
+    expect(userPolicy.create(superAdmin)).toBe(false);
+    expect(userPolicy.update(superAdmin, targetStaff)).toBe(false);
+    expect(userPolicy.toggleActive(superAdmin, targetStaff)).toBe(false);
+    expect(userPolicy.resetPassword(superAdmin, targetStaff)).toBe(false);
+  });
+
+  it('keeps the Super Admin out even if their role is granted the permission', () => {
+    // A stray grant in the database must not quietly bring it back.
+    const superWithGrant = user(['super_admin'], ['accounts.manage']);
+    expect(userPolicy.viewAny(superWithGrant)).toBe(false);
+  });
+
+  it('keeps the Director out', () => {
     expect(hasRole(director, 'director')).toBe(true);
-    expect(userPolicy.viewAny(director)).toBe(true);
+    expect(userPolicy.viewAny(director)).toBe(false);
+    expect(userPolicy.create(director)).toBe(false);
+    expect(userPolicy.update(director, targetStaff)).toBe(false);
+  });
+
+  it('follows the permission, so a deliberate grant is honoured', () => {
+    // Moving staff management to another role is a database change, not a
+    // code change.
+    expect(userPolicy.viewAny(directorWithGrant)).toBe(true);
+  });
+
+  it('keeps privileged accounts off the Staff screen for everybody', () => {
+    for (const target of [{ id: '99', roles: ['admin'] }, { id: '98', roles: ['super_admin'] }]) {
+      expect(userPolicy.update(admin, target)).toBe(false);
+      expect(userPolicy.update(superAdmin, target)).toBe(false);
+    }
+  });
+
+  it('leaves the Super Admin every academic screen', () => {
+    // "Remove staff management only": nothing else changes for them.
+    expect(programPolicy.viewAny(superAdmin)).toBe(true);
+    expect(programPolicy.create(superAdmin)).toBe(true);
+    expect(studentPolicy.viewAny(superAdmin)).toBe(true);
+    expect(applicationPolicy.viewAny(superAdmin)).toBe(true);
+    expect(subjectPolicy.viewAny(superAdmin)).toBe(true);
+  });
+
+  it('never deletes a staff account', () => {
+    expect(userPolicy.delete()).toBe(false);
   });
 });
 
@@ -184,10 +255,10 @@ describe('adminAccountPolicy', () => {
     expect(adminAccountPolicy.setStatus(admin, targetAdmin)).toBe(false);
   });
 
-  it('refuses a Director, who also holds accounts.manage', () => {
-    expect(can(director, 'accounts.manage')).toBe(true);
-    expect(adminAccountPolicy.viewAny(director)).toBe(false);
-    expect(adminAccountPolicy.create(director)).toBe(false);
+  it('refuses a Director, even one granted accounts.manage', () => {
+    expect(can(directorWithGrant, 'accounts.manage')).toBe(true);
+    expect(adminAccountPolicy.viewAny(directorWithGrant)).toBe(false);
+    expect(adminAccountPolicy.create(directorWithGrant)).toBe(false);
   });
 
   it('refuses everybody else outright', () => {

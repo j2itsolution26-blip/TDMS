@@ -115,7 +115,7 @@ refuses outright unless the pending registration's `verified_at` is set. See
 
 Added after the Laravel migration, so these have no Livewire ancestor. Every
 route here is **Super Admin only** — checked with `isSuperAdmin` directly rather
-than through `accounts.manage`, which `admin` and `director` also hold. The
+than through `accounts.manage`, which the `admin` role holds. The
 three that issue a credential additionally require the static Super Admin
 security code in the body. See
 [admin-accounts.md](admin-accounts.md).
@@ -145,7 +145,9 @@ password step and has not been let in — and is authorised by the HttpOnly
 
 "role: staff" means admin, director, coordinator, secretary or teacher.
 "role: office" means admin, director, coordinator or secretary. A
-`super_admin` passes every check (see `authentication.md`).
+`super_admin` passes every check **except** the staff routes above: staff
+accounts are managed by the Admin only, and `accounts.manage` is held by `admin`
+alone (see `authentication.md`).
 
 ## Notes
 

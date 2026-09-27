@@ -272,8 +272,12 @@ would otherwise let a Super Admin lock the institution out of its own system.
 Note what it does *not* use. The obvious check would be
 `can(user, 'accounts.manage')` — and it would be wrong twice over: the `admin`
 role holds that permission, so an Admin could create peers and issue their access
-codes, and issuing your own second factor is not a second factor. `director`
-holds it too.
+codes, and issuing your own second factor is not a second factor.
+
+The reverse holds as well: the Super Admin does **not** manage staff. Creating
+Admins is system maintenance; staffing the institution is the Admin's job, so
+the Staff screen is hidden from the Super Admin and its routes refuse them. See
+`managesStaff()` in the same file.
 
 The `admin` role is also no longer grantable from the **Staff** screen by
 anybody, including a Super Admin. Leaving it there would give the system two ways

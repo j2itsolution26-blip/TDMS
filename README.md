@@ -76,8 +76,21 @@ Director, Coordinator, Secretary, Teacher, Student. Permissions are stored
 in the `roles` / `permissions` / `model_has_roles` tables and enforced
 server-side by the policy functions in `src/server/auth/policies.ts`.
 
-A Super Admin passes every permission check, with one exception: nobody,
-including a Super Admin, can deactivate their own account.
+Who manages whom:
+
+```
+SUPER ADMIN   system maintenance — creates and controls Admins
+     │
+   ADMIN      creates and manages staff accounts
+     ├── Director
+     ├── Coordinator
+     ├── Secretary
+     └── Teacher
+```
+
+A Super Admin passes every academic permission check, with two exceptions: they
+do not manage staff accounts (that is the Admin's job, and the Staff screen is
+hidden from them), and nobody can suspend or deactivate their own account.
 
 ## Documentation
 

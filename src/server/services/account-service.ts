@@ -15,6 +15,7 @@ import { canSendMail } from '@/server/mail/mailer';
 import { consumeRateLimit } from '@/server/auth/rate-limit';
 import { checkInstitutionalEmail } from '@/lib/institutional-email';
 import { recordAudit, actorLabel, type AuditContext } from './audit-log';
+import { consumeTemporaryCredential } from './admin-account-service';
 import type { AuthUser, AccountStatus } from '@/types/domain';
 
 /**
@@ -591,6 +592,9 @@ export async function resetPasswordWithToken(
     where: { id: user.id },
     data: {
       password: await hashPassword(newPassword),
+      // A password chosen through the emailed link is the user's own, so any
+      // temporary one issued by a Super Admin is finished with.
+      mustChangePassword: false,
       // Setting a password through a link sent to the verified address both
       // proves ownership and completes an invitation.
       ...(user.emailVerifiedAt && user.status === 'PENDING'
@@ -598,6 +602,9 @@ export async function resetPasswordWithToken(
         : { updatedAt: new Date() }),
     },
   });
+
+  // ...and its revealable copy is destroyed.
+  await consumeTemporaryCredential(user.id);
 
   // Every other session was authenticated with the old password.
   await destroyAllSessionsFor(user.id);

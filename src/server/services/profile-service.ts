@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { AppError } from '@/lib/http';
 import { hashPassword, verifyPassword } from '@/server/auth/password';
 import { destroyAllSessionsFor, destroyCurrentSession } from '@/server/auth/session';
+import { consumeTemporaryCredential } from './admin-account-service';
 
 /** Port of the three profile/* Volt components. */
 
@@ -71,6 +72,13 @@ export async function updatePassword(
       updatedAt: new Date(),
     },
   });
+
+  /*
+   * The temporary password is gone, so its revealable copy goes with it: the
+   * ciphertext is destroyed and the Super Admin can no longer show anything.
+   * The new password is the user's own and is never stored recoverably.
+   */
+  await consumeTemporaryCredential(userId);
 }
 
 /** Port of delete-user-form: confirm with the current password, then delete. */

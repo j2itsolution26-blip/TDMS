@@ -1,5 +1,5 @@
 import type { NextRequest } from 'next/server';
-import { ok } from '@/lib/http';
+import { okSecret } from '@/lib/http';
 import { withErrorHandling, requestContext } from '@/server/api-handler';
 import { requireApiUser, authorize } from '@/server/auth/current-user';
 import { adminAccountPolicy } from '@/server/auth/policies';
@@ -25,5 +25,5 @@ export const POST = withErrorHandling(async (request: NextRequest, { params }: P
     adminAccountPolicy.resetTemporaryPassword(user, { id: targetId.toString(), roles: [] }),
   );
 
-  return ok(await resetAdminTemporaryPassword(user, targetId, requestContext(request)));
+  return okSecret(await resetAdminTemporaryPassword(user, targetId, requestContext(request)));
 });

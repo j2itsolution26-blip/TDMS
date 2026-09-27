@@ -124,6 +124,8 @@ static Super Admin security code. See [admin-accounts.md](admin-accounts.md).
 | `POST /api/admins`                           | Create one with a temporary password (no code)    |
 | `POST /api/admins/:id/reset-password`        | New temporary password; revokes live codes; no body |
 | `POST /api/admins/:id/status`                | Suspend or reactivate                             |
+| `GET /api/admins/:id/credentials`            | Temporary-password and access-code **status** — no secrets |
+| `POST /api/admins/:id/temporary-password/reveal` | Show a temporary password (`no-store`, audited); 409 once it is no longer temporary |
 | `GET /api/admin-access-codes?page=`          | List codes with status — never the code           |
 | `POST /api/admin-access-codes`               | `{ adminId, expiresInMinutes?, emailAccessCode? }` — issue a code |
 | `GET /api/admin-access-codes/:id`            | View one code's history — never the code          |

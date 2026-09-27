@@ -5,12 +5,13 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api-client';
 import Modal from '@/components/Modal';
+import AdminCredentialsModal from '@/components/AdminCredentialsModal';
 import {
   Card, PageHeader, EmptyState, Badge, Pagination, Alert,
   BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_DANGER, INPUT_CLASS, LABEL_CLASS,
 } from '@/components/ui';
 import { succeeded, undelivered, type Notice } from '@/lib/notice';
-import { diffForHumans, formatDate } from '@/lib/dates';
+import { diffForHumans } from '@/lib/dates';
 
 /**
  * Super Admin Dashboard → Admin Access Codes.
@@ -136,7 +137,8 @@ export default function AdminAccessCodesScreen({
   const [emailIt, setEmailIt] = useState(false);
 
   const [issued, setIssued] = useState<IssuedCode | null>(null);
-  const [viewing, setViewing] = useState<AccessCodeRow | null>(null);
+  /** The code whose credentials modal is open. */
+  const [viewing, setViewing] = useState<{ adminId: string; codeId: string } | null>(null);
 
   /*
    * Live countdowns, ticking down locally from seconds the server supplied —
@@ -221,7 +223,6 @@ export default function AdminAccessCodesScreen({
     }
 
     setIssued((current) => (current?.codeId === codeId ? null : current));
-    setViewing((current) => (current?.id === codeId ? result.data : current));
     setNotice(succeeded(`${who}’s access code has been revoked. It can no longer be used to sign in.`));
     router.refresh();
   }
@@ -315,7 +316,7 @@ export default function AdminAccessCodesScreen({
                           <div className="flex items-center justify-end gap-3">
                             <button
                               type="button"
-                              onClick={() => setViewing(row)}
+                              onClick={() => setViewing({ adminId: row.adminId, codeId: row.id })}
                               className="font-medium text-slate-600 hover:text-indigo-600"
                             >
                               View
@@ -503,85 +504,23 @@ export default function AdminAccessCodesScreen({
         )}
       </Modal>
 
-      {/* --- View ------------------------------------------------------- */}
+      {/* --- View: the Admin's two credentials -------------------------- */}
 
-      <Modal open={viewing !== null} onClose={() => setViewing(null)} title="Access code" maxWidth="sm:max-w-lg">
-        {viewing && (
-          <div className="space-y-4">
-            <dl className="grid grid-cols-3 gap-x-4 gap-y-3 text-sm">
-              <dt className="text-slate-500">Admin</dt>
-              <dd className="col-span-2 text-navy-900">
-                {viewing.adminName}
-                <span className="block break-all text-slate-500">{viewing.adminEmail}</span>
-              </dd>
-
-              <dt className="text-slate-500">Status</dt>
-              <dd className="col-span-2">
-                <Badge status={STATUS_BADGE[viewing.status]} label={STATUS_LABEL[viewing.status]} />
-              </dd>
-
-              <dt className="text-slate-500">Created</dt>
-              <dd className="col-span-2 text-navy-900">
-                {formatDate(viewing.createdAt)} · {diffForHumans(viewing.createdAt)}
-                {viewing.createdBy && <span className="block text-slate-500">by {viewing.createdBy}</span>}
-              </dd>
-
-              <dt className="text-slate-500">Expires</dt>
-              <dd className="col-span-2 text-navy-900">
-                {viewing.status === 'ACTIVE' && viewing.expiresInSeconds !== null
-                  ? `in ${countdown(liveSeconds(viewing.expiresInSeconds) ?? 0)}`
-                  : formatDate(viewing.expiresAt)}
-              </dd>
-
-              {viewing.usedAt && (
-                <>
-                  <dt className="text-slate-500">Used</dt>
-                  <dd className="col-span-2 text-navy-900">{formatDate(viewing.usedAt)}</dd>
-                </>
-              )}
-
-              {viewing.status === 'REVOKED' && (
-                <>
-                  <dt className="text-slate-500">Revoked</dt>
-                  <dd className="col-span-2 text-navy-900">
-                    {viewing.revokedAt ? formatDate(viewing.revokedAt) : '—'}
-                    <span className="block text-slate-500">
-                      {REVOKED_REASON[viewing.revokedReason ?? ''] ?? viewing.revokedReason}
-                      {viewing.revokedBy && ` · by ${viewing.revokedBy}`}
-                    </span>
-                  </dd>
-                </>
-              )}
-
-              <dt className="text-slate-500">Attempts</dt>
-              <dd className="col-span-2 text-navy-900">
-                {viewing.attemptsUsed} of {viewing.maxAttempts} incorrect attempts used
-              </dd>
-            </dl>
-
-            <p className="text-xs text-slate-500">
-              The code itself is not shown. It was displayed once when it was generated, and only a
-              hash of it is stored.
-            </p>
-
-            <div className="flex justify-end gap-3 border-t border-border pt-4">
-              {viewing.status === 'ACTIVE' && (
-                <button
-                  type="button"
-                  onClick={() => revoke(viewing.id, viewing.adminName)}
-                  className={BUTTON_DANGER}
-                  disabled={busy}
-                >
-                  Revoke
-                </button>
-              )}
-              <button type="button" onClick={() => setViewing(null)} className={BUTTON_PRIMARY}>
-                Close
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
+      <AdminCredentialsModal
+        open={viewing !== null}
+        onClose={() => setViewing(null)}
+        adminId={viewing?.adminId ?? null}
+        codeId={viewing?.codeId ?? null}
+        title="Access Code"
+        onGenerateCode={(id) => {
+          clearFeedback();
+          setAdminId(id);
+          setMinutes(defaultExpiry);
+          setEmailIt(false);
+          setShowGenerate(true);
+        }}
+        onChanged={() => router.refresh()}
+      />
     </div>
   );
 }

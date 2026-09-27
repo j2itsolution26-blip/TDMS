@@ -67,3 +67,15 @@ export class NotFoundError extends AppError {
     this.name = 'NotFoundError';
   }
 }
+
+/**
+ * `ok()` for a response that carries a secret — a temporary password or an
+ * access code. `no-store` keeps it out of the browser cache, the back/forward
+ * cache and any shared proxy, so the only copy is the one on screen.
+ */
+export function okSecret<T>(data: T, status = 200) {
+  const response = ok(data, status);
+  response.headers.set('Cache-Control', 'no-store, max-age=0');
+  response.headers.set('Pragma', 'no-cache');
+  return response;
+}

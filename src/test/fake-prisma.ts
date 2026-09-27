@@ -36,6 +36,7 @@ interface Store {
   auditLogs: Row[];
   adminAccessCodes: Row[];
   adminLoginChallenges: Row[];
+  temporaryCredentials: Row[];
 }
 
 function emptyStore(): Store {
@@ -49,6 +50,7 @@ function emptyStore(): Store {
     auditLogs: [],
     adminAccessCodes: [],
     adminLoginChallenges: [],
+    temporaryCredentials: [],
   };
 }
 
@@ -365,6 +367,12 @@ export function createFakePrisma(): FakePrisma {
       revokedReason: null,
       revokedBy: null,
       attemptCount: 0,
+      createdAt: new Date(),
+    })),
+    temporaryCredential: model('temporaryCredentials', () => ({
+      usedAt: null,
+      revokedAt: null,
+      revokedReason: null,
       createdAt: new Date(),
     })),
     adminLoginChallenge: model('adminLoginChallenges', () => ({

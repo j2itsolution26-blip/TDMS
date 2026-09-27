@@ -31,6 +31,9 @@ const env = vi.hoisted(() => {
   delete process.env.GOOGLE_DOMAIN_RESTRICTION_ENABLED;
   // Deliberately NOT set: nothing in this workflow may depend on it.
   delete process.env.SUPER_ADMIN_STATIC_CODE;
+  // The reveal key: 32 random-looking bytes, base64. Test-only.
+  process.env.TEMP_CREDENTIAL_KEY = Buffer.alloc(32, 7).toString('base64');
+  delete process.env.TEMP_CREDENTIAL_REVEAL_HOURS;
   return {};
 });
 void env;
@@ -92,7 +95,11 @@ const {
   getAccessCode,
   listIssuableAdmins,
   adminAccessOverview,
+  getAdminCredentials,
+  revealTemporaryPassword,
 } = await import('./admin-account-service');
+
+const { updatePassword } = await import('./profile-service');
 
 const {
   beginAdminVerification,
@@ -723,7 +730,7 @@ describe('resetting a temporary password', () => {
     expect(reissued.temporaryPassword).not.toBe(TEMP_PASSWORD);
     expect(rowFor(JAMES.email).mustChangePassword).toBe(true);
     expectNotStored(reissued.temporaryPassword);
-    expect(store.auditLogs.some((a) => a.action === 'ADMIN_PASSWORD_RESET')).toBe(true);
+    expect(store.auditLogs.some((a) => a.action === 'TEMP_PASSWORD_RESET')).toBe(true);
     expect(dump(store.auditLogs)).not.toContain(reissued.temporaryPassword);
   });
 
@@ -801,5 +808,151 @@ describe('suspending and reactivating', () => {
     await expect(
       setAdminAccountStatus(actor, BigInt(actor.id), 'SUSPENDED', CONTEXT),
     ).rejects.toMatchObject({ status: 422 });
+  });
+});
+
+describe('revealing a temporary password', () => {
+  const NEW_OWN_PASSWORD = 'MyOwn#Password2026z';
+
+  it('shows the temporary password again, from a sealed copy, never plaintext', async () => {
+    const created = await createAdmin();
+    expect(created.revealable).toBe(true);
+
+    // Stored: a ciphertext, not the password.
+    expect(store.temporaryCredentials).toHaveLength(1);
+    expect(String(store.temporaryCredentials[0]!.sealed).startsWith('v1.')).toBe(true);
+    expectNotStored(TEMP_PASSWORD);
+
+    const revealed = await revealTemporaryPassword(actor, idOf(JAMES.email), CONTEXT);
+    expect(revealed.temporaryPassword).toBe(TEMP_PASSWORD);
+  });
+
+  it('audits every reveal, without the password', async () => {
+    await createAdmin();
+    await revealTemporaryPassword(actor, idOf(JAMES.email), CONTEXT);
+    await revealTemporaryPassword(actor, idOf(JAMES.email), CONTEXT);
+
+    expect(store.auditLogs.filter((a) => a.action === 'TEMP_PASSWORD_REVEALED')).toHaveLength(2);
+    expect(store.auditLogs.some((a) => a.action === 'TEMP_PASSWORD_GENERATED')).toBe(true);
+    expect(dump(store.auditLogs)).not.toContain(TEMP_PASSWORD);
+    expect(dump(store.auditLogs)).not.toContain(String(store.temporaryCredentials[0]!.sealed));
+  });
+
+  it('reports the state without the password', async () => {
+    await createAdmin();
+    const creds = await getAdminCredentials(idOf(JAMES.email));
+
+    expect(creds.temporaryPassword.state).toBe('available');
+    expect(dump(creds)).not.toContain(TEMP_PASSWORD);
+    expect(dump(creds)).not.toContain(String(store.temporaryCredentials[0]!.sealed));
+  });
+
+  it('is gone for good once the Admin chooses their own password', async () => {
+    await createAdmin();
+    await updatePassword(idOf(JAMES.email), {
+      currentPassword: TEMP_PASSWORD,
+      password: NEW_OWN_PASSWORD,
+    });
+
+    const row = store.temporaryCredentials[0]!;
+    expect(row.usedAt).toBeInstanceOf(Date);
+    expect(row.sealed).toBe('');
+
+    const creds = await getAdminCredentials(idOf(JAMES.email));
+    expect(creds.temporaryPassword.state).toBe('none');
+    await expect(revealTemporaryPassword(actor, idOf(JAMES.email), CONTEXT)).rejects.toMatchObject({
+      code: 'NO_TEMPORARY_PASSWORD',
+    });
+
+    // The permanent password is not recoverable from anything stored.
+    expectNotStored(NEW_OWN_PASSWORD);
+  });
+
+  it('a reset replaces it: the old one can never be shown again, the new one can', async () => {
+    await createAdmin();
+    const reissued = await resetAdminTemporaryPassword(actor, idOf(JAMES.email), CONTEXT);
+
+    expect(reissued.revealable).toBe(true);
+    const [old, current] = store.temporaryCredentials;
+    expect(old!.revokedReason).toBe('reset');
+    expect(old!.sealed).toBe('');
+    expect(current!.sealed).not.toBe('');
+
+    const revealed = await revealTemporaryPassword(actor, idOf(JAMES.email), CONTEXT);
+    expect(revealed.temporaryPassword).toBe(reissued.temporaryPassword);
+    expect(revealed.temporaryPassword).not.toBe(TEMP_PASSWORD);
+    expectNotStored(TEMP_PASSWORD);
+    expectNotStored(reissued.temporaryPassword);
+  });
+
+  it('can reveal again after a password was replaced by a reset of a set-up admin', async () => {
+    await createAdmin();
+    await updatePassword(idOf(JAMES.email), { currentPassword: TEMP_PASSWORD, password: NEW_OWN_PASSWORD });
+    expect((await getAdminCredentials(idOf(JAMES.email))).temporaryPassword.state).toBe('none');
+
+    const reissued = await resetAdminTemporaryPassword(actor, idOf(JAMES.email), CONTEXT);
+    const revealed = await revealTemporaryPassword(actor, idOf(JAMES.email), CONTEXT);
+    expect(revealed.temporaryPassword).toBe(reissued.temporaryPassword);
+  });
+
+  it('stops revealing once the window passes, while the password keeps working', async () => {
+    await createAdmin();
+    store.temporaryCredentials[0]!.expiresAt = new Date(Date.now() - 1000);
+
+    const creds = await getAdminCredentials(idOf(JAMES.email));
+    expect(creds.temporaryPassword).toMatchObject({ state: 'unavailable', reason: 'expired' });
+    await expect(revealTemporaryPassword(actor, idOf(JAMES.email), CONTEXT)).rejects.toMatchObject({
+      code: 'TEMPORARY_PASSWORD_UNAVAILABLE',
+    });
+    // Still temporary, still required to change.
+    expect(rowFor(JAMES.email).mustChangePassword).toBe(true);
+  });
+
+  it('says so honestly when revealing is not configured', async () => {
+    const key = process.env.TEMP_CREDENTIAL_KEY;
+    delete process.env.TEMP_CREDENTIAL_KEY;
+    try {
+      const created = await createAdmin();
+      // The account is still created; only the revealable copy is skipped.
+      expect(created.revealable).toBe(false);
+      expect(store.temporaryCredentials).toHaveLength(0);
+
+      const creds = await getAdminCredentials(idOf(JAMES.email));
+      expect(creds.temporaryPassword).toMatchObject({ state: 'unavailable', reason: 'not_recorded' });
+    } finally {
+      process.env.TEMP_CREDENTIAL_KEY = key;
+    }
+  });
+
+  it('treats an account created before revealing existed as not revealable', async () => {
+    const stranded = await strandedAdmin('ACTIVE');
+    // A temporary password is in force but no sealed copy was ever kept.
+    rowFor('invited@example.test').mustChangePassword = true;
+    const creds = await getAdminCredentials(stranded.id);
+    expect(creds.temporaryPassword).toMatchObject({ state: 'unavailable', reason: 'not_recorded' });
+  });
+
+  it('never reveals after the encryption key is rotated, and cleans up', async () => {
+    await createAdmin();
+    const key = process.env.TEMP_CREDENTIAL_KEY;
+    process.env.TEMP_CREDENTIAL_KEY = Buffer.alloc(32, 9).toString('base64');
+    try {
+      await expect(revealTemporaryPassword(actor, idOf(JAMES.email), CONTEXT)).rejects.toMatchObject({
+        code: 'TEMPORARY_PASSWORD_UNAVAILABLE',
+      });
+      expect(store.temporaryCredentials[0]!.sealed).toBe('');
+    } finally {
+      process.env.TEMP_CREDENTIAL_KEY = key;
+    }
+  });
+
+  it('shows the current access code state alongside, never the code', async () => {
+    await createAdmin();
+    const issued = await issueCode();
+    const creds = await getAdminCredentials(idOf(JAMES.email));
+
+    expect(creds.currentCode?.id).toBe(issued.codeId);
+    expect(creds.currentCode?.status).toBe('ACTIVE');
+    expect(dump(creds)).not.toContain(issued.accessCode);
   });
 });

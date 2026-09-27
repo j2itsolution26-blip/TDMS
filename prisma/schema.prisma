@@ -75,19 +75,21 @@ model User {
   /// unique index in the live database, so a one-to-one here would demand
   /// a schema change. Modelled as a list and narrowed to the first row in
   /// the service layer — exactly what Eloquent's hasOne does at runtime.
-  students                Student[]                 @relation("StudentAccount")
-  sessions                Session[]
-  emailVerificationTokens EmailVerificationToken[]
-  passwordResetRequests   PasswordResetRequest[]
-  reviewedApplications    Application[]             @relation("ApplicationReviewer")
-  submittedCredentials    StudentCredential[]       @relation("CredentialSubmitter")
-  verifiedCredentials     StudentCredential[]       @relation("CredentialVerifier")
-  approvedEnrollments     Enrollment[]              @relation("EnrollmentApprover")
-  enrollmentChanges       EnrollmentStatusHistory[] @relation("EnrollmentStatusActor")
-  accessCodes             AdminAccessCode[]         @relation("AdminAccessCodeSubject")
-  issuedAccessCodes       AdminAccessCode[]         @relation("AdminAccessCodeIssuer")
-  revokedAccessCodes      AdminAccessCode[]         @relation("AdminAccessCodeRevoker")
-  loginChallenges         AdminLoginChallenge[]
+  students                   Student[]                 @relation("StudentAccount")
+  sessions                   Session[]
+  emailVerificationTokens    EmailVerificationToken[]
+  passwordResetRequests      PasswordResetRequest[]
+  reviewedApplications       Application[]             @relation("ApplicationReviewer")
+  submittedCredentials       StudentCredential[]       @relation("CredentialSubmitter")
+  verifiedCredentials        StudentCredential[]       @relation("CredentialVerifier")
+  approvedEnrollments        Enrollment[]              @relation("EnrollmentApprover")
+  enrollmentChanges          EnrollmentStatusHistory[] @relation("EnrollmentStatusActor")
+  accessCodes                AdminAccessCode[]         @relation("AdminAccessCodeSubject")
+  issuedAccessCodes          AdminAccessCode[]         @relation("AdminAccessCodeIssuer")
+  revokedAccessCodes         AdminAccessCode[]         @relation("AdminAccessCodeRevoker")
+  temporaryCredentials       TemporaryCredential[]     @relation("TemporaryCredentialOwner")
+  issuedTemporaryCredentials TemporaryCredential[]     @relation("TemporaryCredentialIssuer")
+  loginChallenges            AdminLoginChallenge[]
 
   @@map("users")
 }
@@ -256,6 +258,40 @@ model AdminAccessCode {
   @@index([adminUserId])
   @@index([expiresAt])
   @@map("admin_access_codes")
+}
+
+/// A temporary password, sealed so a Super Admin can reveal it again until the
+/// Admin replaces it.
+///
+/// NOT the credential the login checks — that is still the bcrypt hash on
+/// users.password. This is an AES-256-GCM ciphertext under TEMP_CREDENTIAL_KEY,
+/// a key the database never holds, bound to this user id. See
+/// src/server/auth/credential-vault.ts.
+///
+/// `sealed` is emptied the moment the credential stops being revealable: the
+/// Admin chose their own password (usedAt), a Super Admin reissued one
+/// (revokedAt), or the reveal window passed (expiresAt). A permanent password is
+/// never stored here or anywhere else in a recoverable form.
+model TemporaryCredential {
+  id            BigInt    @id @default(autoincrement())
+  userId        BigInt    @map("user_id")
+  sealed        String
+  createdBy     BigInt?   @map("created_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  /// End of the reveal window. The password itself keeps working after it.
+  expiresAt     DateTime  @map("expires_at")
+  /// The Admin replaced it with their own password.
+  usedAt        DateTime? @map("used_at")
+  /// Superseded by a reset.
+  revokedAt     DateTime? @map("revoked_at")
+  revokedReason String?   @map("revoked_reason") @db.VarChar(32)
+
+  user    User  @relation("TemporaryCredentialOwner", fields: [userId], references: [id], onDelete: Cascade)
+  creator User? @relation("TemporaryCredentialIssuer", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("temporary_credentials")
 }
 
 /// One Admin sign-in that has passed the password but not yet the code.

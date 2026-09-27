@@ -1,5 +1,5 @@
 import type { NextRequest } from 'next/server';
-import { ok } from '@/lib/http';
+import { ok, okSecret } from '@/lib/http';
 import { withErrorHandling, parseJson, requestContext } from '@/server/api-handler';
 import { requireApiUser, authorize } from '@/server/auth/current-user';
 import { adminAccountPolicy } from '@/server/auth/policies';
@@ -31,5 +31,5 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     requestContext(request),
   );
 
-  return ok(result, 201);
+  return okSecret(result, 201);
 });

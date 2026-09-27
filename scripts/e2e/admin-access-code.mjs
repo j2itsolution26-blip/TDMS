@@ -128,6 +128,31 @@ try {
     check(`${who.name}: creation issues no code`, !('accessCode' in c.payload.data));
   }
 
+  // Temporary password reveal ---------------------------------------------
+  console.log('\nTemporary password: shown again on request, never stored in plaintext');
+  const creds = await call(owner, 'GET', `/api/admins/${JAMES.id}/credentials`);
+  check('credentials say a temporary password is available', creds.payload?.data?.temporaryPassword?.state === 'available',
+    JSON.stringify(creds.payload?.data?.temporaryPassword));
+  check('the credentials view does not contain the password', !creds.text.includes(JAMES.password));
+  const shown = await call(owner, 'POST', `/api/admins/${JAMES.id}/temporary-password/reveal`);
+  check('Show reveals the same temporary password', shown.payload?.data?.temporaryPassword === JAMES.password, shown.payload?.message);
+  const revealResponse = await fetch(`${BASE}/api/admins/${JAMES.id}/temporary-password/reveal`, {
+    method: 'POST',
+    headers: { cookie: owner.header() },
+  });
+  check('the reveal response is no-store', /no-store/.test(revealResponse.headers.get('cache-control') ?? ''));
+  const anon = await call(jar(), 'POST', `/api/admins/${JAMES.id}/temporary-password/reveal`);
+  check('an anonymous caller cannot reveal', anon.status === 401, `status ${anon.status}`);
+  {
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+    const rows = await prisma.temporaryCredential.findMany({ where: { userId: BigInt(JAMES.id) } });
+    const user = await prisma.user.findUnique({ where: { id: BigInt(JAMES.id) }, select: { password: true } });
+    await prisma.$disconnect();
+    const everything = JSON.stringify(rows, (_k, v) => (typeof v === 'bigint' ? v.toString() : v)) + user.password;
+    check('the database holds no plaintext copy of it', !everything.includes(JAMES.password));
+  }
+
   // 4-5 --------------------------------------------------------------------
   console.log('\n4-5. Generating a code for James');
   const gen = await call(owner, 'POST', '/api/admin-access-codes', { adminId: JAMES.id, expiresInMinutes: 10 });
@@ -182,6 +207,13 @@ try {
   const adminDash = await call(james, 'GET', '/dashboard');
   check('James reaches the dashboard', adminDash.status === 200, `status ${adminDash.status}`);
   check('James (Admin) can manage staff', (await call(james, 'GET', '/api/staff')).status === 200);
+  const peek = await call(james, 'POST', `/api/admins/${MARIA.id}/temporary-password/reveal`);
+  check("an Admin cannot reveal another Admin's password", peek.status === 403, `status ${peek.status}`);
+  const afterChange = await call(owner, 'GET', `/api/admins/${JAMES.id}/credentials`);
+  check('after he changes it: "No active temporary password"', afterChange.payload?.data?.temporaryPassword?.state === 'none',
+    afterChange.payload?.data?.temporaryPassword?.state);
+  const tooLate = await call(owner, 'POST', `/api/admins/${JAMES.id}/temporary-password/reveal`);
+  check('and it can no longer be revealed', tooLate.status === 409, `status ${tooLate.status}`);
 
   // 12 ---------------------------------------------------------------------
   console.log('\n12. The code cannot be reused');
@@ -223,7 +255,12 @@ try {
   console.log('\n16. Resetting a password asks for no security code');
   const reset = await call(owner, 'POST', `/api/admins/${MARIA.id}/reset-password`);
   check('reset succeeds with no body', reset.status === 200, reset.payload?.message);
-  check('returns a new temporary password once', typeof reset.payload?.data?.temporaryPassword === 'string');
+  check('returns a new temporary password', typeof reset.payload?.data?.temporaryPassword === 'string');
+  const afterReset = await call(owner, 'POST', `/api/admins/${MARIA.id}/temporary-password/reveal`);
+  check('Show now reveals the NEW temporary password', afterReset.payload?.data?.temporaryPassword === reset.payload?.data?.temporaryPassword);
+  check('and not the old one', afterReset.payload?.data?.temporaryPassword !== MARIA.password);
+  const { r: oldPassword } = await signIn(MARIA.email, MARIA.password);
+  check('the old temporary password no longer signs in', oldPassword.status === 401, `status ${oldPassword.status}`);
 
   // 17 ---------------------------------------------------------------------
   console.log('\n17. Suspended Admins cannot sign in');

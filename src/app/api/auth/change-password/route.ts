@@ -28,7 +28,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   await updatePassword(BigInt(user.id), input);
 
   await recordAudit({
-    action: wasTemporary ? 'ADMIN_TEMP_PASSWORD_REPLACED' : 'ACCOUNT_PASSWORD_CHANGED',
+    action: wasTemporary ? 'TEMP_PASSWORD_USED' : 'ACCOUNT_PASSWORD_CHANGED',
     actor: `${user.name} <${user.email}>`,
     target: `${user.name} <${user.email}>`,
     // Whether it happened, never what it was.

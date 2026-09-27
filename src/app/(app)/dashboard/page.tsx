@@ -122,6 +122,19 @@ function AdminAccessPanel({ overview }: { overview: AdminAccessOverview }) {
             <Badge status="pending" label="Not configured" />
           )}
         </p>
+        <p className="mt-3 flex items-center gap-2 text-sm text-slate-500">
+          Temporary password reveal:{' '}
+          {overview.revealConfigured ? (
+            <Badge status="active" label="Configured" />
+          ) : (
+            <Badge status="pending" label="Not configured" />
+          )}
+        </p>
+        {!overview.revealConfigured && (
+          <p className="mt-1 text-xs text-slate-500">
+            Set <code>TEMP_CREDENTIAL_KEY</code> so temporary passwords can be shown again.
+          </p>
+        )}
         <p className="mt-3 text-sm text-slate-500">
           A separate, root-level secret. It is not an Admin login code and is never asked for when
           issuing codes or resetting passwords.{' '}

@@ -13,6 +13,7 @@ import { describeDomainPolicy } from '@/lib/institutional-email';
 import { autoActivateNewGoogleUsers } from '@/server/services/google-auth-service';
 import { googleConfigured } from '@/server/auth/google/oauth';
 import { describeStaticCodePolicy } from '@/server/auth/super-admin-code';
+import { describeVault } from '@/server/auth/credential-vault';
 import {
   accessCodeTtlMinutes,
   accessCodeMaxAttempts,
@@ -180,6 +181,8 @@ export async function GET() {
        */
       adminAccessControl: {
         superAdminSecurityCode: describeStaticCodePolicy(),
+        // Whether temporary passwords can be shown again. Never the key.
+        temporaryPasswordReveal: describeVault(),
         accessCodeExpirationMinutes: accessCodeTtlMinutes(),
         accessCodeMaxAttempts: accessCodeMaxAttempts(),
         loginChallengeTtlMinutes: loginChallengeTtlMinutes(),

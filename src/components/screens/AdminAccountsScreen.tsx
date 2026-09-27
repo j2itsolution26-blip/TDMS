@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api-client';
 import Modal from '@/components/Modal';
+import AdminCredentialsModal from '@/components/AdminCredentialsModal';
 import {
   Card, PageHeader, EmptyState, Badge, Pagination, FieldError, Alert,
   BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT_CLASS, LABEL_CLASS,
@@ -48,6 +49,8 @@ interface CreatedAdmin {
   name: string;
   email: string;
   temporaryPassword: string;
+  /** Whether it can be shown again later from Credentials. */
+  revealable: boolean;
 }
 
 interface ReissuedPassword {
@@ -57,6 +60,7 @@ interface ReissuedPassword {
   temporaryPassword: string;
   activated: boolean;
   codesRevoked: number;
+  revealable: boolean;
 }
 
 interface Props {
@@ -98,6 +102,9 @@ export default function AdminAccountsScreen({ rows, page, lastPage, total, curre
   /** The one-shot results. */
   const [created, setCreated] = useState<CreatedAdmin | null>(null);
   const [reissued, setReissued] = useState<ReissuedPassword | null>(null);
+
+  /** The Admin whose credentials modal is open. */
+  const [credentialsFor, setCredentialsFor] = useState<string | null>(null);
 
   /** The row whose password is about to be reset. */
   const [resetTarget, setResetTarget] = useState<AdminRow | null>(null);
@@ -311,6 +318,15 @@ export default function AdminAccountsScreen({ rows, page, lastPage, total, curre
                         </td>
                         <td className="px-6 py-3.5 text-right text-sm">
                           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+                            {!isSelf && (
+                              <button
+                                type="button"
+                                onClick={() => setCredentialsFor(row.id)}
+                                className="font-medium text-slate-600 hover:text-indigo-600"
+                              >
+                                Credentials
+                              </button>
+                            )}
                             {!isSelf && usable && (
                               <Link
                                 href={issueCodeHref(row.id)}
@@ -473,6 +489,15 @@ export default function AdminAccountsScreen({ rows, page, lastPage, total, curre
         </form>
       </Modal>
 
+      <AdminCredentialsModal
+        open={credentialsFor !== null}
+        onClose={() => setCredentialsFor(null)}
+        adminId={credentialsFor}
+        title="Admin credentials"
+        onGenerateCode={(id) => router.push(issueCodeHref(id))}
+        onChanged={() => router.refresh()}
+      />
+
       {/* --- Reset temporary password: confirm -------------------------- */}
 
       <Modal
@@ -518,10 +543,17 @@ export default function AdminAccountsScreen({ rows, page, lastPage, total, curre
       <Modal open={created !== null} onClose={() => setCreated(null)} title="Admin created successfully">
         {created && (
           <div className="space-y-4">
-            <Alert type="warning" title="Shown once">
-              Copy the temporary password now. Only its hash is stored, so it cannot be shown again —
-              it would have to be reset.
-            </Alert>
+            {created.revealable ? (
+              <Alert type="info" title="Temporary password">
+                You can show it again from Credentials until {created.name} chooses their own
+                password. Each reveal is recorded.
+              </Alert>
+            ) : (
+              <Alert type="warning" title="Shown once">
+                Copy the temporary password now. Revealing is not configured
+                (TEMP_CREDENTIAL_KEY), so it cannot be shown again — it would have to be reset.
+              </Alert>
+            )}
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
@@ -564,9 +596,17 @@ export default function AdminAccountsScreen({ rows, page, lastPage, total, curre
       >
         {reissued && (
           <div className="space-y-4">
-            <Alert type="warning" title="Shown once">
-              Copy it now. Only its hash is stored, so it cannot be shown again.
-            </Alert>
+            {reissued.revealable ? (
+              <Alert type="info" title="Temporary password">
+                The previous temporary password no longer works. This one can be shown again from
+                Credentials until they choose their own.
+              </Alert>
+            ) : (
+              <Alert type="warning" title="Shown once">
+                Copy it now. Revealing is not configured (TEMP_CREDENTIAL_KEY), so it cannot be shown
+                again.
+              </Alert>
+            )}
 
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Admin</p>

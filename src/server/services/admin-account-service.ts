@@ -17,6 +17,13 @@ import {
   type AccessCodeStatus,
 } from '@/server/auth/admin-access-code';
 import { staticCodeConfigured } from '@/server/auth/super-admin-code';
+import {
+  sealTemporaryPassword,
+  openTemporaryPassword,
+  vaultConfigured,
+  revealWindowHours,
+  VAULT_NOT_CONFIGURED,
+} from '@/server/auth/credential-vault';
 import { consumeRateLimit } from '@/server/auth/rate-limit';
 import { sendAdminAccessCodeEmail } from '@/server/mail/messages';
 import { canSendMail } from '@/server/mail/mailer';
@@ -118,6 +125,41 @@ async function revokeUnspentCodes(
     data: { revokedAt: new Date(), revokedReason: reason, revokedBy, codeHash: '' },
   });
   return count;
+}
+
+/**
+ * Keep a sealed, revealable copy of a newly issued temporary password, and wipe
+ * any earlier one for the same user.
+ *
+ * Wiping first is what makes "reset" mean the previous temporary password can
+ * no longer be shown: the old ciphertext is emptied, not merely flagged. When
+ * TEMP_CREDENTIAL_KEY is not configured nothing is kept — the password is still
+ * shown once in the response that issued it, and the dashboard says it cannot
+ * be shown again, rather than the account operation failing.
+ */
+async function storeTemporaryCredential(
+  client: Pick<typeof prisma, 'temporaryCredential'>,
+  userId: bigint,
+  plaintext: string,
+  issuedBy: bigint,
+  supersededReason: 'reset' | 'reissued',
+): Promise<boolean> {
+  await client.temporaryCredential.updateMany({
+    where: { userId, usedAt: null, revokedAt: null },
+    data: { revokedAt: new Date(), revokedReason: supersededReason, sealed: '' },
+  });
+
+  if (!vaultConfigured()) return false;
+
+  await client.temporaryCredential.create({
+    data: {
+      userId,
+      sealed: sealTemporaryPassword(plaintext, userId),
+      createdBy: issuedBy,
+      expiresAt: new Date(Date.now() + revealWindowHours() * 3_600_000),
+    },
+  });
+  return true;
 }
 
 // --- Admin accounts: reading -----------------------------------------------
@@ -241,10 +283,13 @@ export interface CreatedAdmin {
   name: string;
   email: string;
   /**
-   * Plaintext, returned exactly once in the response to the request that
-   * created it. Only the bcrypt hash is stored.
+   * Plaintext, in the response to the request that created it. The login
+   * checks a bcrypt hash; a sealed copy is kept for reveal only while it
+   * remains temporary (see credential-vault.ts).
    */
   temporaryPassword: string;
+  /** Whether it can be shown again later from the dashboard. */
+  revealable: boolean;
 }
 
 const CREATE_LIMIT = { max: 10, windowSeconds: 3600 };
@@ -329,7 +374,15 @@ export async function createAdminAccount(
       data: { roleId, modelType: USER_MODEL_TYPE, modelId: created.id },
     });
 
-    return created;
+    const revealable = await storeTemporaryCredential(
+      tx,
+      created.id,
+      input.temporaryPassword,
+      BigInt(actor.id),
+      'reissued',
+    );
+
+    return { ...created, revealable };
   });
 
   await recordAudit({
@@ -346,11 +399,21 @@ export async function createAdminAccount(
     context,
   });
 
+  await recordAudit({
+    action: 'TEMP_PASSWORD_GENERATED',
+    actor: actorLabel(actor),
+    target: label(user),
+    // That one exists and whether it can be shown again; never the password.
+    details: { reason: 'account_created', revealable: user.revealable },
+    context,
+  });
+
   return {
     id: user.id.toString(),
     name: user.name,
     email: user.email,
     temporaryPassword: input.temporaryPassword,
+    revealable: user.revealable,
   };
 }
 
@@ -365,6 +428,8 @@ export interface ReissuedPassword {
   activated: boolean;
   /** Unspent access codes revoked along with the old password. */
   codesRevoked: number;
+  /** Whether it can be shown again later from the dashboard. */
+  revealable: boolean;
 }
 
 const PASSWORD_RESET_LIMIT = { max: 5, windowSeconds: 3600 };
@@ -408,7 +473,7 @@ export async function resetAdminTemporaryPassword(
 
   const passwordHash = await hashPassword(temporaryPassword);
 
-  const codesRevoked = await prisma.$transaction(async (tx) => {
+  const { codesRevoked, revealable } = await prisma.$transaction(async (tx) => {
     await tx.user.update({
       where: { id },
       data: {
@@ -419,13 +484,17 @@ export async function resetAdminTemporaryPassword(
       },
     });
     await tx.adminLoginChallenge.deleteMany({ where: { userId: id } });
-    return revokeUnspentCodes(tx, id, 'password_reset', BigInt(actor.id));
+    // The previous temporary password stops working (hash replaced above) AND
+    // stops being revealable (ciphertext wiped here).
+    const stored = await storeTemporaryCredential(tx, id, temporaryPassword, BigInt(actor.id), 'reset');
+    const revoked = await revokeUnspentCodes(tx, id, 'password_reset', BigInt(actor.id));
+    return { codesRevoked: revoked, revealable: stored };
   });
 
   await destroyAllSessionsFor(id);
 
   await recordAudit({
-    action: 'ADMIN_PASSWORD_RESET',
+    action: 'TEMP_PASSWORD_RESET',
     actor: actorLabel(actor),
     target: label(admin),
     details: {
@@ -435,6 +504,7 @@ export async function resetAdminTemporaryPassword(
       from_status: admin.status,
       email_confirmation: confirmingAddress ? 'administrative' : 'already_confirmed',
       activated: activating,
+      new_temporary_password_revealable: revealable,
     },
     context,
   });
@@ -446,6 +516,7 @@ export async function resetAdminTemporaryPassword(
     temporaryPassword,
     activated: activating,
     codesRevoked,
+    revealable,
   };
 }
 
@@ -871,6 +942,8 @@ export interface AdminAccessOverview {
   revokedCodes: number;
   /** Whether SUPER_ADMIN_STATIC_CODE is set. Never its value. */
   securityCodeConfigured: boolean;
+  /** Whether TEMP_CREDENTIAL_KEY is set, so temporary passwords can be shown again. */
+  revealConfigured: boolean;
 }
 
 export async function adminAccessOverview(): Promise<AdminAccessOverview> {
@@ -892,7 +965,207 @@ export async function adminAccessOverview(): Promise<AdminAccessOverview> {
     usedCodes,
     revokedCodes,
     securityCodeConfigured: staticCodeConfigured(),
+    revealConfigured: vaultConfigured(),
   };
+}
+
+// --- Credentials: the view and the reveal ---------------------------------
+
+/**
+ * Whether this Admin has a temporary password the Super Admin can show.
+ *
+ * Deliberately precise, so the screen never draws dots for a password that
+ * cannot actually be shown:
+ *
+ *   none         no temporary password — they chose their own (or never had
+ *                one). There is nothing to show and nothing could be shown.
+ *   available    a live sealed copy exists and the vault can open it.
+ *   unavailable  a temporary password is in force but cannot be shown: the
+ *                reveal window passed, it was issued before revealing existed
+ *                or while TEMP_CREDENTIAL_KEY was unset, or the key is unset
+ *                now. Resetting issues one that can be.
+ */
+export type TemporaryPasswordState =
+  | { state: 'none' }
+  | {
+      state: 'available';
+      issuedAt: string;
+      issuedBy: string | null;
+      revealExpiresInSeconds: number;
+    }
+  | {
+      state: 'unavailable';
+      reason: 'expired' | 'not_recorded' | 'vault_not_configured';
+      message: string;
+    };
+
+async function liveCredential(userId: bigint) {
+  return prisma.temporaryCredential.findFirst({
+    where: { userId, usedAt: null, revokedAt: null },
+    orderBy: { id: 'desc' },
+    select: { id: true, sealed: true, createdAt: true, createdBy: true, expiresAt: true },
+  });
+}
+
+async function temporaryPasswordState(user: {
+  id: bigint;
+  mustChangePassword: boolean;
+}): Promise<TemporaryPasswordState> {
+  if (!user.mustChangePassword) return { state: 'none' };
+
+  const row = await liveCredential(user.id);
+  if (!row || !row.sealed) {
+    return {
+      state: 'unavailable',
+      reason: 'not_recorded',
+      message:
+        'This temporary password cannot be shown again: it was issued before passwords could be revealed, or while revealing was not configured. Reset it to issue one that can be.',
+    };
+  }
+  if (row.expiresAt.getTime() <= Date.now()) {
+    return {
+      state: 'unavailable',
+      reason: 'expired',
+      message:
+        'This temporary password can no longer be shown: the reveal window has passed. It still works for signing in. Reset it if you need to see one again.',
+    };
+  }
+  if (!vaultConfigured()) {
+    return { state: 'unavailable', reason: 'vault_not_configured', message: VAULT_NOT_CONFIGURED };
+  }
+
+  const issuer = row.createdBy
+    ? await prisma.user.findUnique({ where: { id: row.createdBy }, select: { name: true } })
+    : null;
+
+  return {
+    state: 'available',
+    issuedAt: row.createdAt.toISOString(),
+    issuedBy: issuer?.name ?? null,
+    revealExpiresInSeconds: secondsUntil(row.expiresAt),
+  };
+}
+
+export interface AdminCredentials {
+  admin: {
+    id: string;
+    name: string;
+    email: string;
+    status: AccountStatus;
+    setUp: boolean;
+    mustChangePassword: boolean;
+  };
+  /** Status only. The password itself is fetched by revealTemporaryPassword. */
+  temporaryPassword: TemporaryPasswordState;
+  /** The most recently issued access code, whatever its state, or null. */
+  currentCode: AccessCodeRow | null;
+}
+
+/** Everything the credentials modal shows, and no secret. */
+export async function getAdminCredentials(adminId: bigint): Promise<AdminCredentials> {
+  const admin = await getAdmin(adminId);
+
+  const latest = await prisma.adminAccessCode.findFirst({
+    where: { adminUserId: adminId },
+    orderBy: { id: 'desc' },
+    select: CODE_SELECT,
+  });
+
+  return {
+    admin: {
+      id: admin.id.toString(),
+      name: admin.name,
+      email: admin.email,
+      status: admin.status as AccountStatus,
+      setUp: admin.emailVerifiedAt !== null,
+      mustChangePassword: admin.mustChangePassword,
+    },
+    temporaryPassword: await temporaryPasswordState(admin),
+    currentCode: latest ? ((await describeCodes([latest as CodeRecord]))[0] ?? null) : null,
+  };
+}
+
+const REVEAL_LIMIT = { max: 30, windowSeconds: 3600 };
+
+/**
+ * Show an Admin's temporary password to the Super Admin.
+ *
+ * Only while it is still temporary: once the Admin has chosen their own
+ * password there is nothing to reveal, and a permanent password is never
+ * recoverable. Every reveal is audited — the fact, never the value.
+ */
+export async function revealTemporaryPassword(
+  actor: AuthUser,
+  adminId: bigint,
+  context: AuditContext,
+): Promise<{ temporaryPassword: string; revealExpiresInSeconds: number }> {
+  const admin = await getAdmin(adminId);
+
+  const throttle = await consumeRateLimit('temp-password-reveal', actor.id, REVEAL_LIMIT);
+  if (throttle.limited) {
+    throw new AppError('Too many passwords have been revealed recently. Please wait a while.', 429);
+  }
+
+  const state = await temporaryPasswordState(admin);
+  if (state.state === 'none') {
+    throw new AppError(
+      'This Admin has no active temporary password. They have already chosen their own, which is never shown.',
+      409,
+      undefined,
+      'NO_TEMPORARY_PASSWORD',
+    );
+  }
+  if (state.state === 'unavailable') {
+    throw new AppError(state.message, 409, undefined, 'TEMPORARY_PASSWORD_UNAVAILABLE');
+  }
+
+  const row = (await liveCredential(adminId))!;
+  const plaintext = openTemporaryPassword(row.sealed, adminId);
+  if (plaintext === null) {
+    // The key was rotated, or the row was tampered with: it will never open.
+    await prisma.temporaryCredential.updateMany({
+      where: { id: row.id },
+      data: { revokedAt: new Date(), revokedReason: 'unreadable', sealed: '' },
+    });
+    throw new AppError(
+      'This temporary password can no longer be shown (the encryption key has changed). Reset it to issue a new one.',
+      409,
+      undefined,
+      'TEMPORARY_PASSWORD_UNAVAILABLE',
+    );
+  }
+
+  await recordAudit({
+    action: 'TEMP_PASSWORD_REVEALED',
+    actor: actorLabel(actor),
+    target: label(admin),
+    details: { credential_id: row.id.toString() },
+    context,
+  });
+
+  return { temporaryPassword: plaintext, revealExpiresInSeconds: secondsUntil(row.expiresAt) };
+}
+
+/**
+ * Called whenever a user's password changes by their own hand: the temporary
+ * credential is consumed and its sealed copy destroyed, so it can never be
+ * revealed again. Returns whether there was one.
+ */
+export async function consumeTemporaryCredential(userId: bigint): Promise<boolean> {
+  const { count } = await prisma.temporaryCredential.updateMany({
+    where: { userId, usedAt: null, revokedAt: null },
+    data: { usedAt: new Date(), sealed: '' },
+  });
+  return count > 0;
+}
+
+/** Housekeeping: empty ciphertexts whose reveal window has closed. */
+export async function pruneTemporaryCredentials(): Promise<number> {
+  const { count } = await prisma.temporaryCredential.updateMany({
+    where: { expiresAt: { lte: new Date() }, sealed: { not: '' } },
+    data: { sealed: '' },
+  });
+  return count;
 }
 
 /** Surfaced in the UI so the Super Admin knows whether "email it" will work. */

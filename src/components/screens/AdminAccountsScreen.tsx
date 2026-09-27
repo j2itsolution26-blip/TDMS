@@ -49,6 +49,8 @@ export interface AdminRow {
   email: string;
   status: AccountStatus;
   mustChangePassword: boolean;
+  /** False for a leftover invitation that has never been set up. */
+  setUp: boolean;
   lastLoginAt: string | null;
   createdAt: string | null;
   accessCodeExpiresInSeconds: number | null;
@@ -386,14 +388,26 @@ export default function AdminAccountsScreen({
                 <tbody className="divide-y divide-border">
                   {rows.map((row) => {
                     const isSelf = row.id === currentUserId;
+                    /*
+                     * Usable means it can actually sign in. A never-set-up
+                     * account cannot, whatever its status says, so the only
+                     * action that helps it is Reset password.
+                     */
+                    const usable = row.setUp && row.status === 'ACTIVE';
                     return (
                       <tr key={row.id}>
                         <td className="px-6 py-3.5 text-sm font-medium text-navy-900">
                           {row.name}
-                          {row.mustChangePassword && (
+                          {!row.setUp ? (
                             <p className="text-xs font-normal text-amber-700">
-                              On a temporary password
+                              Never set up — use Reset password
                             </p>
+                          ) : (
+                            row.mustChangePassword && (
+                              <p className="text-xs font-normal text-amber-700">
+                                On a temporary password
+                              </p>
+                            )
                           )}
                         </td>
                         <td className="px-6 py-3.5 text-sm text-slate-500">
@@ -407,10 +421,16 @@ export default function AdminAccountsScreen({
                         </td>
                         <td className="px-6 py-3.5 text-sm text-slate-500">Admin</td>
                         <td className="px-6 py-3.5">
-                          <Badge
-                            status={ACCOUNT_STATUS_BADGE[row.status]}
-                            label={ACCOUNT_STATUS_LABELS[row.status]}
-                          />
+                          {row.setUp ? (
+                            <Badge
+                              status={ACCOUNT_STATUS_BADGE[row.status]}
+                              label={ACCOUNT_STATUS_LABELS[row.status]}
+                            />
+                          ) : (
+                            // Not "Active": it cannot sign in, and the badge
+                            // must not say otherwise.
+                            <Badge status="pending" label="Not set up" />
+                          )}
                         </td>
                         <td className="px-6 py-3.5 text-sm text-slate-500">
                           {row.accessCodeExpiresInSeconds === null ? (
@@ -432,7 +452,7 @@ export default function AdminAccountsScreen({
                               a Super Admin suspending their own account locks
                               the institution out of its own system.
                             */}
-                            {!isSelf && row.status === 'ACTIVE' && (
+                            {!isSelf && usable && (
                               <button
                                 type="button"
                                 onClick={() => askFor({ kind: 'code', row })}
@@ -454,7 +474,7 @@ export default function AdminAccountsScreen({
                               </button>
                             )}
 
-                            {!isSelf && row.status === 'ACTIVE' && (
+                            {!isSelf && row.status === 'ACTIVE' && row.setUp && (
                               <button
                                 type="button"
                                 onClick={() => changeStatus(row, 'SUSPENDED')}
@@ -465,7 +485,7 @@ export default function AdminAccountsScreen({
                               </button>
                             )}
 
-                            {!isSelf && row.status !== 'ACTIVE' && (
+                            {!isSelf && row.status !== 'ACTIVE' && row.setUp && (
                               <button
                                 type="button"
                                 onClick={() => changeStatus(row, 'ACTIVE')}
@@ -660,10 +680,10 @@ export default function AdminAccountsScreen({
                 A new temporary password is generated and shown once. Every session for this
                 account is signed out, any half-finished sign-in is dropped, and they will be asked
                 to choose a permanent password the next time they get in.
-                {pending.row.status === 'PENDING' && (
+                {!pending.row.setUp && (
                   <span className="mt-2 block">
-                    This account is still waiting on email verification, which would stop the new
-                    password working. Issuing one confirms the address on your authority and
+                    This account has never been set up: its address is unconfirmed, which would stop
+                    the new password working. Issuing one confirms the address on your authority and
                     activates the account — the audit trail records that it was you who confirmed
                     it, not them.
                   </span>
@@ -851,8 +871,8 @@ export default function AdminAccountsScreen({
 
             {issuedPassword.activated && (
               <Alert type="success">
-                The account was waiting on email verification and is now active. You confirmed the
-                address, and the audit trail says so.
+                The account had never been set up and is now active. You confirmed the address, and
+                the audit trail says so. Generate an access code next.
               </Alert>
             )}
 

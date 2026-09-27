@@ -144,6 +144,12 @@ export interface AdminAccountRow {
   status: AccountStatus;
   /** Still on a Super Admin-issued temporary password. */
   mustChangePassword: boolean;
+  /**
+   * False for an account that has never been set up — a leftover invitation
+   * with an unconfirmed address and a placeholder password. It cannot sign in
+   * whatever its status says, and Reset password is the way to set it up.
+   */
+  setUp: boolean;
   lastLoginAt: string | null;
   createdAt: string | null;
   /**
@@ -187,6 +193,7 @@ export async function listAdminAccounts(page = 1) {
       name: true,
       email: true,
       status: true,
+      emailVerifiedAt: true,
       mustChangePassword: true,
       lastLoginAt: true,
       createdAt: true,
@@ -229,6 +236,7 @@ export async function listAdminAccounts(page = 1) {
         email: u.email,
         status: u.status as AccountStatus,
         mustChangePassword: u.mustChangePassword,
+        setUp: u.emailVerifiedAt !== null,
         lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
         createdAt: u.createdAt?.toISOString() ?? null,
         accessCodeExpiresInSeconds: expiry ? secondsUntil(expiry, now) : null,
@@ -496,6 +504,15 @@ export async function generateAdminAccessCode(
 
   await requireSecurityCode(actor, options.securityCode, 'ADMIN_ACCESS_CODE_GENERATED', context);
 
+  if (admin.emailVerifiedAt === null) {
+    throw new AppError(
+      'This account has never been set up, so an access code would not let them in. Use Reset password first: it issues a temporary password and activates the account.',
+      422,
+      undefined,
+      'ADMIN_NOT_SET_UP',
+    );
+  }
+
   if (admin.status !== 'ACTIVE') {
     throw new AppError(
       'That account is suspended, so an access code would not let them in. Reactivate it first.',
@@ -650,7 +667,13 @@ export async function resetAdminTemporaryPassword(
   const temporaryPassword = generateTemporaryPassword();
 
   const confirmingAddress = admin.emailVerifiedAt === null;
-  const promotingFromPending = admin.status === 'PENDING';
+  /*
+   * PENDING, or ACTIVE-but-never-set-up. The second arises from an account
+   * reactivated before that was refused: the badge said Active while sign-in
+   * was impossible. Both are "never set up", and both are fixed here.
+   */
+  const promotingFromPending =
+    admin.status === 'PENDING' || (admin.status === 'ACTIVE' && confirmingAddress);
 
   await prisma.user.update({
     where: { id },
@@ -716,6 +739,22 @@ export async function setAdminAccountStatus(
 
   if (admin.id.toString() === actor.id) {
     throw new AppError('You cannot change the status of your own account.', 403);
+  }
+
+  /*
+   * An account that has never been set up cannot be made ACTIVE by flipping
+   * its status. Its address is unconfirmed and its password is an unusable
+   * placeholder, so the badge would say Active while the sign-in check refused
+   * every attempt. Issuing a temporary password is what sets it up, and that
+   * path activates it in the same step.
+   */
+  if (status === 'ACTIVE' && admin.emailVerifiedAt === null) {
+    throw new AppError(
+      'This account has never been set up, so activating it would not let anybody sign in. Use Reset password instead: it issues a temporary password and activates the account in one step.',
+      422,
+      undefined,
+      'ADMIN_NOT_SET_UP',
+    );
   }
 
   const now = new Date();

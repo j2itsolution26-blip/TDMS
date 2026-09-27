@@ -872,6 +872,89 @@ describe('re-issuing a temporary password', () => {
     expect(details.email_confirmation).toBe('administrative');
   });
 
+  /** A leftover invitation: admin role, unconfirmed address, placeholder password. */
+  async function strandedAdmin(status = 'PENDING') {
+    const row = await prisma.user.create({
+      data: {
+        name: 'Invited Admin',
+        email: 'invited2@example.test',
+        password: 'placeholder-hash',
+        status,
+        isActive: status === 'ACTIVE',
+        emailVerifiedAt: null,
+        mustChangePassword: false,
+      },
+    });
+    const adminRole = await prisma.role.findFirst({ where: { name: 'admin' } });
+    await prisma.modelHasRole.create({
+      data: { roleId: adminRole.id, modelType: 'App\\Models\\User', modelId: row.id },
+    });
+    return row;
+  }
+
+  it('refuses to "reactivate" an account that has never been set up', async () => {
+    /*
+     * The bug this guards: Reactivate on a leftover invitation set it ACTIVE
+     * while its address stayed unconfirmed and its password stayed a
+     * placeholder. The badge said Active; nobody could sign in.
+     */
+    const stranded = await strandedAdmin('PENDING');
+
+    await expect(
+      setAdminAccountStatus(actor, stranded.id, 'ACTIVE', CONTEXT),
+    ).rejects.toMatchObject({ code: 'ADMIN_NOT_SET_UP' });
+
+    expect(store.users.find((u) => u.email === 'invited2@example.test')!.status).toBe('PENDING');
+  });
+
+  it('refuses a code for an account that has never been set up', async () => {
+    const stranded = await strandedAdmin('PENDING');
+    await expect(
+      generateAdminAccessCode(
+        actor,
+        stranded.id,
+        { securityCode: SECURITY_CODE, emailAccessCode: false },
+        CONTEXT,
+      ),
+    ).rejects.toMatchObject({ code: 'ADMIN_NOT_SET_UP' });
+    expect(codeRows()).toHaveLength(0);
+  });
+
+  it('repairs an account already wrongly marked ACTIVE before the fix', async () => {
+    // Exactly the state the live database was left in.
+    const stranded = await strandedAdmin('ACTIVE');
+
+    const reissued = await resetAdminTemporaryPassword(
+      actor,
+      stranded.id,
+      { securityCode: SECURITY_CODE },
+      CONTEXT,
+    );
+
+    const row = store.users.find((u) => u.email === 'invited2@example.test')!;
+    expect(reissued.activated).toBe(true);
+    expect(row.status).toBe('ACTIVE');
+    expect(row.emailVerifiedAt).toBeInstanceOf(Date);
+    expect(row.mustChangePassword).toBe(true);
+
+    // And now a code can be issued, completing the set-up.
+    await expect(
+      generateAdminAccessCode(
+        actor,
+        stranded.id,
+        { securityCode: SECURITY_CODE, emailAccessCode: false },
+        CONTEXT,
+      ),
+    ).resolves.toMatchObject({ accessCode: expect.stringMatching(/^[0-9]{6}$/) });
+  });
+
+  it('reports a never-set-up account as such in the listing', async () => {
+    await strandedAdmin('ACTIVE');
+    const listed = await listAdminAccounts(1);
+    const row = listed.rows.find((r) => r.email === 'invited2@example.test')!;
+    expect(row.setUp).toBe(false);
+  });
+
   it('does not quietly reactivate a SUSPENDED account', async () => {
     /*
      * Suspension is a deliberate administrative decision, and reissuing a

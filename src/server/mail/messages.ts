@@ -121,3 +121,85 @@ export async function sendPasswordResetEmail(params: {
     ].join('\n'),
   });
 }
+
+/**
+ * The one-time access code for an Admin account.
+ *
+ * WHAT THIS DELIBERATELY DOES NOT CONTAIN
+ *
+ *   * the temporary password. It is shown once to the Super Admin, who hands
+ *     it over by another route. Putting both halves in one mailbox would
+ *     make that mailbox a complete set of credentials, which is the thing
+ *     splitting them in two was for.
+ *   * the static Super Admin security code. That never leaves the server
+ *     environment under any circumstances.
+ *   * any link. There is nothing to click, so nothing for a mail scanner to
+ *     fetch and quietly consume.
+ */
+export async function sendAdminAccessCodeEmail(params: {
+  to: string;
+  name: string;
+  code: string;
+  expiresAt: Date;
+}): Promise<MailResult> {
+  const minutes = Math.max(1, Math.round((params.expiresAt.getTime() - Date.now()) / 60_000));
+
+  return sendMail({
+    to: params.to,
+    subject: 'Your TDMS administrator access code',
+    text: [
+      `Hello ${params.name},`,
+      '',
+      'Your administrator access code for TDMS, the TVET Diploma Management',
+      'System at Asian College of Science and Technology, is:',
+      '',
+      params.code,
+      '',
+      `It expires in ${minutes} minute${minutes === 1 ? '' : 's'} and works once.`,
+      '',
+      'Sign in with your email address and the temporary password you were',
+      'given, then enter this code when asked. You will be asked to choose a',
+      'permanent password straight afterwards — please do that immediately,',
+      'and do not reuse the temporary one anywhere.',
+      '',
+      'If you did not expect this, tell the system administrator. The code',
+      'can be cancelled and reissued.',
+      '',
+      'TDMS · Asian College of Science and Technology',
+    ].join('\n'),
+  });
+}
+
+/**
+ * An Admin whose code has expired, asking the Super Admin for another.
+ *
+ * This message is the ONLY thing the "Request new code" button does. It
+ * cannot issue a code: an account that could mint its own access code has a
+ * one-factor sign-in with extra steps.
+ */
+export async function sendAccessCodeRequestEmail(params: {
+  to: string;
+  superAdminName: string;
+  adminName: string;
+  adminEmail: string;
+}): Promise<MailResult> {
+  return sendMail({
+    to: params.to,
+    subject: 'TDMS: an administrator needs a new access code',
+    text: [
+      `Hello ${params.superAdminName},`,
+      '',
+      `${params.adminName} <${params.adminEmail}> has signed in with their`,
+      'password and needs an access code to finish.',
+      '',
+      'Issue one from Administration → Admin Accounts → Generate Code, then',
+      'pass it to them. Any previous unused code is cancelled automatically',
+      'when a new one is issued.',
+      '',
+      'No code is included in this message, and none has been created by this',
+      'request.',
+      '',
+      'TDMS · Asian College of Science and Technology',
+    ].join('\n'),
+  });
+}

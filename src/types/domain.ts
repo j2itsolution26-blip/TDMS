@@ -16,13 +16,20 @@ export const CREDENTIAL_STATUSES = ['missing', 'submitted', 'under_review', 'ver
 /**
  * Account lifecycle. Only ACTIVE may enter the application.
  *
- *   PENDING    created but not yet permitted in — either the email is
- *              unconfirmed, or an administrator has not approved it yet.
- *              Which of the two is told apart by emailVerifiedAt, so a
- *              separate state for each would only be noise.
+ *   PENDING    created but the address is not yet confirmed. Reached by a
+ *              staff invitation before the link is opened, and by a Google
+ *              self-registration that no administrator has acted on.
  *   ACTIVE     permitted to sign in
  *   INACTIVE   deactivated by an administrator, reversible
  *   SUSPENDED  withdrawn for cause, reversible
+ *
+ * These four are ACCOUNT STATES and nothing else. Progress through a setup
+ * flow is deliberately NOT recorded here — an Admin created by a Super Admin
+ * is ACTIVE from the moment it exists, and the separate technical facts
+ * `mustChangePassword` on the row and the access-code requirement at sign-in
+ * are what hold it back. Overloading a status with "has not finished setting
+ * up" is how a state called PENDING ends up labelled "pending approval" and
+ * meaning three different things.
  *
  * Google authentication and application authorization are different things:
  * Google proving who someone is does not make their TDMS account ACTIVE.
@@ -39,7 +46,9 @@ export type AccountStatus = (typeof ACCOUNT_STATUSES)[number];
 export const accountStatusSchema = z.enum(ACCOUNT_STATUSES);
 
 export const ACCOUNT_STATUS_LABELS: Record<AccountStatus, string> = {
-  PENDING: 'Pending approval',
+  // Not "pending approval": there is no approval queue. The address has
+  // simply not been confirmed yet.
+  PENDING: 'Pending verification',
   ACTIVE: 'Active',
   INACTIVE: 'Inactive',
   SUSPENDED: 'Suspended',
@@ -121,6 +130,13 @@ export interface AuthUser {
   email: string;
   status: AccountStatus;
   emailVerifiedAt: Date | null;
+  /**
+   * True while this account is still on a temporary password issued by a
+   * Super Admin. A fact about the credential, not about the account: the
+   * status is ACTIVE either way. requireUser() and requireApiUser() divert
+   * the holder to the change-password screen until it is cleared.
+   */
+  mustChangePassword: boolean;
   roles: string[];
   permissions: string[];
 }

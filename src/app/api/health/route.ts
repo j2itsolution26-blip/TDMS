@@ -12,6 +12,12 @@ import {
 import { describeDomainPolicy } from '@/lib/institutional-email';
 import { autoActivateNewGoogleUsers } from '@/server/services/google-auth-service';
 import { googleConfigured } from '@/server/auth/google/oauth';
+import { describeStaticCodePolicy } from '@/server/auth/super-admin-code';
+import {
+  accessCodeTtlMinutes,
+  accessCodeMaxAttempts,
+  loginChallengeTtlMinutes,
+} from '@/server/auth/admin-access-code';
 
 /**
  * GET /api/health — operational diagnostics.
@@ -163,6 +169,21 @@ export async function GET() {
        */
       domainPolicy: describeDomainPolicy(),
       googleSignIn: googleConfigured() ? 'configured' : 'not configured',
+      /*
+       * The Super Admin security code and the Admin access-code policy.
+       *
+       * Only WHETHER the static code is configured, plus the timings — never
+       * the value, its length, a prefix or a digest, any of which would narrow
+       * a guess. "Is it set up" is the question an operator needs answered
+       * when the Admin Accounts screen refuses to issue anything, and it is
+       * not the secret.
+       */
+      adminAccessControl: {
+        superAdminSecurityCode: describeStaticCodePolicy(),
+        accessCodeExpirationMinutes: accessCodeTtlMinutes(),
+        accessCodeMaxAttempts: accessCodeMaxAttempts(),
+        loginChallengeTtlMinutes: loginChallengeTtlMinutes(),
+      },
       autoActivateNewGoogleUsers: autoActivateNewGoogleUsers(),
       ...(missingRequired.length > 0 ? { missingRequiredEnv: missingRequired } : {}),
       ...(databaseEnvNamesPresent ? { databaseEnvNamesPresent } : {}),

@@ -26,7 +26,7 @@ export default async function LoginPage() {
    * session for real is the only way to tell the two apart.
    */
   const user = await getCurrentUser().catch(() => null);
-  if (user) redirect('/dashboard');
+  if (user) redirect(user.mustChangePassword ? '/change-password' : '/dashboard');
 
   /*
    * Whether to offer "Create Super Admin" is a cosmetic detail, and it is

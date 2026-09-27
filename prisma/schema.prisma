@@ -31,53 +31,62 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 model User {
-  id              BigInt    @id @default(autoincrement())
-  name            String    @db.VarChar(255)
+  id                 BigInt    @id @default(autoincrement())
+  name               String    @db.VarChar(255)
   /// Added by the migration that finally makes the "Username or Email"
   /// login label true. Nullable: accounts created from the Staff screen
   /// still sign in with their email only.
-  username        String?   @unique(map: "users_username_unique") @db.VarChar(255)
-  email           String    @unique(map: "users_email_unique") @db.VarChar(255)
-  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamp(0)
+  username           String?   @unique(map: "users_username_unique") @db.VarChar(255)
+  email              String    @unique(map: "users_email_unique") @db.VarChar(255)
+  emailVerifiedAt    DateTime? @map("email_verified_at") @db.Timestamp(0)
   /// bcrypt hash written by PHP ($2y$12$...). bcryptjs verifies these
   /// unchanged, so no existing account needs a password reset.
-  password        String    @db.VarChar(255)
-  rememberToken   String?   @map("remember_token") @db.VarChar(100)
+  password           String    @db.VarChar(255)
+  /// True while the password on this row is a temporary one issued by a
+  /// Super Admin. It is a technical fact about the credential, NOT an
+  /// account state: the account is ACTIVE and `status` is not misused to
+  /// record setup progress. requireUser()/requireApiUser() divert the holder
+  /// to the change-password screen until it is cleared.
+  mustChangePassword Boolean   @default(false) @map("must_change_password")
+  rememberToken      String?   @map("remember_token") @db.VarChar(100)
   /// Google's stable subject identifier (`sub`). The join key for Google
   /// sign-in: an address can change, `sub` does not. Unique, so one Google
   /// account cannot end up attached to two TDMS accounts.
-  googleId        String?   @unique(map: "users_google_id_unique") @map("google_id") @db.VarChar(255)
-  firstName       String?   @map("first_name") @db.VarChar(255)
-  lastName        String?   @map("last_name") @db.VarChar(255)
-  avatarUrl       String?   @map("avatar_url")
-  lastLoginAt     DateTime? @map("last_login_at") @db.Timestamp(0)
+  googleId           String?   @unique(map: "users_google_id_unique") @map("google_id") @db.VarChar(255)
+  firstName          String?   @map("first_name") @db.VarChar(255)
+  lastName           String?   @map("last_name") @db.VarChar(255)
+  avatarUrl          String?   @map("avatar_url")
+  lastLoginAt        DateTime? @map("last_login_at") @db.Timestamp(0)
   /// Authoritative account state: PENDING | ACTIVE | INACTIVE | SUSPENDED.
   /// Only ACTIVE, with emailVerifiedAt set, may authenticate. Google proving
   /// who somebody is does not by itself make their account ACTIVE.
   /// varchar rather than a Prisma enum for the same reason as every other
   /// status column here — see the note at the foot of this file.
-  status          String    @default("PENDING") @db.VarChar(32)
+  status             String    @default("PENDING") @db.VarChar(32)
   /// Superseded by `status`, retained so no migration has to drop a column
   /// on a live database. Nothing reads it; account-mutating code keeps it in
   /// step (is_active = status === 'ACTIVE') so the two can never disagree.
   /// Safe to drop once you are happy to.
-  isActive        Boolean   @default(true) @map("is_active")
-  createdAt       DateTime? @map("created_at") @db.Timestamp(0)
-  updatedAt       DateTime? @map("updated_at") @db.Timestamp(0)
+  isActive           Boolean   @default(true) @map("is_active")
+  createdAt          DateTime? @map("created_at") @db.Timestamp(0)
+  updatedAt          DateTime? @map("updated_at") @db.Timestamp(0)
 
   /// Eloquent declared hasOne(Student), but students.user_id carries no
   /// unique index in the live database, so a one-to-one here would demand
   /// a schema change. Modelled as a list and narrowed to the first row in
   /// the service layer — exactly what Eloquent's hasOne does at runtime.
-  students               Student[]                 @relation("StudentAccount")
-  sessions               Session[]
+  students                Student[]                 @relation("StudentAccount")
+  sessions                Session[]
   emailVerificationTokens EmailVerificationToken[]
   passwordResetRequests   PasswordResetRequest[]
-  reviewedApplications Application[]             @relation("ApplicationReviewer")
-  submittedCredentials StudentCredential[]       @relation("CredentialSubmitter")
-  verifiedCredentials  StudentCredential[]       @relation("CredentialVerifier")
-  approvedEnrollments  Enrollment[]              @relation("EnrollmentApprover")
-  enrollmentChanges    EnrollmentStatusHistory[] @relation("EnrollmentStatusActor")
+  reviewedApplications    Application[]             @relation("ApplicationReviewer")
+  submittedCredentials    StudentCredential[]       @relation("CredentialSubmitter")
+  verifiedCredentials     StudentCredential[]       @relation("CredentialVerifier")
+  approvedEnrollments     Enrollment[]              @relation("EnrollmentApprover")
+  enrollmentChanges       EnrollmentStatusHistory[] @relation("EnrollmentStatusActor")
+  accessCodes             AdminAccessCode[]         @relation("AdminAccessCodeSubject")
+  issuedAccessCodes       AdminAccessCode[]         @relation("AdminAccessCodeIssuer")
+  loginChallenges         AdminLoginChallenge[]
 
   @@map("users")
 }
@@ -167,28 +176,115 @@ model PasswordResetRequest {
 /// Nothing here grants access. A pending row cannot sign in, holds no
 /// session, and has no role.
 model PendingAdminRegistration {
-  id                   BigInt    @id @default(autoincrement())
-  fullName             String    @map("full_name") @db.VarChar(255)
+  id                    BigInt    @id @default(autoincrement())
+  fullName              String    @map("full_name") @db.VarChar(255)
   /// One pending registration per address, enforced by the database rather
   /// than by a read-then-write that two requests could interleave.
-  email                String    @unique(map: "pending_admin_registrations_email_unique") @db.VarChar(255)
-  passwordHash         String    @map("password_hash") @db.VarChar(255)
+  email                 String    @unique(map: "pending_admin_registrations_email_unique") @db.VarChar(255)
+  passwordHash          String    @map("password_hash") @db.VarChar(255)
   /// Emptied the moment the code is accepted, so a code is strictly single use.
-  verificationCodeHash String    @map("verification_code_hash") @db.VarChar(255)
-  verificationExpiresAt DateTime @map("verification_expires_at")
-  verificationAttempts Int       @default(0) @map("verification_attempts")
-  resendCount          Int       @default(0) @map("resend_count")
+  verificationCodeHash  String    @map("verification_code_hash") @db.VarChar(255)
+  verificationExpiresAt DateTime  @map("verification_expires_at")
+  verificationAttempts  Int       @default(0) @map("verification_attempts")
+  resendCount           Int       @default(0) @map("resend_count")
   /// When the current code was sent. Drives the resend cooldown.
-  lastSentAt           DateTime  @default(now()) @map("last_sent_at")
-  handleHash           String    @unique(map: "pending_admin_registrations_handle_hash_unique") @map("handle_hash") @db.VarChar(64)
+  lastSentAt            DateTime  @default(now()) @map("last_sent_at")
+  handleHash            String    @unique(map: "pending_admin_registrations_handle_hash_unique") @map("handle_hash") @db.VarChar(64)
   /// Set only by a correct code. Until it is non-null, no account may be
   /// created from this row under any circumstances.
-  verifiedAt           DateTime? @map("verified_at")
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at")
+  verifiedAt            DateTime? @map("verified_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at")
 
   @@index([verificationExpiresAt])
   @@map("pending_admin_registrations")
+}
+
+/// A one-time access code issued by a Super Admin for ONE Admin account.
+///
+/// This is the second factor on an Admin sign-in: the password proves the
+/// credential, this proves the Super Admin actually meant to let that person
+/// in today. The two are deliberately issued by different people.
+///
+/// What is stored, and why:
+///   * `codeHash` is bcrypt, not SHA-256. Six digits is under 20 bits of
+///     entropy, and a plain digest of that could be reversed from a database
+///     dump by hashing a million candidates in under a second. See
+///     src/server/auth/admin-access-code.ts for the full reasoning — it is
+///     the same as for the Super Admin setup code.
+///   * `usedAt` is what makes the code single use. It is stamped inside the
+///     same transaction that creates the session, so two requests racing on
+///     one code cannot both win.
+///   * `invalidatedAt` is a different fact from `usedAt`: it marks a code
+///     that was superseded by a newer one, or burnt by too many wrong
+///     guesses. Keeping them apart is what lets the audit trail say which
+///     happened.
+///   * `attemptCount` / `maxAttempts` are the per-code guess budget. At this
+///     entropy the attempt cap, not the length, is what protects the code.
+///
+/// The plaintext code exists in exactly two places and neither is durable:
+/// the response that shows it to the Super Admin once, and (optionally) the
+/// email to the Admin. It is never persisted, never logged and never
+/// returned again.
+model AdminAccessCode {
+  id            BigInt    @id @default(autoincrement())
+  /// The Admin this code admits. A code is useless against any other row.
+  adminUserId   BigInt    @map("admin_user_id")
+  codeHash      String    @map("code_hash") @db.VarChar(255)
+  expiresAt     DateTime  @map("expires_at")
+  usedAt        DateTime? @map("used_at")
+  invalidatedAt DateTime? @map("invalidated_at")
+  attemptCount  Int       @default(0) @map("attempt_count")
+  /// Copied from configuration at issue time, so changing the limit later
+  /// cannot retroactively revive a code that was already burnt.
+  maxAttempts   Int       @map("max_attempts")
+  /// The Super Admin who issued it. Nullable only so deleting that account
+  /// does not delete the audit trail of what they issued.
+  createdBy     BigInt?   @map("created_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  admin  User  @relation("AdminAccessCodeSubject", fields: [adminUserId], references: [id], onDelete: Cascade)
+  issuer User? @relation("AdminAccessCodeIssuer", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([adminUserId])
+  @@index([expiresAt])
+  @@map("admin_access_codes")
+}
+
+/// One Admin sign-in that has passed the password but not yet the code.
+///
+/// This row is the reason no session exists between the two steps. The
+/// alternative — issuing a session and marking it "not yet allowed in" —
+/// puts a credential in the browser that grants nothing, which is exactly
+/// the shape that produced the /login redirect loop this codebase already
+/// fixed once (see src/middleware.ts). A half-finished sign-in is therefore
+/// its own object, and it holds no session and no role.
+///
+/// The browser is identified by an opaque handle in an HttpOnly cookie, of
+/// which only the SHA-256 is stored — the same scheme as session tokens and
+/// the Super Admin setup handle. Identifying the row this way rather than by
+/// trusting a user id in the request body is what stops code attempts being
+/// aimed at somebody else's half-finished sign-in.
+model AdminLoginChallenge {
+  id         BigInt    @id @default(autoincrement())
+  userId     BigInt    @map("user_id")
+  handleHash String    @unique(map: "admin_login_challenges_handle_hash_unique") @map("handle_hash") @db.VarChar(64)
+  /// Carried from step 1, because the session is created at step 2 and the
+  /// "Remember me" tick would otherwise be lost between them.
+  remember   Boolean   @default(false)
+  ipAddress  String?   @map("ip_address") @db.VarChar(45)
+  userAgent  String?   @map("user_agent")
+  expiresAt  DateTime  @map("expires_at")
+  /// Stamped when the challenge is exchanged for a session, so one password
+  /// step cannot be replayed into two sessions.
+  consumedAt DateTime? @map("consumed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("admin_login_challenges")
 }
 
 model PasswordResetToken {
@@ -307,15 +403,15 @@ model Curriculum {
 }
 
 model Subject {
-  id           BigInt      @id @default(autoincrement())
-  code         String      @unique(map: "subjects_code_unique") @db.VarChar(255)
-  title        String      @db.VarChar(255)
+  id           BigInt    @id @default(autoincrement())
+  code         String    @unique(map: "subjects_code_unique") @db.VarChar(255)
+  title        String    @db.VarChar(255)
   description  String?
-  subjectType  String      @map("subject_type") @db.VarChar(255)
-  defaultUnits Decimal     @map("default_units") @db.Decimal(4, 1)
-  isActive     Boolean     @default(true) @map("is_active")
-  createdAt    DateTime?   @map("created_at") @db.Timestamp(0)
-  updatedAt    DateTime?   @map("updated_at") @db.Timestamp(0)
+  subjectType  String    @map("subject_type") @db.VarChar(255)
+  defaultUnits Decimal   @map("default_units") @db.Decimal(4, 1)
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime? @map("created_at") @db.Timestamp(0)
+  updatedAt    DateTime? @map("updated_at") @db.Timestamp(0)
 
   curriculumSubjects CurriculumSubject[] @relation("CurriculumSubjectSubject")
   prerequisiteFor    CurriculumSubject[] @relation("CurriculumSubjectPrerequisite")
@@ -343,22 +439,22 @@ model CurriculumSubject {
 }
 
 model Student {
-  id             BigInt        @id @default(autoincrement())
-  userId         BigInt?       @map("user_id")
-  studentNumber  String        @unique(map: "students_student_number_unique") @map("student_number") @db.VarChar(255)
-  firstName      String        @map("first_name") @db.VarChar(255)
-  middleName     String?       @map("middle_name") @db.VarChar(255)
-  lastName       String        @map("last_name") @db.VarChar(255)
-  email          String?       @db.VarChar(255)
-  phone          String?       @db.VarChar(255)
-  dateOfBirth    DateTime?     @map("date_of_birth") @db.Date
-  programId      BigInt        @map("program_id")
-  curriculumId   BigInt        @map("curriculum_id")
-  yearLevel      Int           @default(1) @map("year_level") @db.SmallInt
-  status         String        @default("active") @db.VarChar(255)
-  enrollmentDate DateTime?     @map("enrollment_date") @db.Date
-  createdAt      DateTime?     @map("created_at") @db.Timestamp(0)
-  updatedAt      DateTime?     @map("updated_at") @db.Timestamp(0)
+  id             BigInt    @id @default(autoincrement())
+  userId         BigInt?   @map("user_id")
+  studentNumber  String    @unique(map: "students_student_number_unique") @map("student_number") @db.VarChar(255)
+  firstName      String    @map("first_name") @db.VarChar(255)
+  middleName     String?   @map("middle_name") @db.VarChar(255)
+  lastName       String    @map("last_name") @db.VarChar(255)
+  email          String?   @db.VarChar(255)
+  phone          String?   @db.VarChar(255)
+  dateOfBirth    DateTime? @map("date_of_birth") @db.Date
+  programId      BigInt    @map("program_id")
+  curriculumId   BigInt    @map("curriculum_id")
+  yearLevel      Int       @default(1) @map("year_level") @db.SmallInt
+  status         String    @default("active") @db.VarChar(255)
+  enrollmentDate DateTime? @map("enrollment_date") @db.Date
+  createdAt      DateTime? @map("created_at") @db.Timestamp(0)
+  updatedAt      DateTime? @map("updated_at") @db.Timestamp(0)
 
   user        User?               @relation("StudentAccount", fields: [userId], references: [id], onDelete: SetNull, map: "students_user_id_foreign", onUpdate: NoAction)
   program     Program             @relation(fields: [programId], references: [id], onDelete: Restrict, map: "students_program_id_foreign", onUpdate: NoAction)
@@ -371,21 +467,21 @@ model Student {
 }
 
 model Application {
-  id          BigInt            @id @default(autoincrement())
-  firstName   String            @map("first_name") @db.VarChar(255)
-  middleName  String?           @map("middle_name") @db.VarChar(255)
-  lastName    String            @map("last_name") @db.VarChar(255)
-  email       String?           @db.VarChar(255)
-  phone       String?           @db.VarChar(255)
-  dateOfBirth DateTime?         @map("date_of_birth") @db.Date
-  programId   BigInt            @map("program_id")
-  status      String            @default("submitted") @db.VarChar(255)
+  id          BigInt    @id @default(autoincrement())
+  firstName   String    @map("first_name") @db.VarChar(255)
+  middleName  String?   @map("middle_name") @db.VarChar(255)
+  lastName    String    @map("last_name") @db.VarChar(255)
+  email       String?   @db.VarChar(255)
+  phone       String?   @db.VarChar(255)
+  dateOfBirth DateTime? @map("date_of_birth") @db.Date
+  programId   BigInt    @map("program_id")
+  status      String    @default("submitted") @db.VarChar(255)
   notes       String?
-  reviewedBy  BigInt?           @map("reviewed_by")
-  reviewedAt  DateTime?         @map("reviewed_at") @db.Timestamp(0)
-  studentId   BigInt?           @map("student_id")
-  createdAt   DateTime?         @map("created_at") @db.Timestamp(0)
-  updatedAt   DateTime?         @map("updated_at") @db.Timestamp(0)
+  reviewedBy  BigInt?   @map("reviewed_by")
+  reviewedAt  DateTime? @map("reviewed_at") @db.Timestamp(0)
+  studentId   BigInt?   @map("student_id")
+  createdAt   DateTime? @map("created_at") @db.Timestamp(0)
+  updatedAt   DateTime? @map("updated_at") @db.Timestamp(0)
 
   program  Program  @relation(fields: [programId], references: [id], onDelete: Restrict, map: "applications_program_id_foreign", onUpdate: NoAction)
   reviewer User?    @relation("ApplicationReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull, map: "applications_reviewed_by_foreign", onUpdate: NoAction)
@@ -410,20 +506,20 @@ model CredentialRequirement {
 }
 
 model StudentCredential {
-  id                      BigInt           @id @default(autoincrement())
-  studentId               BigInt           @map("student_id")
-  credentialRequirementId BigInt           @map("credential_requirement_id")
-  filePath                String?          @map("file_path") @db.VarChar(255)
-  submittedBy             BigInt?          @map("submitted_by")
-  submittedAt             DateTime?        @map("submitted_at") @db.Timestamp(0)
-  status                  String           @default("missing") @db.VarChar(255)
-  verifiedBy              BigInt?          @map("verified_by")
-  verifiedAt              DateTime?        @map("verified_at") @db.Timestamp(0)
+  id                      BigInt    @id @default(autoincrement())
+  studentId               BigInt    @map("student_id")
+  credentialRequirementId BigInt    @map("credential_requirement_id")
+  filePath                String?   @map("file_path") @db.VarChar(255)
+  submittedBy             BigInt?   @map("submitted_by")
+  submittedAt             DateTime? @map("submitted_at") @db.Timestamp(0)
+  status                  String    @default("missing") @db.VarChar(255)
+  verifiedBy              BigInt?   @map("verified_by")
+  verifiedAt              DateTime? @map("verified_at") @db.Timestamp(0)
   remarks                 String?
-  rejectionReason         String?          @map("rejection_reason")
-  version                 Int              @default(1)
-  createdAt               DateTime?        @map("created_at") @db.Timestamp(0)
-  updatedAt               DateTime?        @map("updated_at") @db.Timestamp(0)
+  rejectionReason         String?   @map("rejection_reason")
+  version                 Int       @default(1)
+  createdAt               DateTime? @map("created_at") @db.Timestamp(0)
+  updatedAt               DateTime? @map("updated_at") @db.Timestamp(0)
 
   student     Student               @relation(fields: [studentId], references: [id], onDelete: Cascade, map: "student_credentials_student_id_foreign", onUpdate: NoAction)
   requirement CredentialRequirement @relation(fields: [credentialRequirementId], references: [id], onDelete: Restrict, map: "student_credentials_credential_requirement_id_foreign", onUpdate: NoAction)
@@ -435,17 +531,17 @@ model StudentCredential {
 }
 
 model Enrollment {
-  id           BigInt           @id @default(autoincrement())
-  studentId    BigInt           @map("student_id")
-  curriculumId BigInt           @map("curriculum_id")
-  schoolYear   String           @map("school_year") @db.VarChar(255)
-  semester     Int              @db.SmallInt
-  yearLevel    Int              @map("year_level") @db.SmallInt
-  status       String           @default("pending") @db.VarChar(255)
-  approvedBy   BigInt?          @map("approved_by")
-  approvedAt   DateTime?        @map("approved_at") @db.Timestamp(0)
-  createdAt    DateTime?        @map("created_at") @db.Timestamp(0)
-  updatedAt    DateTime?        @map("updated_at") @db.Timestamp(0)
+  id           BigInt    @id @default(autoincrement())
+  studentId    BigInt    @map("student_id")
+  curriculumId BigInt    @map("curriculum_id")
+  schoolYear   String    @map("school_year") @db.VarChar(255)
+  semester     Int       @db.SmallInt
+  yearLevel    Int       @map("year_level") @db.SmallInt
+  status       String    @default("pending") @db.VarChar(255)
+  approvedBy   BigInt?   @map("approved_by")
+  approvedAt   DateTime? @map("approved_at") @db.Timestamp(0)
+  createdAt    DateTime? @map("created_at") @db.Timestamp(0)
+  updatedAt    DateTime? @map("updated_at") @db.Timestamp(0)
 
   student       Student                   @relation(fields: [studentId], references: [id], onDelete: Restrict, map: "enrollments_student_id_foreign", onUpdate: NoAction)
   curriculum    Curriculum                @relation(fields: [curriculumId], references: [id], onDelete: Restrict, map: "enrollments_curriculum_id_foreign", onUpdate: NoAction)

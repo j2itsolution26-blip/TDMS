@@ -37,10 +37,17 @@ function errorMessages(domainNotice: string | null): Record<string, string> {
   wrong_domain: domainNotice ?? 'That Google account cannot be used to access TDMS.',
   google_email_unverified:
     'That Google account has not verified its email address, so it cannot be used to sign in.',
+  /*
+   * Wording note: these describe a Google self-registration, which has no
+   * role and no access until an administrator activates it and assigns one.
+   * They deliberately avoid the word "approve" — there is no approval queue
+   * anywhere in this system, and copy implying one sends people looking for a
+   * screen that does not exist.
+   */
   account_created_pending:
-    'Your account has been created and is waiting for an administrator to approve it and assign your role. You will be able to sign in once that is done.',
+    'Your account has been created. An administrator needs to activate it and assign your role before you can sign in.',
   account_pending:
-    'Your account is not active yet. An administrator needs to approve it before you can sign in.',
+    'Your account is not active yet. An administrator needs to activate it and assign your role before you can sign in.',
   account_inactive: 'Your account is inactive. Please contact the administrator.',
   account_suspended: 'Your account has been suspended. Please contact the administrator.',
   invalid_state: 'That sign-in attempt could not be verified. Please try again.',
@@ -111,6 +118,27 @@ export default function LoginForm({
       if (!response.ok || !payload.success) {
         setError(payload.message ?? 'Invalid username/email or password.');
         setPassword('');
+        return;
+      }
+
+      /*
+       * An administrator's password buys the right to enter an access code and
+       * nothing else, so this response can mean "one step done" rather than
+       * "signed in". In that case ?redirect= is deliberately ignored: there is
+       * no session yet, and sending the browser to a protected page would
+       * bounce it straight back here.
+       */
+      const nextStep = payload.data?.stage === 'access_code';
+
+      // The typed password is dropped from state as soon as it has been
+      // accepted; the verification step has no use for it.
+      setPassword('');
+
+      if (nextStep) {
+        startTransition(() => {
+          router.push(payload.data?.redirectTo ?? '/login/access-code');
+          router.refresh();
+        });
         return;
       }
 

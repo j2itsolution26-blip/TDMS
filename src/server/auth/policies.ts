@@ -176,3 +176,53 @@ export const userPolicy = {
 
   delete: (u: AuthUser) => isSuperAdmin(u),
 };
+
+// --- AdminAccountPolicy ----------------------------------------------------
+
+/**
+ * Who may administer Admin accounts: the Super Admin, and nobody else.
+ *
+ * Note what these do NOT use. `can(u, 'accounts.manage')` would be the
+ * obvious check, and it would be wrong twice over: the `admin` role holds
+ * that permission, so an Admin could create peers and issue their access
+ * codes — and issuing your own access code is not a second factor, it is a
+ * formality. `isSuperAdmin` is checked directly, so the Gate::before blanket
+ * grant cannot widen it either.
+ *
+ * The self-targeting guards are the other half. A Super Admin suspending
+ * their own account locks the institution out of its own system, and a Super
+ * Admin resetting their own password through this screen would bypass the
+ * ordinary change-password flow.
+ */
+export const adminAccountPolicy = {
+  viewAny: (u: AuthUser) => isSuperAdmin(u),
+  create: (u: AuthUser) => isSuperAdmin(u),
+
+  /** Issue or re-issue an access code for an Admin. */
+  generateAccessCode: (u: AuthUser, target: TargetUser) =>
+    isSuperAdmin(u) && target.id !== u.id,
+
+  /** Replace an Admin's password with a fresh temporary one. */
+  resetTemporaryPassword: (u: AuthUser, target: TargetUser) =>
+    isSuperAdmin(u) && target.id !== u.id,
+
+  /** Suspend or reactivate. Reversible, and never against oneself. */
+  setStatus: (u: AuthUser, target: TargetUser) => isSuperAdmin(u) && target.id !== u.id,
+};
+
+/**
+ * Does this principal have to clear an access code before they are let in?
+ *
+ * Derived from the role rather than stored on the row, so it cannot drift out
+ * of step with who is actually an Admin. A column saying "this one needs a
+ * code" would be one stale write away from an Admin who does not.
+ *
+ * A Super Admin is exempt: their privileged operations are confirmed with the
+ * static security code instead (see src/server/auth/super-admin-code.ts), and
+ * making them depend on a code somebody else issues would mean the first
+ * Super Admin could never sign in at all.
+ */
+export function requiresAdminAccessCode(roles: readonly string[]): boolean {
+  if (roles.includes('super_admin')) return false;
+  return roles.includes('admin');
+}

@@ -14,6 +14,10 @@ import {
   clearLoginThrottle,
   loginThrottleKey,
 } from '@/server/auth/rate-limit';
+import { loadRolesAndPermissions } from '@/server/auth/rbac';
+import { requiresAdminAccessCode } from '@/server/auth/policies';
+import { beginAdminVerification } from './admin-login-service';
+import { recordAudit } from './audit-log';
 
 /**
  * Authentication service.
@@ -32,6 +36,15 @@ import {
  * Steps 4 and 5 come last on purpose. Reporting "unverified" or "inactive"
  * to someone who has not proved they own the account would turn those
  * messages into an oracle for which addresses exist.
+ *
+ * WHAT A CORRECT PASSWORD DOES AND DOES NOT BUY
+ *
+ * For most accounts, reaching the end of this function issues a session. For
+ * an Admin it does not: their sign-in is a two-step affair, and the password
+ * only earns the right to submit an access code a Super Admin issued
+ * separately. That branch creates a challenge row and NO session — see
+ * src/server/services/admin-login-service.ts for why the alternative
+ * (issuing a session and marking it unverified) was rejected.
  */
 
 const GENERIC_FAILURE = 'Invalid username/email or password.';
@@ -52,7 +65,22 @@ export interface LoginContext {
 
 export interface LoginResult {
   userId: bigint;
+  /**
+   * Which step the caller is now on.
+   *
+   *   complete     a session exists; go to redirectTo.
+   *   access_code  the password was right and nothing else has been granted.
+   *                A challenge cookie has been set and the access-code screen
+   *                is next. There is no session yet.
+   */
+  stage: 'complete' | 'access_code';
   redirectTo: string;
+  /**
+   * True when the account is on a Super Admin-issued temporary password and
+   * must replace it. Reported so the browser can go straight there; the
+   * requirement itself is enforced server-side on every request.
+   */
+  mustChangePassword: boolean;
 }
 
 /**
@@ -100,7 +128,15 @@ export async function login(input: LoginInput, context: LoginContext): Promise<L
       column === 'email'
         ? { email: { equals: normalizeEmail(value), mode: 'insensitive' } }
         : { username: { equals: value, mode: 'insensitive' } },
-    select: { id: true, password: true, status: true, emailVerifiedAt: true, email: true },
+    select: {
+      id: true,
+      name: true,
+      password: true,
+      status: true,
+      emailVerifiedAt: true,
+      email: true,
+      mustChangePassword: true,
+    },
   });
 
   /*
@@ -153,11 +189,63 @@ export async function login(input: LoginInput, context: LoginContext): Promise<L
 
   await clearLoginThrottle(throttleKey);
 
+  /*
+   * The fork in the road. An Admin's password is only the first of two
+   * factors, so this branch issues a challenge instead of a session: the
+   * browser leaves here holding something that authorises submitting a code
+   * and nothing else.
+   *
+   * Derived from the role rather than from a column on the row, so it cannot
+   * drift out of step with who is actually an Admin.
+   */
+  const { roles } = await loadRolesAndPermissions(user.id);
+
+  if (requiresAdminAccessCode(roles)) {
+    await beginAdminVerification(user.id, {
+      remember: input.remember,
+      ip: context.ip,
+      userAgent: context.userAgent,
+    });
+
+    /*
+     * Recorded as a step, not a success. An Admin is not signed in at this
+     * point, and an audit trail that said otherwise would be wrong about the
+     * one thing it exists to be right about.
+     */
+    await recordAudit({
+      action: 'ADMIN_PASSWORD_ACCEPTED',
+      actor: `${user.name} <${user.email}>`,
+      target: `${user.name} <${user.email}>`,
+      details: { awaiting: 'access_code' },
+      context: { ip: context.ip, userAgent: context.userAgent },
+    });
+
+    logAuthDebug({
+      column,
+      userFound: true,
+      passwordVerified: true,
+      status: user.status,
+      session: false,
+      stage: 'access_code',
+    });
+
+    return {
+      userId: user.id,
+      stage: 'access_code',
+      redirectTo: '/login/access-code',
+      mustChangePassword: user.mustChangePassword,
+    };
+  }
+
   await createSession(user.id, {
     remember: input.remember,
     ipAddress: context.ip,
     userAgent: context.userAgent,
   });
+
+  await prisma.user
+    .update({ where: { id: user.id }, data: { lastLoginAt: new Date() } })
+    .catch(() => undefined);
 
   logAuthDebug({
     column,
@@ -165,9 +253,20 @@ export async function login(input: LoginInput, context: LoginContext): Promise<L
     passwordVerified: true,
     status: user.status,
     session: true,
+    stage: 'complete',
   });
 
-  return { userId: user.id, redirectTo: '/dashboard' };
+  /*
+   * A temporary password is redirected away from the dashboard, but that is
+   * only a convenience. requireUser() and requireApiUser() are what actually
+   * stop the holder of one going anywhere else.
+   */
+  return {
+    userId: user.id,
+    stage: 'complete',
+    redirectTo: user.mustChangePassword ? '/change-password' : '/dashboard',
+    mustChangePassword: user.mustChangePassword,
+  };
 }
 
 export async function logout(): Promise<void> {
@@ -191,6 +290,7 @@ function logAuthDebug(stages: {
   passwordVerified: boolean;
   status?: string;
   session?: boolean;
+  stage?: string;
 }): void {
   if (process.env.NODE_ENV === 'production') return;
   console.debug('AUTH DEBUG', {
@@ -199,5 +299,6 @@ function logAuthDebug(stages: {
     password_verified: stages.passwordVerified,
     account_status: stages.status ?? null,
     session_created: stages.session ?? false,
+    stage: stages.stage ?? null,
   });
 }

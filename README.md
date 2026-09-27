@@ -37,8 +37,13 @@ set `GOOGLE_DOMAIN_RESTRICTION_ENABLED=true` to require
 
 Every account must still have a Google-verified address and be `ACTIVE`
 before it can sign in. A first-time Google sign-in creates a `PENDING`
-account with **no role**, for an administrator to approve. Administrators invite
-colleagues from the Staff screen; nobody is ever issued a generated password.
+account with **no role**, which an administrator activates and assigns a role
+to. Administrators invite colleagues from the Staff screen; nobody is ever
+issued a generated password there.
+
+Administrator accounts are the exception, and are not invited at all: a Super
+Admin creates them with a temporary password and a one-time access code. See
+[admin-accounts.md](docs/admin-accounts.md).
 
 To wipe accounts and academic records while keeping roles and permissions:
 
@@ -80,6 +85,7 @@ including a Super Admin, can deactivate their own account.
 | -------------------------------------------- | ----------------------------------------- |
 | [architecture.md](docs/architecture.md)       | Stack, layout, request lifecycle          |
 | [accounts.md](docs/accounts.md)               | Institutional email, states, invitations  |
+| [admin-accounts.md](docs/admin-accounts.md)   | Admin accounts, access codes, security code |
 | [google-auth.md](docs/google-auth.md)         | Google sign-in, Google Cloud setup        |
 | [database.md](docs/database.md)               | Prisma schema, mapping, migrations        |
 | [authentication.md](docs/authentication.md)   | Sign-in, sessions, cookies, RBAC          |
@@ -95,3 +101,8 @@ including a Super Admin, can deactivate their own account.
   needed a reset.
 - Before deploying, read the security note in
   [migration.md](docs/migration.md) about the demo accounts.
+- **Administrator accounts** are created by a Super Admin, who sets a temporary
+  password and issues a one-time access code. There is no approval queue. The
+  three credential-issuing actions need `SUPER_ADMIN_STATIC_CODE` in the server
+  environment and refuse until it is set — see
+  [admin-accounts.md](docs/admin-accounts.md).

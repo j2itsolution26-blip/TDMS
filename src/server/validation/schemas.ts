@@ -330,7 +330,21 @@ export const enrollmentTransitionSchema = z.object({
  * restriction the Laravel component enforced.
  */
 export const staffRoleSchema = z.enum(
-  ROLES.filter((r) => r !== 'student') as unknown as [string, ...string[]],
+  /*
+   * `student` is excluded because student accounts come from enrolment.
+   *
+   * `admin` and `super_admin` are excluded because privileged accounts are
+   * not invited: an Admin is created by a Super Admin through Administration
+   * → Admin Accounts, with a temporary password and an access code, and a
+   * Super Admin exists only through first-time setup. The service layer
+   * already refuses both (assignableRoles never returns them); saying so in
+   * the schema means the refusal names the field instead of arriving as a
+   * flat 403.
+   */
+  ROLES.filter((r) => !['student', 'admin', 'super_admin'].includes(r)) as unknown as [
+    string,
+    ...string[],
+  ],
 );
 
 /**
@@ -350,12 +364,87 @@ export const accountStatusChangeSchema = z.object({
   }),
 });
 
+// --- Administrator accounts and access codes -------------------------------
+
+/**
+ * The static Super Admin security code, as submitted.
+ *
+ * Only shape is checked: present, and bounded so a multi-megabyte string
+ * cannot be fed to the hash. Nothing here knows or asserts anything about
+ * the real code's length or contents — a schema that did would be a hint
+ * about the secret sitting in the client bundle.
+ */
+export const securityCodeSchema = z
+  .string()
+  .min(1, 'Enter the Super Admin security code.')
+  .max(200, 'That security code is too long.');
+
+/**
+ * Creating an Admin account.
+ *
+ * The temporary password goes through the SAME `strongPassword` rule as any
+ * other password in the system. It is temporary, not exempt: it is a live
+ * credential from the moment it is created, and "it will be changed soon" is
+ * how a weak one ends up surviving for a year.
+ */
+export const createAdminSchema = z
+  .object({
+    name: z.string().trim().min(1, 'Enter the administrator’s full name.').max(255),
+    email: institutionalEmail,
+    temporaryPassword: strongPassword,
+    temporaryPasswordConfirmation: z.string(),
+    securityCode: securityCodeSchema,
+    /** Also email the access code to them. Never the password. */
+    emailAccessCode: z.boolean().default(false),
+  })
+  .refine((d) => d.temporaryPassword === d.temporaryPasswordConfirmation, {
+    message: 'The password confirmation does not match.',
+    path: ['temporaryPasswordConfirmation'],
+  });
+
+/** Issuing or re-issuing an access code for an existing Admin. */
+export const generateAccessCodeSchema = z.object({
+  securityCode: securityCodeSchema,
+  emailAccessCode: z.boolean().default(false),
+});
+
+/** Replacing an Admin's temporary password with a fresh one. */
+export const resetAdminPasswordSchema = z.object({
+  securityCode: securityCodeSchema,
+});
+
+/**
+ * Admin account status.
+ *
+ * Two values, and PENDING is not one of them. A Super Admin-created Admin is
+ * ACTIVE from the moment it exists; there is no approval state to move it out
+ * of, and offering one would reintroduce the workflow this replaced.
+ */
+export const adminStatusChangeSchema = z.object({
+  status: z.enum(['ACTIVE', 'SUSPENDED']),
+});
+
+/**
+ * The access code an Admin types at sign-in.
+ *
+ * Six digits, checked here so a malformed submission is a validation failure
+ * rather than a wrong guess — it must not spend one of the account's limited
+ * attempts against the real code.
+ */
+export const adminAccessCodeSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .regex(/^[0-9]{6}$/, 'Enter the 6-digit access code.'),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ProgramInput = z.infer<typeof programSchema>;
 export type SubjectInput = z.infer<typeof subjectSchema>;
 export type StudentInput = z.infer<typeof studentSchema>;
 export type ApplicationInput = z.infer<typeof applicationSchema>;
 export type InviteAccountInput = z.infer<typeof inviteAccountSchema>;
+export type CreateAdminInput = z.infer<typeof createAdminSchema>;
 
 /** Flatten Zod issues into the { field: [messages] } shape the UI renders. */
 export function fieldErrors(error: z.ZodError): Record<string, string[]> {

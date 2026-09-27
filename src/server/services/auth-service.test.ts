@@ -54,13 +54,28 @@ describe('assignableRoles', () => {
   function user(roles: string[]): AuthUser {
     return {
       id: '1', name: 'T', username: null, email: 't@e.test',
-      status: 'ACTIVE', emailVerifiedAt: new Date(), roles, permissions: [],
+      status: 'ACTIVE', emailVerifiedAt: new Date(), mustChangePassword: false,
+      roles, permissions: [],
     };
   }
 
-  it('lets only a super admin grant the admin role', () => {
-    expect(assignableRoles(user(['super_admin']))).toEqual([...STAFF_ROLES]);
+  /*
+   * The `admin` role is no longer grantable from the Staff screen by anybody,
+   * including a Super Admin. An administrator account is created through
+   * Administration → Admin Accounts, which issues a temporary password and a
+   * one-time access code together — so leaving a second, weaker route that
+   * grants the same role by emailing a link would mean the weaker one gets
+   * used.
+   */
+  it('never offers the admin role from the Staff screen, to anybody', () => {
+    expect(assignableRoles(user(['super_admin']))).not.toContain('admin');
     expect(assignableRoles(user(['admin']))).not.toContain('admin');
+    expect(STAFF_ROLES as readonly string[]).not.toContain('admin');
+  });
+
+  it('never offers super_admin either', () => {
+    expect(assignableRoles(user(['super_admin']))).not.toContain('super_admin');
+    expect(STAFF_ROLES as readonly string[]).not.toContain('super_admin');
   });
 
   it('never offers the student role from the Staff screen', () => {

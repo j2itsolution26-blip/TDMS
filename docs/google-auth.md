@@ -130,7 +130,7 @@ password-less and nobody can sign in to it with credentials.
 
 `DEV_AUTO_ACTIVATE_GOOGLE_USERS=true` makes a first sign-in land on `ACTIVE`
 instead of `PENDING`, so a developer can walk the whole flow without a second
-person to approve them.
+person to activate them.
 
 It is a setting rather than a hard-coded shortcut precisely so it is visible,
 greppable and off unless asked for, and `/api/health` reports it.
@@ -155,7 +155,7 @@ verified ID token.
 | Status      | Result                                                    |
 | ----------- | --------------------------------------------------------- |
 | `ACTIVE`    | session created, redirect to `/dashboard`                   |
-| `PENDING`   | refused — awaiting approval                                 |
+| `PENDING`   | refused — not activated, and holds no role                  |
 | `INACTIVE`  | refused — deactivated                                       |
 | `SUSPENDED` | refused — suspended                                         |
 
@@ -184,7 +184,7 @@ The callback never shows a technical failure. It redirects to
 | `cancelled`               | Google sign-in was cancelled.                                 |
 | `wrong_domain`            | Names the allowed domain when the restriction is on; otherwise a neutral refusal |
 | `google_email_unverified` | That Google account has not verified its email address…       |
-| `account_created_pending` | Your account has been created and is waiting for approval…    |
+| `account_created_pending` | Your account has been created; an administrator must activate it and assign a role |
 | `account_pending`         | Your account is not active yet…                               |
 | `account_inactive`        | Your account is inactive. Please contact the administrator.   |
 | `account_suspended`       | Your account has been suspended…                              |

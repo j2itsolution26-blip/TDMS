@@ -6,6 +6,7 @@ import {
   studentPolicy,
   applicationPolicy,
   userPolicy,
+  adminAccountPolicy,
 } from '@/server/auth/policies';
 
 /**
@@ -51,6 +52,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
   if (userPolicy.viewAny(user)) {
     items.push({ label: 'Staff', href: '/staff', match: ['/staff'], icon: 'staff' });
+  }
+  /*
+   * Super Admin only, and the page re-checks the same policy. Hiding a nav
+   * item is presentation; authorisation happens on the server.
+   */
+  if (adminAccountPolicy.viewAny(user)) {
+    items.push({
+      label: 'Admin Accounts',
+      href: '/admins',
+      match: ['/admins'],
+      icon: 'admins',
+    });
   }
 
   return (

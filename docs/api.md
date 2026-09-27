@@ -111,6 +111,38 @@ refuses outright unless the pending registration's `verified_at` is set. See
 | `updateProfileInformation()`         | `PUT /api/profile`                        | self              |
 | `updatePassword()`                   | `PUT /api/profile/password`               | self              |
 
+### Administrator accounts and access codes
+
+Added after the Laravel migration, so these have no Livewire ancestor. Every
+route here is **Super Admin only** — checked with `isSuperAdmin` directly rather
+than through `accounts.manage`, which `admin` and `director` also hold. The
+three that issue a credential additionally require the static Super Admin
+security code in the body. See
+[admin-accounts.md](admin-accounts.md).
+
+| Endpoint                                | Does                                        | Needs security code |
+| --------------------------------------- | ------------------------------------------- | ------------------- |
+| `GET /api/admins?page=`                 | List administrator accounts                 | no                  |
+| `POST /api/admins`                      | Create one, with a temporary password and a first access code | **yes** |
+| `POST /api/admins/:id/access-code`      | Issue a code, cancelling any unused one     | **yes**             |
+| `POST /api/admins/:id/reset-password`   | Issue a fresh temporary password            | **yes**             |
+| `POST /api/admins/:id/status`           | Suspend or reactivate                       | no                  |
+
+The create and access-code responses carry the plaintext password and code
+**once**; only bcrypt hashes are stored and neither can be fetched again.
+
+The sign-in half is reachable **without a session** — the caller has passed the
+password step and has not been let in — and is authorised by the HttpOnly
+`tdms_admin_login` challenge cookie instead:
+
+| Endpoint                                     | Does                                              |
+| -------------------------------------------- | ------------------------------------------------- |
+| `GET /api/auth/admin-access-code`            | What the verification screen should draw           |
+| `POST /api/auth/admin-access-code`           | Submit the code; on success a session is created   |
+| `DELETE /api/auth/admin-access-code`         | Abandon the half-finished sign-in                  |
+| `POST /api/auth/admin-access-code/request`   | Ask the Super Admins for a new code — **issues none** |
+| `POST /api/auth/change-password`             | Replace a temporary password (the only route that accepts a caller still carrying `mustChangePassword`) |
+
 "role: staff" means admin, director, coordinator, secretary or teacher.
 "role: office" means admin, director, coordinator or secretary. A
 `super_admin` passes every check (see `authentication.md`).

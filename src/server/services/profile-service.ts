@@ -55,9 +55,21 @@ export async function updatePassword(
     });
   }
 
+  /*
+   * Clearing mustChangePassword here — rather than only on a dedicated
+   * "finish setup" endpoint — is what makes the forced change a single rule
+   * with a single exit. Whichever screen an Admin uses to replace a
+   * Super Admin-issued temporary password, replacing it is what ends the
+   * requirement. The flag is already false for everybody else, so setting it
+   * false unconditionally changes nothing for them.
+   */
   await prisma.user.update({
     where: { id: userId },
-    data: { password: await hashPassword(input.password), updatedAt: new Date() },
+    data: {
+      password: await hashPassword(input.password),
+      mustChangePassword: false,
+      updatedAt: new Date(),
+    },
   });
 }
 

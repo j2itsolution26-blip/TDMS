@@ -27,18 +27,36 @@ import type { AuthUser, AccountStatus } from '@/types/domain';
  * administrator who therefore knew it.
  */
 
-/** Roles the Staff screen manages. `student` is provisioned by enrolment. */
-export const STAFF_ROLES = ['admin', 'director', 'coordinator', 'secretary', 'teacher'] as const;
+/**
+ * Roles the Staff screen manages.
+ *
+ * `student` is provisioned by enrolment, not here.
+ *
+ * `admin` is absent on purpose, and its absence is the point rather than an
+ * oversight. An administrator account is created by a Super Admin through
+ * Administration → Admin Accounts, which issues a temporary password and a
+ * one-time access code together. Leaving `admin` here as well would give the
+ * system two ways to create the same privileged account — one of which grants
+ * it by emailing a link and asking nobody for a second factor — and the
+ * weaker of two routes is the one that gets used.
+ *
+ * Existing Admin accounts are therefore listed and managed on their own
+ * screen, not this one.
+ */
+export const STAFF_ROLES = ['director', 'coordinator', 'secretary', 'teacher'] as const;
 
 /**
- * Which roles the CURRENT actor may grant. Only a Super Admin may grant
- * `admin`; an Admin can staff the operational roles beneath them but cannot
- * mint a peer.
+ * Which roles the CURRENT actor may grant.
+ *
+ * The same list for a Super Admin and an Admin, now that `admin` itself is
+ * not grantable from here by anybody. The actor is still the argument, and
+ * the function is still the single gate both call sites go through, so a
+ * per-actor restriction has one place to be added rather than two to be kept
+ * in step.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function assignableRoles(actor: AuthUser): string[] {
-  return actor.roles.includes('super_admin')
-    ? [...STAFF_ROLES]
-    : ['director', 'coordinator', 'secretary', 'teacher'];
+  return [...STAFF_ROLES];
 }
 
 /**

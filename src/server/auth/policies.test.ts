@@ -12,6 +12,8 @@ import {
   enrollmentPolicy,
   studentCredentialPolicy,
   userPolicy,
+  adminAccountPolicy,
+  requiresAdminAccessCode,
 } from './policies';
 
 /**
@@ -27,6 +29,7 @@ function user(roles: string[], permissions: string[] = []): AuthUser {
     email: 't@example.test',
     status: 'ACTIVE',
     emailVerifiedAt: new Date(),
+    mustChangePassword: false,
     roles,
     permissions,
   };
@@ -149,5 +152,86 @@ describe('UserPolicy privilege boundaries', () => {
     expect(userPolicy.viewAny(secretary)).toBe(false);
     expect(hasRole(director, 'director')).toBe(true);
     expect(userPolicy.viewAny(director)).toBe(true);
+  });
+});
+
+// --- Admin Accounts --------------------------------------------------------
+
+describe('adminAccountPolicy', () => {
+  const targetAdmin = { id: '99', roles: ['admin'] };
+
+  it('is Super Admin only, for every operation', () => {
+    expect(adminAccountPolicy.viewAny(superAdmin)).toBe(true);
+    expect(adminAccountPolicy.create(superAdmin)).toBe(true);
+    expect(adminAccountPolicy.generateAccessCode(superAdmin, targetAdmin)).toBe(true);
+    expect(adminAccountPolicy.resetTemporaryPassword(superAdmin, targetAdmin)).toBe(true);
+    expect(adminAccountPolicy.setStatus(superAdmin, targetAdmin)).toBe(true);
+  });
+
+  it('refuses an Admin, even one holding accounts.manage', () => {
+    /*
+     * THE test on this policy. `admin` holds accounts.manage, so the obvious
+     * check — can(u, 'accounts.manage') — would let an Admin create peers and
+     * issue their access codes. Issuing your own second factor is not a second
+     * factor, so these check isSuperAdmin directly.
+     */
+    expect(can(admin, 'accounts.manage')).toBe(true);
+
+    expect(adminAccountPolicy.viewAny(admin)).toBe(false);
+    expect(adminAccountPolicy.create(admin)).toBe(false);
+    expect(adminAccountPolicy.generateAccessCode(admin, targetAdmin)).toBe(false);
+    expect(adminAccountPolicy.resetTemporaryPassword(admin, targetAdmin)).toBe(false);
+    expect(adminAccountPolicy.setStatus(admin, targetAdmin)).toBe(false);
+  });
+
+  it('refuses a Director, who also holds accounts.manage', () => {
+    expect(can(director, 'accounts.manage')).toBe(true);
+    expect(adminAccountPolicy.viewAny(director)).toBe(false);
+    expect(adminAccountPolicy.create(director)).toBe(false);
+  });
+
+  it('refuses everybody else outright', () => {
+    for (const principal of [coordinator, secretary, teacher, student]) {
+      expect(adminAccountPolicy.viewAny(principal)).toBe(false);
+      expect(adminAccountPolicy.create(principal)).toBe(false);
+      expect(adminAccountPolicy.generateAccessCode(principal, targetAdmin)).toBe(false);
+    }
+  });
+
+  it('never lets a Super Admin act on their own account here', () => {
+    /*
+     * Suspending yourself locks the institution out of its own system, and
+     * resetting your own password through this screen would route around the
+     * ordinary change-password flow. The Gate::before blanket grant must not
+     * win either of those.
+     */
+    const self = { id: superAdmin.id, roles: ['super_admin'] };
+    expect(adminAccountPolicy.setStatus(superAdmin, self)).toBe(false);
+    expect(adminAccountPolicy.generateAccessCode(superAdmin, self)).toBe(false);
+    expect(adminAccountPolicy.resetTemporaryPassword(superAdmin, self)).toBe(false);
+  });
+});
+
+describe('requiresAdminAccessCode', () => {
+  it('requires one of an Admin', () => {
+    expect(requiresAdminAccessCode(['admin'])).toBe(true);
+  });
+
+  it('exempts a Super Admin', () => {
+    /*
+     * Their privileged operations are confirmed with the static security code
+     * instead. Requiring a code somebody else issues would mean the FIRST
+     * Super Admin could never sign in at all.
+     */
+    expect(requiresAdminAccessCode(['super_admin'])).toBe(false);
+    // And the exemption wins when both roles are held.
+    expect(requiresAdminAccessCode(['super_admin', 'admin'])).toBe(false);
+    expect(requiresAdminAccessCode(['admin', 'super_admin'])).toBe(false);
+  });
+
+  it('does not require one of anybody else', () => {
+    for (const roles of [['director'], ['coordinator'], ['secretary'], ['teacher'], ['student'], []]) {
+      expect(requiresAdminAccessCode(roles)).toBe(false);
+    }
   });
 });

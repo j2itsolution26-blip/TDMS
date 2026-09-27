@@ -329,8 +329,9 @@ export default function StaffScreen({
 
           {!editing && (
             <Alert type="info">
-              No password is created. The account starts as pending, and an email is sent asking
-              them to verify the address and choose their own password.
+              No password is created. The account waits on email verification, and an email is
+              sent asking them to confirm the address and choose their own password. Administrator
+              accounts are not invited from here — a Super Admin creates those from Admin Accounts.
             </Alert>
           )}
 

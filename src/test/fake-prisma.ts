@@ -34,6 +34,8 @@ interface Store {
   sessions: Row[];
   cache: Row[];
   auditLogs: Row[];
+  adminAccessCodes: Row[];
+  adminLoginChallenges: Row[];
 }
 
 function emptyStore(): Store {
@@ -45,6 +47,8 @@ function emptyStore(): Store {
     sessions: [],
     cache: [],
     auditLogs: [],
+    adminAccessCodes: [],
+    adminLoginChallenges: [],
   };
 }
 
@@ -99,24 +103,31 @@ function matches(row: Row, where: Row | undefined): boolean {
         if (!value.startsWith(String(operators.startsWith))) return false;
       }
 
-      if ('lte' in operators) {
-        if (value === null || value === undefined) return false;
-        const bound = operators.lte as Date | number;
-        const left = value instanceof Date ? value.getTime() : Number(value);
-        const right = bound instanceof Date ? bound.getTime() : Number(bound);
-        if (!(left <= right)) return false;
-      }
+      /*
+       * The four range operators share one comparison, and all four agree
+       * with SQL that a comparison against NULL is never true. Getting that
+       * wrong would make `{ expiresAt: { gt: now } }` match a row with no
+       * expiry — which for an access code is the difference between "live"
+       * and "never expires".
+       */
+      const RANGES: Record<string, (left: number, right: number) => boolean> = {
+        lte: (l, r) => l <= r,
+        lt: (l, r) => l < r,
+        gte: (l, r) => l >= r,
+        gt: (l, r) => l > r,
+      };
 
-      if ('gte' in operators) {
+      for (const [op, compare] of Object.entries(RANGES)) {
+        if (!(op in operators)) continue;
         if (value === null || value === undefined) return false;
-        const bound = operators.gte as Date | number;
+        const bound = operators[op] as Date | number;
         const left = value instanceof Date ? value.getTime() : Number(value);
         const right = bound instanceof Date ? bound.getTime() : Number(bound);
-        if (!(left >= right)) return false;
+        if (!compare(left, right)) return false;
       }
 
       const unsupported = Object.keys(operators).filter(
-        (op) => !['not', 'lte', 'gte', 'in', 'startsWith'].includes(op),
+        (op) => !['not', 'lte', 'lt', 'gte', 'gt', 'in', 'startsWith'].includes(op),
       );
       if (unsupported.length > 0) {
         throw new Error(`fake-prisma: unsupported operator(s) ${unsupported.join(', ')}`);
@@ -141,6 +152,45 @@ function applyData(row: Row, data: Row): void {
     row[key] = value;
   }
   row.updatedAt = new Date();
+}
+
+/**
+ * Sort a result set the way a single-key Prisma `orderBy` would.
+ *
+ * Only one key, because that is all the services ask for — and a fake that
+ * silently ignored orderBy would be actively misleading here: "the newest
+ * access code for this admin" is the query the whole single-use property
+ * rests on, and returning the oldest instead would make a broken
+ * implementation look correct.
+ */
+function sortRows(rows: Row[], orderBy: Row | undefined): Row[] {
+  if (!orderBy) return rows;
+
+  const entries = Object.entries(orderBy);
+  if (entries.length === 0) return rows;
+  if (entries.length > 1) {
+    throw new Error('fake-prisma: only a single-key orderBy is implemented');
+  }
+
+  const [key, direction] = entries[0] as [string, string];
+  const sign = direction === 'desc' ? -1 : 1;
+
+  return [...rows].sort((a, b) => {
+    const left = a[key];
+    const right = b[key];
+    if (left === right) return 0;
+    if (left === null || left === undefined) return 1;
+    if (right === null || right === undefined) return -1;
+
+    const l = left instanceof Date ? left.getTime() : left;
+    const r = right instanceof Date ? right.getTime() : right;
+
+    if (typeof l === 'bigint' || typeof r === 'bigint') {
+      return BigInt(l as bigint) < BigInt(r as bigint) ? -sign : sign;
+    }
+    if (typeof l === 'number' && typeof r === 'number') return l < r ? -sign : sign;
+    return String(l) < String(r) ? -sign : sign;
+  });
 }
 
 function clone<T>(value: T): T {
@@ -184,17 +234,40 @@ export function createFakePrisma(): FakePrisma {
     }
   }
 
-  /** The shared CRUD shape, over one array. */
-  function model(name: keyof Store, defaults: () => Row = () => ({})) {
+  /**
+   * The shared CRUD shape, over one array.
+   *
+   * `hydrate` attaches the one relation the services actually read back — the
+   * Spatie role join. Prisma resolves `select: { role: { ... } }` by following
+   * the foreign key; a fake that ignored it would hand back rows without a
+   * `role` property and turn a correct implementation into a TypeError, which
+   * is a worse failure than not supporting it at all.
+   */
+  function model(
+    name: keyof Store,
+    defaults: () => Row = () => ({}),
+    hydrate: (row: Row) => Row = (row) => row,
+  ) {
+    const read = (row: Row | null | undefined) => (row ? hydrate(clone(row)) : null);
+
     return {
       findUnique: async ({ where }: { where: Row }) =>
-        clone(table(name).find((row) => matches(row, where)) ?? null),
+        read(table(name).find((row) => matches(row, where))),
 
-      findFirst: async ({ where }: { where?: Row }) =>
-        clone(table(name).find((row) => matches(row, where)) ?? null),
+      findFirst: async ({ where, orderBy }: { where?: Row; orderBy?: Row } = {}) =>
+        read(sortRows(table(name).filter((row) => matches(row, where)), orderBy)[0]),
 
-      findMany: async ({ where }: { where?: Row } = {}) =>
-        clone(table(name).filter((row) => matches(row, where))),
+      findMany: async ({
+        where,
+        orderBy,
+        skip,
+        take,
+      }: { where?: Row; orderBy?: Row; skip?: number; take?: number } = {}) => {
+        const found = sortRows(table(name).filter((row) => matches(row, where)), orderBy);
+        const from = skip ?? 0;
+        const page = take === undefined ? found.slice(from) : found.slice(from, from + take);
+        return page.map((row) => hydrate(clone(row)));
+      },
 
       create: async ({ data }: { data: Row }) => {
         const row: Row = { id: nextId++, ...defaults(), ...data };
@@ -264,7 +337,17 @@ export function createFakePrisma(): FakePrisma {
   const prisma: Record<string, any> = {  // eslint-disable-line @typescript-eslint/no-explicit-any
     user: model('users', () => ({ emailVerifiedAt: null, status: 'PENDING', isActive: true })),
     role: model('roles'),
-    modelHasRole: model('modelHasRoles'),
+    /*
+     * `role` is resolved from roleId, so `select: { role: { select: { name,
+     * guardName } } }` behaves as Prisma's does. The permissions side of the
+     * join is deliberately not implemented: nothing under test reads it, and a
+     * fake that returned an empty permission list would make an authorization
+     * bug look like a pass.
+     */
+    modelHasRole: model('modelHasRoles', () => ({}), (row) => {
+      const role = store.roles.find((r) => String(r.id) === String(row.roleId));
+      return role ? { ...row, role: clone(role) } : row;
+    }),
     pendingAdminRegistration: model('pending', () => ({
       verificationAttempts: 0,
       resendCount: 0,
@@ -276,6 +359,19 @@ export function createFakePrisma(): FakePrisma {
     session: model('sessions'),
     legacyCache: model('cache'),
     auditLog: model('auditLogs'),
+    adminAccessCode: model('adminAccessCodes', () => ({
+      usedAt: null,
+      invalidatedAt: null,
+      attemptCount: 0,
+      createdAt: new Date(),
+    })),
+    adminLoginChallenge: model('adminLoginChallenges', () => ({
+      remember: false,
+      consumedAt: null,
+      ipAddress: null,
+      userAgent: null,
+      createdAt: new Date(),
+    })),
 
     /**
      * Real rollback, and one transaction at a time.

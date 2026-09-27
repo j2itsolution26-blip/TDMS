@@ -2,7 +2,7 @@ import 'server-only';
 import { cache } from 'react';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
-import { AuthenticationError, AuthorizationError } from '@/lib/http';
+import { AppError, AuthenticationError, AuthorizationError } from '@/lib/http';
 import type { AuthUser } from '@/types/domain';
 import { loadRolesAndPermissions } from './rbac';
 import { resolveSession } from './session';
@@ -32,6 +32,7 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
       email: true,
       status: true,
       emailVerifiedAt: true,
+      mustChangePassword: true,
     },
   });
 
@@ -74,6 +75,7 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
     email: user.email,
     status: user.status as AuthUser['status'],
     emailVerifiedAt: user.emailVerifiedAt,
+    mustChangePassword: user.mustChangePassword,
     roles,
     permissions,
   };
@@ -89,13 +91,45 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
 export async function requireUser(): Promise<AuthUser> {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
+
+  /*
+   * A temporary password issued by a Super Admin is a credential two people
+   * know, so it is not one to be left in place. The holder is sent to the
+   * change-password screen and cannot navigate around it: this runs in the
+   * layout of the signed-in segment and in every page within it, so there is
+   * no protected page that does not pass through here.
+   *
+   * The screen itself lives OUTSIDE that segment and calls getCurrentUser()
+   * directly, which is what keeps this from redirecting to itself forever.
+   */
+  if (user.mustChangePassword) redirect('/change-password');
+
   return user;
 }
 
-/** For API routes: throw rather than redirect, so the caller gets JSON. */
-export async function requireApiUser(): Promise<AuthUser> {
+/**
+ * For API routes: throw rather than redirect, so the caller gets JSON.
+ *
+ * `allowTemporaryPassword` exists for exactly one caller — the endpoint that
+ * replaces the temporary password. Every other route refuses, so an account
+ * on a temporary credential cannot do the system's work through the API while
+ * declining to finish setting itself up.
+ */
+export async function requireApiUser(
+  options: { allowTemporaryPassword?: boolean } = {},
+): Promise<AuthUser> {
   const user = await getCurrentUser();
   if (!user) throw new AuthenticationError();
+
+  if (user.mustChangePassword && !options.allowTemporaryPassword) {
+    throw new AppError(
+      'Please choose a permanent password before continuing.',
+      403,
+      undefined,
+      'PASSWORD_CHANGE_REQUIRED',
+    );
+  }
+
   return user;
 }
 

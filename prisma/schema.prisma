@@ -96,6 +96,10 @@ model User {
   temporaryCredentials       TemporaryCredential[]     @relation("TemporaryCredentialOwner")
   issuedTemporaryCredentials TemporaryCredential[]     @relation("TemporaryCredentialIssuer")
   loginChallenges            AdminLoginChallenge[]
+  /// Classes this account teaches, as a Diploma Instructor.
+  taughtClasses              ClassOffering[]           @relation("ClassInstructor")
+  notifications              Notification[]
+  instructorProfile          InstructorProfile?
 
   @@map("users")
 }
@@ -428,6 +432,7 @@ model Program {
   students               Student[]
   applications           Application[]
   credentialRequirements CredentialRequirement[]
+  sections               Section[]
 
   @@map("programs")
 }
@@ -464,6 +469,7 @@ model Subject {
 
   curriculumSubjects CurriculumSubject[] @relation("CurriculumSubjectSubject")
   prerequisiteFor    CurriculumSubject[] @relation("CurriculumSubjectPrerequisite")
+  classes            ClassOffering[]
 
   @@map("subjects")
 }
@@ -502,6 +508,10 @@ model Student {
   yearLevel      Int       @default(1) @map("year_level") @db.SmallInt
   status         String    @default("active") @db.VarChar(255)
   enrollmentDate DateTime? @map("enrollment_date") @db.Date
+  /// The opaque value printed in the student's attendance QR code. Random,
+  /// not derived from the student number, so a QR cannot be forged from an
+  /// ID card someone has seen. Issued lazily for records created before it.
+  qrToken        String?   @unique(map: "students_qr_token_unique") @map("qr_token") @db.VarChar(64)
   createdAt      DateTime? @map("created_at") @db.Timestamp(0)
   updatedAt      DateTime? @map("updated_at") @db.Timestamp(0)
 
@@ -511,6 +521,14 @@ model Student {
   application Application[]
   credentials StudentCredential[]
   enrollments Enrollment[]
+
+  sectionMemberships SectionStudent[]
+  attendance         AttendanceRecord[]
+  scores             AssessmentScore[]
+  grades             ClassGrade[]
+  badges             StudentBadge[]
+  statusRequests     StudentStatusRequest[]
+  learningSupports   LearningSupport[]
 
   @@map("students")
 }
@@ -584,6 +602,9 @@ model Enrollment {
   studentId    BigInt    @map("student_id")
   curriculumId BigInt    @map("curriculum_id")
   schoolYear   String    @map("school_year") @db.VarChar(255)
+  /// The school year as a record. The `school_year` string stays — every
+  /// existing screen reads it — and this is backfilled from it.
+  schoolYearId BigInt?   @map("school_year_id")
   semester     Int       @db.SmallInt
   yearLevel    Int       @map("year_level") @db.SmallInt
   status       String    @default("pending") @db.VarChar(255)
@@ -596,6 +617,7 @@ model Enrollment {
   curriculum    Curriculum                @relation(fields: [curriculumId], references: [id], onDelete: Restrict, map: "enrollments_curriculum_id_foreign", onUpdate: NoAction)
   approver      User?                     @relation("EnrollmentApprover", fields: [approvedBy], references: [id], onDelete: SetNull, map: "enrollments_approved_by_foreign", onUpdate: NoAction)
   statusHistory EnrollmentStatusHistory[]
+  schoolYearRef SchoolYear?               @relation(fields: [schoolYearId], references: [id], onDelete: Restrict, onUpdate: NoAction)
 
   @@unique([studentId, schoolYear, semester], map: "enrollments_student_id_school_year_semester_unique")
   @@map("enrollments")
@@ -614,6 +636,415 @@ model EnrollmentStatusHistory {
   actor      User?      @relation("EnrollmentStatusActor", fields: [changedBy], references: [id], onDelete: SetNull, map: "enrollment_status_history_changed_by_foreign", onUpdate: NoAction)
 
   @@map("enrollment_status_history")
+}
+
+// ---------------------------------------------------------------------------
+// Diploma Instructor module
+// ---------------------------------------------------------------------------
+//
+// Every teaching record belongs to a school year, directly or through its
+// class, so an archived year can be kept read-only and a new one starts clean
+// without duplicating anybody: students stay permanent records, and a school
+// year owns only the sections, classes and results made within it.
+//
+// "Who did it" columns (recorded_by, entered_by, created_by, …) are plain user
+// ids without a foreign key: deleting an account must never cascade into
+// academic records, and nothing joins through them.
+
+/// UPCOMING | ACTIVE | ARCHIVED. At most one ACTIVE — enforced by a partial
+/// unique index in the migration, which Prisma's schema language cannot
+/// express. An ARCHIVED year is read-only in every service that writes.
+model SchoolYear {
+  id              BigInt    @id @default(autoincrement())
+  label           String    @unique(map: "school_years_label_unique") @db.VarChar(20)
+  startsOn        DateTime  @map("starts_on") @db.Date
+  endsOn          DateTime  @map("ends_on") @db.Date
+  status          String    @default("UPCOMING") @db.VarChar(16)
+  currentSemester Int       @default(1) @map("current_semester") @db.SmallInt
+  archivedAt      DateTime? @map("archived_at")
+  archivedBy      BigInt?   @map("archived_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  enrollments    Enrollment[]
+  sections       Section[]
+  classes        ClassOffering[]
+  calendarEvents CalendarEvent[]
+
+  @@index([status])
+  @@map("school_years")
+}
+
+/// A group of students in one program and year level, for one school year.
+model Section {
+  id           BigInt   @id @default(autoincrement())
+  schoolYearId BigInt   @map("school_year_id")
+  programId    BigInt   @map("program_id")
+  yearLevel    Int      @map("year_level") @db.SmallInt
+  name         String   @db.VarChar(50)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+
+  schoolYear SchoolYear       @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
+  program    Program          @relation(fields: [programId], references: [id], onDelete: Restrict)
+  students   SectionStudent[]
+  classes    ClassOffering[]
+
+  @@unique([schoolYearId, programId, yearLevel, name], map: "sections_unique")
+  @@map("sections")
+}
+
+/// Section membership. One section per student per school year.
+model SectionStudent {
+  id           BigInt   @id @default(autoincrement())
+  sectionId    BigInt   @map("section_id")
+  studentId    BigInt   @map("student_id")
+  schoolYearId BigInt   @map("school_year_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolYearId, studentId], map: "section_students_one_per_year")
+  @@index([sectionId])
+  @@map("section_students")
+}
+
+/// A subject taught to a section in one semester, by one Diploma Instructor.
+/// The instructor assignment is what every Instructor permission hangs off.
+model ClassOffering {
+  id                BigInt    @id @default(autoincrement())
+  schoolYearId      BigInt    @map("school_year_id")
+  semester          Int       @db.SmallInt
+  sectionId         BigInt    @map("section_id")
+  subjectId         BigInt    @map("subject_id")
+  instructorId      BigInt?   @map("instructor_id")
+  room              String?   @db.VarChar(50)
+  passingGrade      Decimal   @default(75) @map("passing_grade") @db.Decimal(5, 2)
+  /// Category weights for the final grade, in percent: QUIZ, EXAM, ACTIVITY, PT.
+  weights           Json      @default("{\"QUIZ\":20,\"EXAM\":40,\"ACTIVITY\":20,\"PT\":20}")
+  /// DRAFT | FINALIZED | RELEASED — students see grades only once RELEASED.
+  gradeStatus       String    @default("DRAFT") @map("grade_status") @db.VarChar(16)
+  gradesFinalizedAt DateTime? @map("grades_finalized_at")
+  gradesReleasedAt  DateTime? @map("grades_released_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  schoolYear         SchoolYear             @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
+  section            Section                @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+  subject            Subject                @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  instructor         User?                  @relation("ClassInstructor", fields: [instructorId], references: [id], onDelete: SetNull)
+  schedules          ClassSchedule[]
+  attendanceSessions AttendanceSession[]
+  assessments        Assessment[]
+  grades             ClassGrade[]
+  documents          AcademicDocument[]
+  badges             StudentBadge[]
+  learningSupports   LearningSupport[]
+  statusRequests     StudentStatusRequest[]
+
+  @@unique([sectionId, subjectId, semester], map: "classes_unique")
+  @@index([instructorId])
+  @@index([schoolYearId])
+  @@map("classes")
+}
+
+/// A weekly meeting. Times are institution-local "HH:MM"; day 0 = Sunday.
+model ClassSchedule {
+  id        BigInt  @id @default(autoincrement())
+  classId   BigInt  @map("class_id")
+  dayOfWeek Int     @map("day_of_week") @db.SmallInt
+  startTime String  @map("start_time") @db.VarChar(5)
+  endTime   String  @map("end_time") @db.VarChar(5)
+  room      String? @db.VarChar(50)
+
+  class ClassOffering @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@index([classId])
+  @@map("class_schedules")
+}
+
+/// In-app notifications, shown behind the header bell.
+model Notification {
+  id        BigInt    @id @default(autoincrement())
+  userId    BigInt    @map("user_id")
+  type      String    @db.VarChar(64)
+  title     String    @db.VarChar(255)
+  body      String?
+  href      String?   @db.VarChar(255)
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+/// One class meeting's attendance. OPEN while scanning; CLOSED marks the rest absent.
+model AttendanceSession {
+  id               BigInt    @id @default(autoincrement())
+  classId          BigInt    @map("class_id")
+  meetingDate      DateTime  @map("meeting_date") @db.Date
+  startTime        String    @map("start_time") @db.VarChar(5)
+  endTime          String    @map("end_time") @db.VarChar(5)
+  lateAfterMinutes Int       @default(15) @map("late_after_minutes") @db.SmallInt
+  status           String    @default("OPEN") @db.VarChar(16)
+  openedBy         BigInt?   @map("opened_by")
+  openedAt         DateTime  @default(now()) @map("opened_at")
+  closedAt         DateTime? @map("closed_at")
+
+  class   ClassOffering      @relation(fields: [classId], references: [id], onDelete: Restrict)
+  records AttendanceRecord[]
+
+  @@unique([classId, meetingDate, startTime], map: "attendance_sessions_unique")
+  @@map("attendance_sessions")
+}
+
+/// PRESENT | LATE | ABSENT | EXCUSED. One per student per session — the
+/// unique index is what makes a second scan a time-out, never a duplicate.
+model AttendanceRecord {
+  id         BigInt    @id @default(autoincrement())
+  sessionId  BigInt    @map("session_id")
+  studentId  BigInt    @map("student_id")
+  status     String    @db.VarChar(16)
+  timeIn     DateTime? @map("time_in")
+  timeOut    DateTime? @map("time_out")
+  method     String    @default("QR") @db.VarChar(16)
+  recordedBy BigInt?   @map("recorded_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  session AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, studentId], map: "attendance_records_unique")
+  @@map("attendance_records")
+}
+
+/// Quizzes, examinations, online activities and performance tasks.
+/// `published` makes a scheduled assessment visible to students; results
+/// follow `scoreStatus`: DRAFT → FINALIZED → RELEASED.
+model Assessment {
+  id              BigInt    @id @default(autoincrement())
+  classId         BigInt    @map("class_id")
+  kind            String    @db.VarChar(16)
+  examType        String?   @map("exam_type") @db.VarChar(16)
+  title           String    @db.VarChar(255)
+  description     String?
+  instructions    String?
+  opensAt         DateTime? @map("opens_at")
+  closesAt        DateTime? @map("closes_at")
+  durationMinutes Int?      @map("duration_minutes")
+  totalItems      Int       @default(0) @map("total_items")
+  totalPoints     Decimal   @map("total_points") @db.Decimal(7, 2)
+  passingScore    Decimal?  @map("passing_score") @db.Decimal(7, 2)
+  published       Boolean   @default(false)
+  onlineEnabled   Boolean   @default(false) @map("online_enabled")
+  scoreStatus     String    @default("DRAFT") @map("score_status") @db.VarChar(16)
+  releasedAt      DateTime? @map("released_at")
+  createdBy       BigInt?   @map("created_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  class  ClassOffering     @relation(fields: [classId], references: [id], onDelete: Restrict)
+  items  AssessmentItem[]
+  scores AssessmentScore[]
+
+  @@index([classId])
+  @@map("assessments")
+}
+
+/// One question and its key. `answer` is never sent to a student before release.
+model AssessmentItem {
+  id           BigInt  @id @default(autoincrement())
+  assessmentId BigInt  @map("assessment_id")
+  number       Int
+  prompt       String?
+  choices      Json?
+  answer       String  @db.VarChar(255)
+  points       Decimal @default(1) @db.Decimal(6, 2)
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, number], map: "assessment_items_unique")
+  @@map("assessment_items")
+}
+
+/// A student's result on an assessment: ONLINE, SHEET (checked against the
+/// key) or MANUAL. One per student per assessment. `points` is null while an
+/// online attempt is in progress.
+model AssessmentScore {
+  id           BigInt    @id @default(autoincrement())
+  assessmentId BigInt    @map("assessment_id")
+  studentId    BigInt    @map("student_id")
+  points       Decimal?  @db.Decimal(7, 2)
+  answers      Json?
+  source       String    @db.VarChar(16)
+  startedAt    DateTime? @map("started_at")
+  submittedAt  DateTime? @map("submitted_at")
+  enteredBy    BigInt?   @map("entered_by")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  student    Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, studentId], map: "assessment_scores_unique")
+  @@map("assessment_scores")
+}
+
+/// A student's grade in a class: computed on finalize, visible when released.
+model ClassGrade {
+  id        BigInt   @id @default(autoincrement())
+  classId   BigInt   @map("class_id")
+  studentId BigInt   @map("student_id")
+  percent   Decimal? @db.Decimal(6, 2)
+  remarks   String?  @db.VarChar(32)
+  note      String?
+  updatedBy BigInt?  @map("updated_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  class   ClassOffering @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, studentId], map: "class_grades_unique")
+  @@map("class_grades")
+}
+
+/// The school calendar. Managed centrally; Instructors and Students view it.
+model CalendarEvent {
+  id           BigInt   @id @default(autoincrement())
+  schoolYearId BigInt?  @map("school_year_id")
+  title        String   @db.VarChar(255)
+  description  String?
+  type         String   @db.VarChar(24)
+  startsOn     DateTime @map("starts_on") @db.Date
+  endsOn       DateTime @map("ends_on") @db.Date
+  createdBy    BigInt?  @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+
+  schoolYear SchoolYear? @relation(fields: [schoolYearId], references: [id], onDelete: SetNull)
+
+  @@index([startsOn])
+  @@map("calendar_events")
+}
+
+model StudentBadge {
+  id        BigInt   @id @default(autoincrement())
+  studentId BigInt   @map("student_id")
+  classId   BigInt?  @map("class_id")
+  badge     String   @db.VarChar(32)
+  reason    String   @db.VarChar(255)
+  message   String?
+  awardedOn DateTime @map("awarded_on") @db.Date
+  awardedBy BigInt?  @map("awarded_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  student Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class   ClassOffering? @relation(fields: [classId], references: [id], onDelete: SetNull)
+
+  @@index([studentId])
+  @@map("student_badges")
+}
+
+/// Lesson plans, Tables of Specifications and Performance Task documentation.
+/// DRAFT → SUBMITTED → UNDER_REVIEW → APPROVED | RETURNED. The file lives in
+/// Vercel Blob; `file_key` is its pathname, never handed to the browser.
+model AcademicDocument {
+  id           BigInt    @id @default(autoincrement())
+  kind         String    @db.VarChar(16)
+  classId      BigInt    @map("class_id")
+  title        String    @db.VarChar(255)
+  documentDate DateTime? @map("document_date") @db.Date
+  details      Json?
+  fileKey      String?   @map("file_key") @db.VarChar(512)
+  fileName     String?   @map("file_name") @db.VarChar(255)
+  fileType     String?   @map("file_type") @db.VarChar(128)
+  fileSize     Int?      @map("file_size")
+  status       String    @default("DRAFT") @db.VarChar(16)
+  reviewNote   String?   @map("review_note")
+  reviewedBy   BigInt?   @map("reviewed_by")
+  reviewedAt   DateTime? @map("reviewed_at")
+  submittedAt  DateTime? @map("submitted_at")
+  createdBy    BigInt?   @map("created_by")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  class ClassOffering @relation(fields: [classId], references: [id], onDelete: Restrict)
+
+  @@index([classId])
+  @@index([kind, status])
+  @@map("academic_documents")
+}
+
+/// An Instructor's request to change a student's status. Nothing changes on
+/// the student until a Director, Coordinator or Secretary approves it.
+model StudentStatusRequest {
+  id              BigInt    @id @default(autoincrement())
+  studentId       BigInt    @map("student_id")
+  classId         BigInt?   @map("class_id")
+  currentStatus   String    @map("current_status") @db.VarChar(32)
+  requestedStatus String    @map("requested_status") @db.VarChar(32)
+  reason          String
+  status          String    @default("PENDING") @db.VarChar(16)
+  requestedBy     BigInt?   @map("requested_by")
+  decidedBy       BigInt?   @map("decided_by")
+  decidedAt       DateTime? @map("decided_at")
+  decisionNote    String?   @map("decision_note")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  student Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class   ClassOffering? @relation(fields: [classId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@map("student_status_requests")
+}
+
+/// A Learning Support Recommendation — never a label shown to the student.
+model LearningSupport {
+  id            BigInt    @id @default(autoincrement())
+  studentId     BigInt    @map("student_id")
+  classId       BigInt    @map("class_id")
+  difficulty    String
+  evidence      String?
+  interventions Json      @default("[]")
+  support       String?
+  followUpOn    DateTime? @map("follow_up_on") @db.Date
+  notes         String?
+  status        String    @default("OPEN") @db.VarChar(16)
+  createdBy     BigInt?   @map("created_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  student Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class   ClassOffering @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@index([classId])
+  @@map("learning_supports")
+}
+
+/// The Instructor's Personal Data Sheet, one section per JSON column.
+model InstructorProfile {
+  id          BigInt   @id @default(autoincrement())
+  userId      BigInt   @unique(map: "instructor_profiles_user_unique") @map("user_id")
+  employeeId  String?  @map("employee_id") @db.VarChar(64)
+  personal    Json     @default("{}")
+  family      Json     @default("{}")
+  education   Json     @default("[]")
+  eligibility Json     @default("[]")
+  work        Json     @default("[]")
+  training    Json     @default("[]")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("instructor_profiles")
 }
 
 model AuditLog {

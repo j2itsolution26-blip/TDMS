@@ -83,8 +83,8 @@ const redirectsTo = (r, path) =>
   (r.status === 307 || r.status === 302) && (r.location ?? '').includes(path);
 
 const stamp = Date.now();
-const JAMES = { name: 'E2E James', email: `e2e-james-${stamp}@gmail.com`, password: `E2e#James${stamp}xY` };
-const MARIA = { name: 'E2E Maria', email: `e2e-maria-${stamp}@gmail.com`, password: `E2e#Maria${stamp}xY` };
+const JAMES = { name: 'E2E James', email: `e2e-james-${stamp}@example.test`, password: `E2e#James${stamp}xY` };
+const MARIA = { name: 'E2E Maria', email: `e2e-maria-${stamp}@example.test`, password: `E2e#Maria${stamp}xY` };
 const NEW_PASSWORD = `E2e#Perm${stamp}xY`;
 
 const created = [];
@@ -313,7 +313,7 @@ try {
     !staticValue || !dashboard.text.includes(staticValue),
   );
   check('no "Pending approval" wording on the dashboard', !/pending approval/i.test(dashboard.text));
-  const inviteAdmin = await call(owner, 'POST', '/api/staff', { name: 'X', email: `x-${stamp}@gmail.com`, role: 'admin' });
+  const inviteAdmin = await call(owner, 'POST', '/api/staff', { name: 'X', email: `x-${stamp}@example.test`, role: 'admin' });
   check('an Admin cannot be invited', inviteAdmin.status >= 400, `status ${inviteAdmin.status}`);
 } catch (error) {
   failures.push(`threw: ${error.message}`);

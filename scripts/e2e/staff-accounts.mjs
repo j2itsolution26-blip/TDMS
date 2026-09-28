@@ -15,8 +15,8 @@ import bcrypt from 'bcryptjs';
 const BASE = process.env.TDMS_BASE ?? 'http://localhost:3000';
 const prisma = new PrismaClient();
 const stamp = Date.now();
-const ADMIN = { email: `e2e-staff-admin-${stamp}@gmail.com`, password: `E2e#Admin${stamp}xY`, code: '731604' };
-const TEACHER_EMAIL = `e2e-teacher-${stamp}@gmail.com`;
+const ADMIN = { email: `e2e-staff-admin-${stamp}@example.test`, password: `E2e#Admin${stamp}xY`, code: '731604' };
+const TEACHER_EMAIL = `e2e-teacher-${stamp}@example.test`;
 const TEMP = `E2e#Temp${stamp}xY`;
 const OWN = `E2e#Own${stamp}xY`;
 const created = [];
@@ -103,7 +103,7 @@ try {
   if (teacherId) created.push(BigInt(teacherId));
 
   const invitedAdmin = await call(admin, 'POST', '/api/staff', {
-    name: 'X', email: `x-${stamp}@gmail.com`, role: 'admin',
+    name: 'X', email: `x-${stamp}@example.test`, role: 'admin',
     temporaryPassword: TEMP, temporaryPasswordConfirmation: TEMP,
   });
   check('an Admin cannot be created from Staff', invitedAdmin.status >= 400, `status ${invitedAdmin.status}`);

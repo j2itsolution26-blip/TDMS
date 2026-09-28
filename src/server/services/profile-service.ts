@@ -65,12 +65,14 @@ export async function updatePassword(
    * requirement. The flag is already false for everybody else, so setting it
    * false unconditionally changes nothing for them.
    */
+  const now = new Date();
   await prisma.user.update({
     where: { id: userId },
     data: {
       password: await hashPassword(input.password),
       mustChangePassword: false,
-      updatedAt: new Date(),
+      passwordChangedAt: now,
+      updatedAt: now,
     },
   });
 
@@ -85,7 +87,10 @@ export async function updatePassword(
 // --- Replacing a temporary password ----------------------------------------
 
 export const TEMPORARY_PASSWORD_MESSAGES = {
-  incorrect: 'Temporary password is incorrect.',
+  incorrect: 'Incorrect temporary password.',
+  verified: 'Temporary password verified.',
+  superseded:
+    'Your temporary password was reset by the system administrator while you were here, so your password was NOT changed. Sign in again with the new temporary password.',
   suspended: 'Your account is suspended. Please contact the system administrator.',
   inactive: 'Your account is not active. Please contact the system administrator.',
   alreadyChanged: 'Your password has already been changed. Continue to your dashboard.',
@@ -93,8 +98,18 @@ export const TEMPORARY_PASSWORD_MESSAGES = {
   throttled: 'Too many incorrect attempts. Please wait a few minutes and try again.',
 } as const;
 
-/** Wrong guesses at the temporary password, per account. */
+/** Wrong guesses at the temporary password when SUBMITTING, per account. */
 const WRONG_TEMPORARY_PASSWORD_LIMIT = { max: 5, windowSeconds: 900 };
+
+/**
+ * The live "is this the right temporary password?" check has its own, looser
+ * budget. It answers as the person types, so an honest typo costs a check —
+ * sharing the submit budget would lock somebody out for mistyping twice while
+ * the field was still being corrected. It is still bounded, so it is not an
+ * unlimited oracle; and it is only reachable from a session that was itself
+ * opened with this temporary password plus an access code.
+ */
+const TEMPORARY_PASSWORD_CHECK_LIMIT = { max: 20, windowSeconds: 900 };
 
 export interface TemporaryPasswordReplaced {
   /** Whether a revealable copy of the temporary password existed and was destroyed. */
@@ -186,24 +201,32 @@ export async function replaceTemporaryPassword(
   const now = new Date();
 
   const credentialConsumed = await prisma.$transaction(async (tx) => {
+    /*
+     * Compare-and-swap on the EXACT hash the temporary password was verified
+     * against, not merely on the flag. A Super Admin reset issues a fresh
+     * temporary password and leaves the flag set — so a flag-only condition
+     * would let a request that verified the OLD temporary password overwrite
+     * the NEW one, silently throwing away the credential the administrator
+     * had just issued. Matching on the hash makes a reset in the middle of a
+     * change a clean refusal instead.
+     */
     const changed = await tx.user.updateMany({
-      where: { id: userId, mustChangePassword: true, status: 'ACTIVE' },
-      data: { password: newHash, mustChangePassword: false, updatedAt: now },
+      where: { id: userId, mustChangePassword: true, status: 'ACTIVE', password: user.password },
+      data: {
+        password: newHash,
+        mustChangePassword: false,
+        passwordChangedAt: now,
+        updatedAt: now,
+      },
     });
 
     /*
-     * Zero rows means another request finished first, or the account was
-     * suspended in the last few milliseconds. Throwing rolls the transaction
-     * back, so the credential below is not touched either.
+     * Zero rows: another request finished first, the account was suspended,
+     * or the temporary password was reset underneath us. Throwing rolls the
+     * transaction back, so the credential below is not touched either; which
+     * of the three it was is worked out after the rollback.
      */
-    if (changed.count !== 1) {
-      throw new AppError(
-        TEMPORARY_PASSWORD_MESSAGES.alreadyChanged,
-        409,
-        undefined,
-        'TEMP_PASSWORD_ALREADY_CHANGED',
-      );
-    }
+    if (changed.count !== 1) throw new ChangeLost();
 
     // The revealable copy is destroyed with it: the Super Admin can no longer show anything.
     const consumed = await tx.temporaryCredential.updateMany({
@@ -212,11 +235,88 @@ export async function replaceTemporaryPassword(
     });
 
     return consumed.count > 0;
+  }).catch(async (error) => {
+    if (!(error instanceof ChangeLost)) throw error;
+    throw await explainLostChange(userId);
   });
 
   await clearRateLimit('temp-password-wrong', userId.toString());
 
   return { credentialConsumed };
+}
+
+/** Internal signal: the conditional write matched no row. */
+class ChangeLost extends Error {}
+
+/**
+ * Say accurately why a change that passed every check did not land.
+ *
+ * Read after the rollback, so it describes the account as it now is. The
+ * order matters: "already changed" wins, because a second tab finishing first
+ * means the user is done and should simply move on.
+ */
+async function explainLostChange(userId: bigint): Promise<AppError> {
+  const now = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { status: true, mustChangePassword: true },
+  });
+
+  if (!now || !now.mustChangePassword) {
+    return new AppError(
+      TEMPORARY_PASSWORD_MESSAGES.alreadyChanged,
+      409,
+      undefined,
+      'TEMP_PASSWORD_ALREADY_CHANGED',
+    );
+  }
+  if (now.status === 'SUSPENDED') {
+    return new AppError(TEMPORARY_PASSWORD_MESSAGES.suspended, 403, undefined, 'ACCOUNT_SUSPENDED');
+  }
+  if (now.status !== 'ACTIVE') {
+    return new AppError(TEMPORARY_PASSWORD_MESSAGES.inactive, 403, undefined, 'ACCOUNT_NOT_ACTIVE');
+  }
+  return new AppError(TEMPORARY_PASSWORD_MESSAGES.superseded, 409, undefined, 'TEMP_PASSWORD_SUPERSEDED');
+}
+
+/**
+ * The live check behind "Temporary password verified." on the setup screen.
+ *
+ * Answers one question — does this match the password the account holds right
+ * now? — and only while that password IS a temporary one. It never changes
+ * anything. Once `mustChangePassword` is clear there is no temporary password
+ * to check, and saying "incorrect" would be misleading, so it says so instead.
+ */
+export async function checkTemporaryPassword(
+  userId: bigint,
+  candidate: string,
+): Promise<{ valid: boolean }> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { password: true, status: true, mustChangePassword: true },
+  });
+  if (!user) throw new AppError('Account not found.', 404, undefined, 'ACCOUNT_NOT_FOUND');
+  if (user.status === 'SUSPENDED') {
+    throw new AppError(TEMPORARY_PASSWORD_MESSAGES.suspended, 403, undefined, 'ACCOUNT_SUSPENDED');
+  }
+  if (!user.mustChangePassword) {
+    throw new AppError(
+      TEMPORARY_PASSWORD_MESSAGES.alreadyChanged,
+      409,
+      undefined,
+      'TEMP_PASSWORD_ALREADY_CHANGED',
+    );
+  }
+
+  const budget = await consumeRateLimit(
+    'temp-password-check',
+    userId.toString(),
+    TEMPORARY_PASSWORD_CHECK_LIMIT,
+  );
+  if (budget.limited) {
+    throw new AppError(TEMPORARY_PASSWORD_MESSAGES.throttled, 429, undefined, 'TEMP_PASSWORD_THROTTLED');
+  }
+
+  return { valid: await verifyPassword(candidate, user.password) };
 }
 
 /** Port of delete-user-form: confirm with the current password, then delete. */

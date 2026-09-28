@@ -72,5 +72,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     context,
   });
 
-  return ok({ updated: true, message: 'Password changed successfully.', redirectTo: '/dashboard' });
+  /*
+   * Only reached after the transaction has COMMITTED (replaceTemporaryPassword
+   * awaits it) and the session has been rotated — so "success" here means the
+   * new hash is what the sign-in endpoint will read from now on.
+   */
+  return ok({
+    updated: true,
+    message: 'Password updated successfully.',
+    detail: 'Your permanent password has been set.',
+    redirectTo: '/dashboard',
+  });
 });

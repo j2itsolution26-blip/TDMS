@@ -233,10 +233,16 @@ it.
   `ACTIVE` and still carry `must_change_password`. Once it is cleared there is
   no temporary password left, so a repeat — a double click, a second tab, a
   refresh — gets `409 TEMP_PASSWORD_ALREADY_CHANGED` and the form moves on.
-* **Atomic.** The new hash, `must_change_password = false`, and the temporary
-  credential's `used_at` (with its sealed copy emptied) are written in one
-  transaction, and the user row is updated *conditionally* on the flag still
-  being set. Two concurrent requests produce exactly one change.
+* **Atomic.** The new hash, `must_change_password = false`,
+  `password_changed_at`, and the temporary credential's `used_at` (with its
+  sealed copy emptied) are written in one transaction. Success is returned only
+  after it commits.
+* **Compare-and-swap on the verified hash**, not just the flag. A Super Admin
+  reset issues a fresh temporary password and leaves the flag set, so a
+  flag-only condition would let a request that verified the *old* temporary
+  password overwrite the *new* one. Matching on the hash turns a reset in the
+  middle of a change into `409 TEMP_PASSWORD_SUPERSEDED` — "your password was
+  NOT changed" — and two concurrent requests still produce exactly one change.
 * **The temporary password cannot be kept** as the new one.
 * **Wrong guesses are throttled**: five in fifteen minutes, per account.
 * **Every session ends, and this browser gets a new one** on the same
@@ -245,8 +251,34 @@ it.
 * Audited `ADMIN_TEMPORARY_PASSWORD_CHANGED` (sessions ended, whether a
   revealable copy was destroyed). Never a password or a hash.
 
+**The live check.** `POST /api/auth/change-password/verify` powers
+"Temporary password verified." on the setup screen. Same gate, user from the
+session, changes nothing, answers a boolean, and has its own budget (20 per 15
+minutes) so an honest typo does not eat the submit budget. The screen only asks
+once the field holds 12+ characters — every temporary password meets the
+policy, so anything shorter is known to be wrong without spending a check.
+
+**A failure never looks like a success.** A Super Admin reset ends every
+session. If the holder is on the setup screen at the time, their next request —
+the live check or Set Password — gets `401`, and the screen says plainly that
+the password was **not** changed and to sign in again with the current
+temporary password. It used to navigate to the sign-in page silently, which
+looked exactly like a successful save; the holder would then try a "new
+password" that had never been stored, and be told it was wrong.
+
 The access code is untouched by any of this: the next sign-in still asks for
 email, the new password, and a Super Admin-issued access code.
+
+**`users.password_changed_at`** records when the holder last chose their own
+password: replacing a temporary one, the profile page, or an emailed reset link.
+It is `NULL` while the account is still on the password it was issued. A
+password set *by* a Super Admin (create, reset) does not touch it. Nothing makes
+an authentication decision from it — `must_change_password` does that.
+
+There is one password store: `users.password`, a bcrypt hash. Sign-in verifies
+against it and nothing else; the sealed copy in `temporary_credentials` is only
+ever opened for the Super Admin's *Reveal*, never to authenticate. So once the
+permanent password is written, the temporary one cannot work.
 
 Temporary passwords do **not** expire on a timer. `temporary_credentials.expires_at`
 is the window in which the Super Admin may *reveal* the password again, not how

@@ -144,7 +144,8 @@ password step and has not been let in — and is authorised by the HttpOnly
 | `POST /api/auth/admin-access-code`           | Submit the code; on success a session is created   |
 | `DELETE /api/auth/admin-access-code`         | Abandon the half-finished sign-in                  |
 | `POST /api/auth/admin-access-code/request`   | Ask the Super Admins for a new code — **issues none** |
-| `POST /api/auth/change-password`             | Replace a temporary password (the only route that accepts a caller still carrying `mustChangePassword`) |
+| `POST /api/auth/change-password`             | Replace a temporary password (with `/verify`, the only routes that accept a caller still carrying `mustChangePassword`) |
+| `POST /api/auth/change-password/verify`      | Live check of the temporary password on the setup screen; changes nothing |
 
 "role: staff" means admin, director, coordinator, secretary or teacher.
 "role: office" means admin, director, coordinator or secretary. A

@@ -49,7 +49,8 @@ vi.mock('@/server/auth/rbac', async (original) => ({
 const { NextRequest } = await import('next/server');
 const { POST } = await import('@/app/api/auth/change-password/route');
 const { createSession, SESSION_COOKIE_NAME } = await import('@/server/auth/session');
-const { replaceTemporaryPassword } = await import('./profile-service');
+const { replaceTemporaryPassword, updatePassword } = await import('./profile-service');
+const { POST: VERIFY } = await import('@/app/api/auth/change-password/verify/route');
 const bcrypt = (await import('bcryptjs')).default;
 
 const { prisma, store, reset } = await fake;
@@ -132,7 +133,8 @@ describe('TEST 1 & 7 — a correct change', () => {
 
     expect(status).toBe(200);
     expect(json.success).toBe(true);
-    expect(json.data.message).toBe('Password changed successfully.');
+    expect(json.data.message).toBe('Password updated successfully.');
+    expect(json.data.detail).toBe('Your permanent password has been set.');
     expect(json.data.redirectTo).toBe('/dashboard');
 
     const row = userRow(admin.id);
@@ -144,6 +146,19 @@ describe('TEST 1 & 7 — a correct change', () => {
     const credential = credentialOf(admin.id);
     expect(credential.usedAt).toBeInstanceOf(Date);
     expect(credential.sealed).toBe('');
+  });
+
+  it('records password_changed_at, which was empty while the password was temporary', async () => {
+    const admin = await makeAdmin();
+    expect(userRow(admin.id).passwordChangedAt ?? null).toBeNull();
+
+    await signIn(admin.id);
+    const before = Date.now();
+    await post(valid);
+
+    const stamped = userRow(admin.id).passwordChangedAt as Date;
+    expect(stamped).toBeInstanceOf(Date);
+    expect(stamped.getTime()).toBeGreaterThanOrEqual(before - 1000);
   });
 
   it('never returns a password or a hash', async () => {
@@ -250,8 +265,8 @@ describe('TEST 2 — the wrong temporary password', () => {
 
     expect(status).toBe(422);
     expect(json.code).toBe('TEMP_PASSWORD_INCORRECT');
-    expect(json.message).toBe('Temporary password is incorrect.');
-    expect(json.errors.currentPassword).toEqual(['Temporary password is incorrect.']);
+    expect(json.message).toBe('Incorrect temporary password.');
+    expect(json.errors.currentPassword).toEqual(['Incorrect temporary password.']);
 
     const row = userRow(admin.id);
     expect(await bcrypt.compare(TEMP, row.password)).toBe(true);
@@ -351,7 +366,7 @@ describe('TEST 5 & 6 — a temporary password that has been superseded or used',
     // Even with a new session, the superseded password is refused.
     await signIn(admin.id);
     const { json } = await post(valid);
-    expect(json.message).toBe('Temporary password is incorrect.');
+    expect(json.message).toBe('Incorrect temporary password.');
   });
 
   it('a used temporary password cannot be used a second time', async () => {
@@ -423,5 +438,133 @@ describe('what a real browser does', () => {
     await makeAdmin();
     jar.cookies.clear();
     expect((await post(valid)).status).toBe(401);
+  });
+});
+
+// --- A reset in the middle of a change ------------------------------------------
+
+describe('a Super Admin reset landing mid-change', () => {
+  /**
+   * The race behind the reported bug, pinned down. The service reads the
+   * account and verifies the temporary password; before its write lands, the
+   * Super Admin issues a fresh temporary password. A write conditional on the
+   * flag alone would still match — the flag stays set after a reset — and the
+   * new password would silently overwrite the credential the administrator had
+   * just issued. The write is conditional on the verified hash instead.
+   */
+  it('refuses cleanly and leaves the freshly issued temporary password in place', async () => {
+    const admin = await makeAdmin();
+    const staleRow = { ...userRow(admin.id) };
+
+    // The reset: a new temporary hash, flag still set.
+    const freshTemp = 'FreshTemp#2026zz';
+    userRow(admin.id).password = await bcrypt.hash(freshTemp, 4);
+
+    // The service's first read happened BEFORE the reset, so it saw the old hash.
+    const spy = vi.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(staleRow);
+
+    await expect(
+      replaceTemporaryPassword(admin.id, { currentPassword: TEMP, password: NEW }),
+    ).rejects.toMatchObject({ code: 'TEMP_PASSWORD_SUPERSEDED' });
+    spy.mockRestore();
+
+    const row = userRow(admin.id);
+    expect(await bcrypt.compare(freshTemp, row.password)).toBe(true);
+    expect(await bcrypt.compare(NEW, row.password)).toBe(false);
+    expect(row.mustChangePassword).toBe(true);
+    expect(credentialOf(admin.id).usedAt).toBeNull();
+  });
+
+  it('says the password was NOT changed, in words', async () => {
+    const admin = await makeAdmin();
+    const staleRow = { ...userRow(admin.id) };
+    userRow(admin.id).password = await bcrypt.hash('FreshTemp#2026zz', 4);
+    const spy = vi.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(staleRow);
+
+    await expect(
+      replaceTemporaryPassword(admin.id, { currentPassword: TEMP, password: NEW }),
+    ).rejects.toThrow(/NOT changed/);
+    spy.mockRestore();
+  });
+});
+
+// --- The live check behind "Temporary password verified." ---------------------
+
+describe('POST /api/auth/change-password/verify', () => {
+  async function verify(currentPassword: string) {
+    const request = new NextRequest('http://localhost/api/auth/change-password/verify', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.9' },
+      body: JSON.stringify({ currentPassword }),
+    });
+    const response = await VERIFY(request);
+    return { status: response.status, json: (await response.json()) as Row };
+  }
+
+  it('confirms the right temporary password', async () => {
+    const admin = await makeAdmin();
+    await signIn(admin.id);
+
+    const { status, json } = await verify(TEMP);
+    expect(status).toBe(200);
+    expect(json.data).toEqual({ valid: true, message: 'Temporary password verified.' });
+  });
+
+  it('rejects a wrong one, without saying how close it was', async () => {
+    const admin = await makeAdmin();
+    await signIn(admin.id);
+
+    const { status, json } = await verify('Wrong#Password1x');
+    expect(status).toBe(200);
+    expect(json.data).toEqual({ valid: false, message: 'Incorrect temporary password.' });
+  });
+
+  it('changes nothing, and never returns a hash', async () => {
+    const admin = await makeAdmin();
+    await signIn(admin.id);
+    const hashBefore = userRow(admin.id).password;
+
+    const { json } = await verify(TEMP);
+
+    expect(userRow(admin.id).password).toBe(hashBefore);
+    expect(userRow(admin.id).mustChangePassword).toBe(true);
+    expect(JSON.stringify(json)).not.toMatch(/\$2[aby]\$/);
+  });
+
+  it('does not check anything once the password is permanent', async () => {
+    const admin = await makeAdmin();
+    await signIn(admin.id);
+    await post(valid);
+
+    // The temporary password is gone; "incorrect" would be misleading.
+    const { status, json } = await verify(TEMP);
+    expect(status).toBe(409);
+    expect(json.code).toBe('TEMP_PASSWORD_ALREADY_CHANGED');
+  });
+
+  it('refuses an anonymous caller', async () => {
+    await makeAdmin();
+    jar.cookies.clear();
+    expect((await verify(TEMP)).status).toBe(401);
+  });
+
+  it('is bounded, so it cannot be used as an unlimited oracle', async () => {
+    const admin = await makeAdmin();
+    await signIn(admin.id);
+
+    for (let i = 0; i < 20; i += 1) await verify(`Wrong#Guess${i}xxxx`);
+    const { status, json } = await verify(TEMP);
+    expect(status).toBe(429);
+    expect(json.code).toBe('TEMP_PASSWORD_THROTTLED');
+  });
+});
+
+// --- The other ways a holder sets their own password ----------------------------
+
+describe('password_changed_at on the profile change', () => {
+  it('is recorded when a signed-in user changes their password from the profile', async () => {
+    const user = await makeAdmin({ mustChangePassword: false });
+    await updatePassword(user.id, { currentPassword: TEMP, password: NEW });
+    expect(userRow(user.id).passwordChangedAt).toBeInstanceOf(Date);
   });
 });

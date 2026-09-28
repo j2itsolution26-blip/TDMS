@@ -48,6 +48,12 @@ model User {
   /// record setup progress. requireUser()/requireApiUser() divert the holder
   /// to the change-password screen until it is cleared.
   mustChangePassword Boolean   @default(false) @map("must_change_password")
+  /// When the account holder last chose their own password: replacing a
+  /// temporary one, changing it from the profile, or completing an emailed
+  /// reset. NULL for an account still on the password it was issued. A
+  /// password set BY a Super Admin (create, reset) does not touch it — that
+  /// is not the holder's choice, and `mustChangePassword` already says so.
+  passwordChangedAt  DateTime? @map("password_changed_at") @db.Timestamp(0)
   rememberToken      String?   @map("remember_token") @db.VarChar(100)
   /// Google's stable subject identifier (`sub`). The join key for Google
   /// sign-in: an address can change, `sub` does not. Unique, so one Google

@@ -595,6 +595,7 @@ export async function resetPasswordWithToken(
       // A password chosen through the emailed link is the user's own, so any
       // temporary one issued by a Super Admin is finished with.
       mustChangePassword: false,
+      passwordChangedAt: new Date(),
       // Setting a password through a link sent to the verified address both
       // proves ownership and completes an invitation.
       ...(user.emailVerifiedAt && user.status === 'PENDING'

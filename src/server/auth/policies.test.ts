@@ -47,13 +47,59 @@ const secretary = user(['secretary'], ['applications.review', 'credentials.verif
 const teacher = user(['teacher'], ['grades.enter', 'attendance.record']);
 const student = user(['student'], ['academic-records.view.own']);
 
-describe('Gate::before super_admin grant', () => {
-  it('grants every ability to a super admin', () => {
+/*
+ * The TDMS structure: the Super Admin controls the system and "shouldn't be
+ * processing daily enrollment, classes, attendance, or grades". They see
+ * everything (oversight) and act only at system level.
+ */
+describe('Super Admin: sees everything, runs no daily operations', () => {
+  it('keeps the system-level abilities', () => {
     expect(isSuperAdmin(superAdmin)).toBe(true);
-    expect(can(superAdmin, 'anything.at.all')).toBe(true);
-    expect(programPolicy.create(superAdmin)).toBe(true);
-    // Even the deletes, which are flat false for everyone else.
-    expect(programPolicy.delete(superAdmin)).toBe(true);
+    for (const p of ['system.configure', 'audit-logs.view', 'reports.view.full', 'dashboard.view.institutional']) {
+      expect(can(superAdmin, p)).toBe(true);
+    }
+  });
+
+  it('no longer holds the operational permissions', () => {
+    for (const p of [
+      'programs.manage', 'subjects.manage', 'students.manage', 'students.enroll',
+      'applications.review', 'credentials.verify', 'grades.publish', 'accounts.manage', 'anything.at.all',
+    ]) {
+      expect(can(superAdmin, p), p).toBe(false);
+    }
+  });
+
+  it('even if their role row is granted one', () => {
+    const superWithGrants = user(['super_admin'], ['programs.manage', 'students.enroll']);
+    expect(can(superWithGrants, 'programs.manage')).toBe(false);
+    expect(programPolicy.create(superWithGrants)).toBe(false);
+  });
+
+  it('can view every operational screen, and act on none', () => {
+    expect(programPolicy.viewAny(superAdmin)).toBe(true);
+    expect(subjectPolicy.viewAny(superAdmin)).toBe(true);
+    expect(studentPolicy.viewAny(superAdmin)).toBe(true);
+    expect(applicationPolicy.viewAny(superAdmin)).toBe(true);
+    expect(enrollmentPolicy.viewAny(superAdmin)).toBe(true);
+    expect(studentCredentialPolicy.viewAny(superAdmin)).toBe(true);
+
+    expect(programPolicy.create(superAdmin)).toBe(false);
+    expect(programPolicy.update(superAdmin)).toBe(false);
+    expect(subjectPolicy.create(superAdmin)).toBe(false);
+    expect(curriculumSubjectPolicy.delete(superAdmin)).toBe(false);
+    expect(studentPolicy.create(superAdmin)).toBe(false);
+    expect(studentPolicy.update(superAdmin)).toBe(false);
+    expect(applicationPolicy.review(superAdmin)).toBe(false);
+    expect(studentCredentialPolicy.verify(superAdmin)).toBe(false);
+    expect(enrollmentPolicy.create(superAdmin)).toBe(false);
+    expect(enrollmentPolicy.transition(superAdmin)).toBe(false);
+  });
+
+  it('leaves the Admin able to do the daily work', () => {
+    expect(programPolicy.create(admin)).toBe(true);
+    expect(studentPolicy.create(admin)).toBe(true);
+    expect(applicationPolicy.review(admin)).toBe(true);
+    expect(enrollmentPolicy.create(admin)).toBe(true);
   });
 
   it('does not grant abilities to anyone else implicitly', () => {
@@ -175,8 +221,6 @@ describe('staff management belongs to the Admin', () => {
      * policy must not be built on it. The Super Admin creates Admins; Admins
      * staff the institution.
      */
-    expect(can(superAdmin, 'accounts.manage')).toBe(true);
-
     expect(managesStaff(superAdmin)).toBe(false);
     expect(userPolicy.viewAny(superAdmin)).toBe(false);
     expect(userPolicy.view(superAdmin)).toBe(false);
@@ -212,13 +256,16 @@ describe('staff management belongs to the Admin', () => {
     }
   });
 
-  it('leaves the Super Admin every academic screen', () => {
-    // "Remove staff management only": nothing else changes for them.
-    expect(programPolicy.viewAny(superAdmin)).toBe(true);
-    expect(programPolicy.create(superAdmin)).toBe(true);
-    expect(studentPolicy.viewAny(superAdmin)).toBe(true);
-    expect(applicationPolicy.viewAny(superAdmin)).toBe(true);
-    expect(subjectPolicy.viewAny(superAdmin)).toBe(true);
+  it('lets the Director monitor students without managing them', () => {
+    expect(studentPolicy.viewAny(director)).toBe(true);
+    expect(studentPolicy.view(director)).toBe(true);
+    expect(studentPolicy.create(director)).toBe(false);
+    expect(studentPolicy.update(director)).toBe(false);
+  });
+
+  it('still keeps Teachers and Coordinators out of student records', () => {
+    expect(studentPolicy.viewAny(teacher)).toBe(false);
+    expect(studentPolicy.viewAny(coordinator)).toBe(false);
   });
 
   it('never deletes a staff account', () => {

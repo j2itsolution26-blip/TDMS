@@ -149,9 +149,9 @@ password step and has not been let in — and is authorised by the HttpOnly
 
 "role: staff" means admin, director, coordinator, secretary or teacher.
 "role: office" means admin, director, coordinator or secretary. A
-`super_admin` passes every check **except** the staff routes above: staff
-accounts are managed by the Admin only, and `accounts.manage` is held by `admin`
-alone (see `authentication.md`).
+`super_admin` passes every **view** check but no operational one: they cannot
+create, update, review, verify, enroll or manage staff. Staff accounts are
+managed by the Admin only (see `authentication.md`).
 
 ## Notes
 

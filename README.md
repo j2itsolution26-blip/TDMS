@@ -88,9 +88,19 @@ SUPER ADMIN   system maintenance — creates and controls Admins
      └── Teacher
 ```
 
-A Super Admin passes every academic permission check, with two exceptions: they
-do not manage staff accounts (that is the Admin's job, and the Staff screen is
-hidden from them), and nobody can suspend or deactivate their own account.
+Separation of duties, per the TDMS structure:
+
+- **Super Admin** — system and security: Admin accounts, access codes, audit
+  logs, system health. They can *view* every operational screen for oversight
+  but do not process daily work — no enrolling, reviewing applications,
+  verifying credentials, editing programs or managing staff.
+- **Admin** — daily operations: staff accounts, academic setup, student records,
+  applications and enrollment. An Admin cannot create a Super Admin or touch
+  Super Admin settings.
+- **Director** monitors (read-only Students, Programs, Applications);
+  **Coordinator**, **Secretary**, **Teacher** and **Student** keep their roles.
+
+Nobody can suspend or deactivate their own account.
 
 ## Documentation
 

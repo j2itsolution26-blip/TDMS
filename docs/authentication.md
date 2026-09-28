@@ -248,7 +248,18 @@ class name, so existing assignment rows stay valid.
 
 `AppServiceProvider` registered `Gate::before(… super_admin ? true : null)`,
 granting a Super Admin every ability. That blanket grant is reproduced in
-`policies.ts`, with two deliberate exceptions:
+`policies.ts` for **viewing** only. For **acting**, the TDMS structure applies:
+the Super Admin controls the system and "shouldn't be processing daily
+enrollment, classes, attendance, or grades". So `can()` gives a Super Admin an
+explicit allow-list — `system.configure`, `audit-logs.view`, `reports.view.full`,
+`dashboard.view.institutional` — and nothing operational (`programs.manage`,
+`students.manage`, `students.enroll`, `applications.review`,
+`credentials.verify`, `grades.*`, …), whatever their role rows say. View policies
+use `inRoles()`, which still admits them, so they keep oversight of every screen.
+
+The Director may view Students (monitoring) without managing them.
+
+Two further rules:
 
 - **Staff accounts.** The Super Admin maintains the system and creates Admins;
   the Admin staffs the institution. `userPolicy` is built on `managesStaff()`,

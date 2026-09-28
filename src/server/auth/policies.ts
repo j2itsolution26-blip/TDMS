@@ -42,8 +42,32 @@ export function isSuperAdmin(user: AuthUser): boolean {
   return user.roles.includes('super_admin');
 }
 
+/**
+ * What a Super Admin may DO, as opposed to see.
+ *
+ * The TDMS structure: the Super Admin controls the system — configuration,
+ * security, audit, oversight — and "shouldn't be processing daily enrollment,
+ * classes, attendance, or grades". So the Laravel-era blanket grant no longer
+ * covers the operational permissions (programs.manage, students.manage,
+ * students.enroll, applications.review, credentials.verify, grades.*, …): those
+ * belong to the Admin and the TVET roles below them.
+ *
+ * Reading is unaffected. Every view policy goes through inRoles(), which still
+ * admits the Super Admin, so they can see system-wide activity; they just
+ * cannot act on it.
+ *
+ * An explicit allow-list rather than the Super Admin role's database rows, so a
+ * stray grant in role_has_permissions cannot hand operational power back.
+ */
+const SUPER_ADMIN_PERMISSIONS: ReadonlySet<string> = new Set([
+  'dashboard.view.institutional',
+  'reports.view.full',
+  'audit-logs.view',
+  'system.configure',
+]);
+
 export function can(user: AuthUser, permission: string): boolean {
-  if (isSuperAdmin(user)) return true;
+  if (isSuperAdmin(user)) return SUPER_ADMIN_PERMISSIONS.has(permission);
   return user.permissions.includes(permission);
 }
 
@@ -51,10 +75,21 @@ export function can(user: AuthUser, permission: string): boolean {
 const CATALOGUE_VIEWERS = ['admin', 'director', 'coordinator', 'secretary', 'teacher'] as const;
 const OFFICE_VIEWERS = ['admin', 'director', 'coordinator', 'secretary'] as const;
 
-/** Role check that respects the Gate::before Super Admin grant. */
+/**
+ * Role check for VIEWING, which still admits the Super Admin: oversight of
+ * system-wide activity is part of their job. Acting goes through can(), which
+ * does not.
+ */
 function inRoles(user: AuthUser, roles: readonly string[]): boolean {
   return isSuperAdmin(user) || hasAnyRole(user, roles);
 }
+
+/**
+ * Who may SEE student records: the Admin and Secretary who manage them, the
+ * Director who monitors them ("How is the TVET program performing?"), and the
+ * Super Admin for oversight. Managing them still needs students.manage.
+ */
+const STUDENT_VIEWERS = ['admin', 'director', 'secretary'] as const;
 
 // --- ProgramPolicy ---------------------------------------------------------
 
@@ -100,8 +135,8 @@ export const subjectPolicy = {
 // --- StudentPolicy ---------------------------------------------------------
 
 export const studentPolicy = {
-  viewAny: (u: AuthUser) => can(u, 'students.manage'),
-  view: (u: AuthUser) => can(u, 'students.manage'),
+  viewAny: (u: AuthUser) => inRoles(u, STUDENT_VIEWERS) || can(u, 'students.manage'),
+  view: (u: AuthUser) => inRoles(u, STUDENT_VIEWERS) || can(u, 'students.manage'),
   create: (u: AuthUser) => can(u, 'students.manage'),
   update: (u: AuthUser) => can(u, 'students.manage'),
   delete: (u: AuthUser) => isSuperAdmin(u),

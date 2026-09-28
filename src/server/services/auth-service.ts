@@ -40,9 +40,11 @@ import { recordAudit } from './audit-log';
  * WHAT A CORRECT PASSWORD DOES AND DOES NOT BUY
  *
  * For most accounts, reaching the end of this function issues a session. For
- * an Admin it does not: their sign-in is a two-step affair, and the password
- * only earns the right to submit an access code a Super Admin issued
- * separately. That branch creates a challenge row and NO session — see
+ * an Admin still in INITIAL SETUP it does not: that first sign-in is a two-step
+ * affair, and the temporary password only earns the right to submit an access
+ * code a Super Admin issued separately. Once setup is complete, an Admin signs
+ * in here like anybody else. The setup branch creates a challenge row and NO
+ * session — see
  * src/server/services/admin-login-service.ts for why the alternative
  * (issuing a session and marking it unverified) was rejected.
  */
@@ -200,7 +202,12 @@ export async function login(input: LoginInput, context: LoginContext): Promise<L
    */
   const { roles } = await loadRolesAndPermissions(user.id);
 
-  if (requiresAdminAccessCode(roles)) {
+  /*
+   * Only an Admin still in initial setup (on a Super Admin-issued temporary
+   * password) needs the access code. Once they have chosen a permanent password
+   * they sign in here with email and password, like every other account.
+   */
+  if (requiresAdminAccessCode({ roles, mustChangePassword: user.mustChangePassword })) {
     await beginAdminVerification(user.id, {
       remember: input.remember,
       ip: context.ip,

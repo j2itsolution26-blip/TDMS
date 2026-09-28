@@ -39,6 +39,8 @@ export interface AdminRow {
   mustChangePassword: boolean;
   /** False for a leftover invitation that has never been set up. */
   setUp: boolean;
+  /** PENDING_INITIAL_SETUP needs an access code at sign-in; ACTIVE does not. */
+  setupState: 'PENDING_INITIAL_SETUP' | 'ACTIVE';
   lastLoginAt: string | null;
   createdAt: string | null;
   accessCodeExpiresInSeconds: number | null;
@@ -273,6 +275,8 @@ export default function AdminAccountsScreen({ rows, page, lastPage, total, curre
                     // Can actually sign in. A never-set-up account cannot,
                     // whatever its status says.
                     const usable = row.setUp && row.status === 'ACTIVE';
+                    // Codes are for initial setup only; a finished account needs none.
+                    const inSetup = usable && row.setupState === 'PENDING_INITIAL_SETUP';
                     return (
                       <tr key={row.id}>
                         <td className="px-6 py-3.5 text-sm font-medium text-navy-900">
@@ -298,17 +302,21 @@ export default function AdminAccountsScreen({ rows, page, lastPage, total, curre
                         </td>
                         <td className="px-6 py-3.5 text-sm text-slate-500">Admin</td>
                         <td className="px-6 py-3.5">
-                          {row.setUp ? (
+                          {!row.setUp ? (
+                            <Badge status="pending" label="Not set up" />
+                          ) : inSetup ? (
+                            <Badge status="pending" label="Pending initial setup" />
+                          ) : (
                             <Badge
                               status={ACCOUNT_STATUS_BADGE[row.status]}
                               label={ACCOUNT_STATUS_LABELS[row.status]}
                             />
-                          ) : (
-                            <Badge status="pending" label="Not set up" />
                           )}
                         </td>
                         <td className="px-6 py-3.5 text-sm text-slate-500">
-                          {row.accessCodeExpiresInSeconds === null ? (
+                          {row.setUp && row.setupState === 'ACTIVE' ? (
+                            <span className="text-slate-400">Not needed — setup complete</span>
+                          ) : row.accessCodeExpiresInSeconds === null ? (
                             <span className="text-slate-400">None active</span>
                           ) : (
                             <span className="font-mono text-xs">
@@ -327,7 +335,7 @@ export default function AdminAccountsScreen({ rows, page, lastPage, total, curre
                                 Credentials
                               </button>
                             )}
-                            {!isSelf && usable && (
+                            {!isSelf && inSetup && (
                               <Link
                                 href={issueCodeHref(row.id)}
                                 className="font-medium text-slate-600 hover:text-indigo-600"

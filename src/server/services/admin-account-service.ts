@@ -17,6 +17,7 @@ import {
   type AccessCodeStatus,
 } from '@/server/auth/admin-access-code';
 import { staticCodeConfigured } from '@/server/auth/super-admin-code';
+import { adminSetupState, type AdminSetupState } from '@/server/auth/policies';
 import {
   sealTemporaryPassword,
   openTemporaryPassword,
@@ -177,6 +178,11 @@ export interface AdminAccountRow {
    * whatever its status says, and Reset password is the way to set it up.
    */
   setUp: boolean;
+  /**
+   * PENDING_INITIAL_SETUP while on a temporary password (the access code is
+   * required at sign-in), ACTIVE once they have chosen their own (it is not).
+   */
+  setupState: AdminSetupState;
   lastLoginAt: string | null;
   createdAt: string | null;
   /** Seconds left on this Admin's live access code, or null when there is none. */
@@ -228,6 +234,7 @@ export async function listAdminAccounts(page = 1) {
         status: u.status as AccountStatus,
         mustChangePassword: u.mustChangePassword,
         setUp: u.emailVerifiedAt !== null,
+        setupState: adminSetupState(u),
         lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
         createdAt: u.createdAt?.toISOString() ?? null,
         accessCodeExpiresInSeconds: expiry ? secondsUntil(expiry, now) : null,
@@ -633,6 +640,22 @@ export async function generateAdminAccessCode(
     );
   }
 
+  /*
+   * The access code belongs to initial activation only. An Admin who has chosen
+   * a permanent password signs in with email and password and is never asked
+   * for a code, so issuing one would hand out a credential nothing checks.
+   * Resetting their password is what starts a new setup, and with it a need for
+   * a new code.
+   */
+  if (adminSetupState(admin) === 'ACTIVE') {
+    throw new AppError(
+      'This Admin has finished setup and signs in with their email and password, so no access code is needed. Reset their password if they need to go through setup again.',
+      422,
+      undefined,
+      'ADMIN_SETUP_COMPLETE',
+    );
+  }
+
   const perActor = await consumeRateLimit('admin-code-generate', actor.id, CODE_LIMIT_PER_ACTOR);
   if (perActor.limited) {
     throw new AppError(
@@ -917,7 +940,7 @@ export async function listIssuableAdmins(): Promise<IssuableAdmin[]> {
   const users = await prisma.user.findMany({
     where: { id: { in: await adminUserIds() } },
     orderBy: { name: 'asc' },
-    select: { id: true, name: true, email: true, status: true, emailVerifiedAt: true },
+    select: { id: true, name: true, email: true, status: true, emailVerifiedAt: true, mustChangePassword: true },
   });
 
   return users.map((u) => ({
@@ -929,7 +952,9 @@ export async function listIssuableAdmins(): Promise<IssuableAdmin[]> {
         ? 'Not set up — reset their password first'
         : u.status !== 'ACTIVE'
           ? 'Suspended'
-          : null,
+          : !u.mustChangePassword
+            ? 'Setup complete — signs in with password only'
+            : null,
   }));
 }
 
@@ -1054,6 +1079,7 @@ export interface AdminCredentials {
     status: AccountStatus;
     setUp: boolean;
     mustChangePassword: boolean;
+    setupState: AdminSetupState;
   };
   /** Status only. The password itself is fetched by revealTemporaryPassword. */
   temporaryPassword: TemporaryPasswordState;
@@ -1079,6 +1105,7 @@ export async function getAdminCredentials(adminId: bigint): Promise<AdminCredent
       status: admin.status as AccountStatus,
       setUp: admin.emailVerifiedAt !== null,
       mustChangePassword: admin.mustChangePassword,
+      setupState: adminSetupState(admin),
     },
     temporaryPassword: await temporaryPasswordState(admin),
     currentCode: latest ? ((await describeCodes([latest as CodeRecord]))[0] ?? null) : null,

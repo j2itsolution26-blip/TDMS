@@ -89,6 +89,8 @@ export async function GET(request: NextRequest) {
         return backToLogin(request, 'account_inactive');
       case 'suspended':
         return backToLogin(request, 'account_suspended');
+      case 'admin_setup_required':
+        return backToLogin(request, 'admin_setup_required');
       default:
         return backToLogin(request, 'google_failed');
     }

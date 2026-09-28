@@ -281,20 +281,48 @@ export const adminAccountPolicy = {
 };
 
 /**
- * Does this principal have to clear an access code before they are let in?
+ * Where an Admin account is in its lifecycle.
  *
- * Derived from the role rather than stored on the row, so it cannot drift out
- * of step with who is actually an Admin. A column saying "this one needs a
- * code" would be one stale write away from an Admin who does not.
+ *   PENDING_INITIAL_SETUP  created (or reset) by a Super Admin and still on a
+ *                          temporary password. Signing in needs the temporary
+ *                          password AND a one-time access code, then a
+ *                          permanent password must be chosen.
+ *   ACTIVE                 setup complete. Email and password, nothing more.
  *
- * A Super Admin is exempt: their privileged operations are confirmed with the
- * static security code instead (see src/server/auth/super-admin-code.ts), and
- * making them depend on a code somebody else issues would mean the first
- * Super Admin could never sign in at all.
+ * Derived from `mustChangePassword`, which is exactly this fact: set when a
+ * Super Admin issues a temporary password, cleared the moment the Admin chooses
+ * their own. It is deliberately NOT a new value of `users.status` — thirty
+ * places treat status ACTIVE as "may sign in", and a setup phase stored there
+ * would have to be taught to every one of them. Suspension still lives in
+ * `status` and is checked before any of this.
  */
-export function requiresAdminAccessCode(roles: readonly string[]): boolean {
-  if (roles.includes('super_admin')) return false;
-  return roles.includes('admin');
+export type AdminSetupState = 'PENDING_INITIAL_SETUP' | 'ACTIVE';
+
+export function adminSetupState(account: { mustChangePassword: boolean }): AdminSetupState {
+  return account.mustChangePassword ? 'PENDING_INITIAL_SETUP' : 'ACTIVE';
+}
+
+/**
+ * Does this sign-in have to clear an access code?
+ *
+ * Only an Admin, and only during initial setup. The access code belongs to the
+ * activation of the account, not to every sign-in: once the Admin has used a
+ * code and chosen a permanent password, they sign in with email and password
+ * like everybody else.
+ *
+ * The decision is made from the account's lifecycle, never from whether an
+ * access-code row happens to exist — an old used code must not summon the
+ * verification screen, and a missing one must not skip it during setup.
+ *
+ * A Super Admin is exempt: nobody issues codes to them.
+ */
+export function requiresAdminAccessCode(account: {
+  roles: readonly string[];
+  mustChangePassword: boolean;
+}): boolean {
+  if (account.roles.includes('super_admin')) return false;
+  if (!account.roles.includes('admin')) return false;
+  return adminSetupState(account) === 'PENDING_INITIAL_SETUP';
 }
 
 // --- System (Super Admin) --------------------------------------------------

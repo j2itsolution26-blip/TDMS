@@ -15,6 +15,7 @@ import {
   managesStaff,
   adminAccountPolicy,
   requiresAdminAccessCode,
+  adminSetupState,
   systemPolicy,
 } from './policies';
 
@@ -330,26 +331,39 @@ describe('adminAccountPolicy', () => {
   });
 });
 
+/*
+ * The access code belongs to an Admin's INITIAL SETUP only. Once they have
+ * chosen a permanent password, they sign in with email and password.
+ */
 describe('requiresAdminAccessCode', () => {
-  it('requires one of an Admin', () => {
-    expect(requiresAdminAccessCode(['admin'])).toBe(true);
+  const inSetup = (roles: string[]) => ({ roles, mustChangePassword: true });
+  const setUpDone = (roles: string[]) => ({ roles, mustChangePassword: false });
+
+  it('requires one of an Admin during initial setup', () => {
+    expect(requiresAdminAccessCode(inSetup(['admin']))).toBe(true);
+    expect(adminSetupState({ mustChangePassword: true })).toBe('PENDING_INITIAL_SETUP');
   });
 
-  it('exempts a Super Admin', () => {
+  it('never requires one of an Admin who has finished setup', () => {
     /*
-     * Their privileged operations are confirmed with the static security code
-     * instead. Requiring a code somebody else issues would mean the FIRST
-     * Super Admin could never sign in at all.
+     * THE bug this guards: the old rule looked at the role alone, so an Admin
+     * who had already used a code and set a permanent password was asked for
+     * another code on every sign-in, forever.
      */
-    expect(requiresAdminAccessCode(['super_admin'])).toBe(false);
-    // And the exemption wins when both roles are held.
-    expect(requiresAdminAccessCode(['super_admin', 'admin'])).toBe(false);
-    expect(requiresAdminAccessCode(['admin', 'super_admin'])).toBe(false);
+    expect(requiresAdminAccessCode(setUpDone(['admin']))).toBe(false);
+    expect(adminSetupState({ mustChangePassword: false })).toBe('ACTIVE');
   });
 
-  it('does not require one of anybody else', () => {
+  it('exempts a Super Admin, in or out of setup', () => {
+    for (const account of [inSetup(['super_admin']), setUpDone(['super_admin']), inSetup(['super_admin', 'admin'])]) {
+      expect(requiresAdminAccessCode(account)).toBe(false);
+    }
+  });
+
+  it('does not require one of anybody else, even on a temporary password', () => {
     for (const roles of [['director'], ['coordinator'], ['secretary'], ['teacher'], ['student'], []]) {
-      expect(requiresAdminAccessCode(roles)).toBe(false);
+      expect(requiresAdminAccessCode(inSetup(roles))).toBe(false);
+      expect(requiresAdminAccessCode(setUpDone(roles))).toBe(false);
     }
   });
 });

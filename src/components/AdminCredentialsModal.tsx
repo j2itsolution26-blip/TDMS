@@ -35,6 +35,7 @@ interface Credentials {
     status: AccountStatus;
     setUp: boolean;
     mustChangePassword: boolean;
+    setupState: 'PENDING_INITIAL_SETUP' | 'ACTIVE';
   };
   temporaryPassword: TemporaryPasswordState;
   currentCode: AccessCodeRow | null;
@@ -214,7 +215,9 @@ export default function AdminCredentialsModal({
       ? 'EXPIRED'
       : code.status
     : null;
-  const canIssue = admin ? admin.setUp && admin.status === 'ACTIVE' : false;
+  // A code is only ever needed during initial setup.
+  const inSetup = admin ? admin.setupState === 'PENDING_INITIAL_SETUP' : false;
+  const canIssue = admin ? admin.setUp && admin.status === 'ACTIVE' && inSetup : false;
 
   const resetControl = confirmReset ? (
     <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
@@ -258,10 +261,12 @@ export default function AdminCredentialsModal({
 
             <dt className="text-slate-500">Status</dt>
             <dd className="col-span-2">
-              {admin.setUp ? (
-                <Badge status={ACCOUNT_STATUS_BADGE[admin.status]} label={ACCOUNT_STATUS_LABELS[admin.status]} />
-              ) : (
+              {!admin.setUp ? (
                 <Badge status="pending" label="Not set up" />
+              ) : admin.status === 'ACTIVE' && inSetup ? (
+                <Badge status="pending" label="Pending initial setup" />
+              ) : (
+                <Badge status={ACCOUNT_STATUS_BADGE[admin.status]} label={ACCOUNT_STATUS_LABELS[admin.status]} />
               )}
             </dd>
           </dl>
@@ -384,10 +389,17 @@ export default function AdminCredentialsModal({
               </dl>
             )}
 
-            <p className="mt-3 text-xs text-slate-500">
-              The access code itself is not stored in plaintext, so it cannot be shown again. Generate a
-              new code if necessary.
-            </p>
+            {admin.setUp && !inSetup ? (
+              <p className="mt-3 text-xs text-slate-500">
+                Setup is complete, so no access code is needed: {admin.name} signs in with email and
+                password only. Resetting their password starts a new setup, which needs a new code.
+              </p>
+            ) : (
+              <p className="mt-3 text-xs text-slate-500">
+                The access code itself is not stored in plaintext, so it cannot be shown again. Generate
+                a new code if necessary.
+              </p>
+            )}
           </section>
 
           <div className="flex flex-wrap justify-end gap-3 border-t border-border pt-4">

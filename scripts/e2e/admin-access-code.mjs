@@ -127,6 +127,9 @@ try {
     created.push(who.id);
     check(`${who.name}: creation issues no code`, !('accessCode' in c.payload.data));
   }
+  const fresh = await call(owner, 'GET', '/api/admins');
+  const jamesRow = fresh.payload?.data?.rows?.find((r) => r.email === JAMES.email);
+  check('a new Admin is PENDING_INITIAL_SETUP', jamesRow?.setupState === 'PENDING_INITIAL_SETUP', jamesRow?.setupState);
 
   // Temporary password reveal ---------------------------------------------
   console.log('\nTemporary password: shown again on request, never stored in plaintext');
@@ -216,25 +219,45 @@ try {
   check('and it can no longer be revealed', tooLate.status === 409, `status ${tooLate.status}`);
 
   // 12 ---------------------------------------------------------------------
-  console.log('\n12. The code cannot be reused');
-  const { browser: again } = await signIn(JAMES.email, NEW_PASSWORD);
-  const replay = await call(again, 'POST', '/api/auth/admin-access-code', { code });
-  check('reused code refused', replay.status === 422, `status ${replay.status}`);
-  check('no second session', !again.has('tdms_session'));
+  console.log('\n12. After setup: email + password only, never an access code again');
+  const afterSetup = await call(owner, 'GET', '/api/admins');
+  const doneRow = afterSetup.payload?.data?.rows?.find((r) => r.email === JAMES.email);
+  check('account is now ACTIVE (setup complete)', doneRow?.setupState === 'ACTIVE', doneRow?.setupState);
+  check('the access code is USED', (await call(owner, 'GET', `/api/admin-access-codes/${codeId}`)).payload?.data?.status === 'USED');
+
+  const logout = await call(james, 'POST', '/api/auth/logout');
+  check('logs out', logout.status === 200 && !james.has('tdms_session'), `status ${logout.status}`);
+
+  for (const when of ['next sign-in', 'another sign-in later']) {
+    const { browser: back, r: backIn } = await signIn(JAMES.email, NEW_PASSWORD);
+    check(`${when}: stage is complete, no access code step`, backIn.payload?.data?.stage === 'complete', backIn.payload?.data?.stage);
+    check(`${when}: signed in straight away`, back.has('tdms_session'));
+    check(`${when}: no half-finished sign-in cookie`, !back.has('tdms_admin_login'));
+    check(`${when}: goes to the dashboard`, backIn.payload?.data?.redirectTo === '/dashboard', backIn.payload?.data?.redirectTo);
+    check(`${when}: dashboard loads`, (await call(back, 'GET', '/dashboard')).status === 200);
+    const screen = await call(back, 'GET', '/login/access-code');
+    check(`${when}: the access-code page does not show (redirects away)`, screen.status === 307 || screen.status === 302, `status ${screen.status}`);
+  }
+
+  const replay = await call(jar(), 'POST', '/api/auth/admin-access-code', { code });
+  check('the used code cannot be replayed without a sign-in', replay.status === 410, `status ${replay.status}`);
+  const noCode = await call(owner, 'POST', '/api/admin-access-codes', { adminId: JAMES.id });
+  check('no new code can be issued to an Admin who finished setup', noCode.payload?.code === 'ADMIN_SETUP_COMPLETE', noCode.payload?.code);
 
   // 14 ---------------------------------------------------------------------
-  console.log('\n14. Revoked codes fail');
-  const gen2 = await call(owner, 'POST', '/api/admin-access-codes', { adminId: JAMES.id });
+  // Maria is still in initial setup, so the code checks below use her.
+  console.log('\n14. Revoked codes fail (Admin in setup)');
+  const gen2 = await call(owner, 'POST', '/api/admin-access-codes', { adminId: MARIA.id });
   const revoked = await call(owner, 'POST', `/api/admin-access-codes/${gen2.payload?.data?.codeId}/revoke`);
   check('revoke succeeds', revoked.status === 200 && revoked.payload?.data?.status === 'REVOKED', revoked.payload?.message);
-  const { browser: afterRevoke } = await signIn(JAMES.email, NEW_PASSWORD);
+  const { browser: afterRevoke } = await signIn(MARIA.email, MARIA.password);
   const tryRevoked = await call(afterRevoke, 'POST', '/api/auth/admin-access-code', { code: gen2.payload?.data?.accessCode });
   check('revoked code refused', tryRevoked.status === 422, `status ${tryRevoked.status}`);
   check('no session from a revoked code', !afterRevoke.has('tdms_session'));
 
   // 13 ---------------------------------------------------------------------
-  console.log('\n13. Expired codes fail');
-  const gen3 = await call(owner, 'POST', '/api/admin-access-codes', { adminId: JAMES.id, expiresInMinutes: 5 });
+  console.log('\n13. Expired codes fail (Admin in setup)');
+  const gen3 = await call(owner, 'POST', '/api/admin-access-codes', { adminId: MARIA.id, expiresInMinutes: 5 });
   {
     const { PrismaClient } = await import('@prisma/client');
     const prisma = new PrismaClient();
@@ -245,7 +268,7 @@ try {
     });
     await prisma.$disconnect();
   }
-  const { browser: afterExpiry } = await signIn(JAMES.email, NEW_PASSWORD);
+  const { browser: afterExpiry } = await signIn(MARIA.email, MARIA.password);
   const tryExpired = await call(afterExpiry, 'POST', '/api/auth/admin-access-code', { code: gen3.payload.data.accessCode });
   check('expired code refused', tryExpired.status === 422, `status ${tryExpired.status}`);
   const expiredView = await call(owner, 'GET', `/api/admin-access-codes/${gen3.payload.data.codeId}`);
@@ -264,14 +287,18 @@ try {
 
   // 17 ---------------------------------------------------------------------
   console.log('\n17. Suspended Admins cannot sign in');
-  const liveCode = await call(owner, 'POST', '/api/admin-access-codes', { adminId: JAMES.id });
-  const { browser: suspendedBrowser } = await signIn(JAMES.email, NEW_PASSWORD);
-  await call(owner, 'POST', `/api/admins/${JAMES.id}/status`, { status: 'SUSPENDED' });
+  // In setup: a correct temporary password and a correct code, then suspended.
+  const mariaTemp = reset.payload?.data?.temporaryPassword;
+  const liveCode = await call(owner, 'POST', '/api/admin-access-codes', { adminId: MARIA.id });
+  const { browser: suspendedBrowser } = await signIn(MARIA.email, mariaTemp);
+  await call(owner, 'POST', `/api/admins/${MARIA.id}/status`, { status: 'SUSPENDED' });
   const trySuspended = await call(suspendedBrowser, 'POST', '/api/auth/admin-access-code', { code: liveCode.payload?.data?.accessCode });
   check('correct code refused once suspended', trySuspended.status >= 400, `status ${trySuspended.status}`);
   check('no session for a suspended Admin', !suspendedBrowser.has('tdms_session'));
+  // Setup complete: a correct permanent password, then suspended.
+  await call(owner, 'POST', `/api/admins/${JAMES.id}/status`, { status: 'SUSPENDED' });
   const { r: suspendedLogin } = await signIn(JAMES.email, NEW_PASSWORD);
-  check('password step refused while suspended', suspendedLogin.status === 403, `status ${suspendedLogin.status}`);
+  check('correct password refused while suspended', suspendedLogin.status === 403, `status ${suspendedLogin.status}`);
 
   // 18-20 ------------------------------------------------------------------
   console.log('\n18-20. No approval, no admin invitations, no exposed static code');

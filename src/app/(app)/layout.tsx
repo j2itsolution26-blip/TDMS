@@ -1,5 +1,5 @@
 import { requireUser } from '@/server/auth/current-user';
-import Navigation, { type NavItem } from '@/components/Navigation';
+import Navigation, { type NavGroup, type NavItem } from '@/components/Navigation';
 import {
   programPolicy,
   subjectPolicy,
@@ -29,6 +29,55 @@ import { ROLE_LABELS, type RoleName } from '@/types/domain';
  * the Admin's setup progress (the sidebar card) and the work waiting on the
  * office (the bell). React's cache makes them one set of queries per request.
  */
+/**
+ * The TVET roles' own sidebars. Each is an ARRANGEMENT of the links the
+ * policies above already allowed — it can regroup or leave a link out, never
+ * add one — so a link a role may not open cannot appear, and each page still
+ * re-checks its own policy on the server. Modules TDMS does not have yet
+ * (grades, attendance, competencies, assessment, reports) are not listed:
+ * a link to nothing is worse than no link.
+ *
+ * Curricula live inside each program (/programs/[id]), and "Teachers" is the
+ * Admin's Staff screen, which these roles may not open — so neither has an
+ * entry of its own. A Coordinator may not see student records, so the
+ * Students link is absent for them by policy.
+ */
+const ROLE_SIDEBARS: Record<'director' | 'coordinator' | 'secretary', [NavGroup, string[]][]> = {
+  director: [
+    ['main', ['/dashboard']],
+    ['academic', ['/programs', '/subjects']],
+    ['people', ['/students']],
+    ['admissions', ['/applications', '/enrollments']],
+    ['account', ['/profile']],
+  ],
+  coordinator: [
+    ['main', ['/dashboard']],
+    ['academic', ['/programs', '/subjects']],
+    ['people', ['/students']],
+    ['admissions', ['/applications', '/enrollments']],
+    ['account', ['/profile']],
+  ],
+  secretary: [
+    ['main', ['/dashboard']],
+    ['records', ['/students']],
+    ['admissions', ['/applications', '/enrollments']],
+    ['programs', ['/programs']],
+    ['account', ['/profile']],
+  ],
+};
+
+const PROFILE_ITEM: NavItem = { label: 'My Profile', href: '/profile', match: ['/profile'], icon: 'profile', group: 'account' };
+
+function arrange(allowed: NavItem[], layout: [NavGroup, string[]][]): NavItem[] {
+  const byHref = new Map([...allowed, PROFILE_ITEM].map((i) => [i.href, i]));
+  return layout.flatMap(([group, hrefs]) =>
+    hrefs.flatMap((href) => {
+      const item = byHref.get(href);
+      return item ? [{ ...item, group }] : [];
+    }),
+  );
+}
+
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
 
@@ -81,6 +130,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
    */
   const role = dashboardRoleFor(user);
   const roleLabel = role === 'none' ? 'No role' : ROLE_LABELS[role as RoleName];
+  const nav = ROLE_SIDEBARS[role as keyof typeof ROLE_SIDEBARS] ? arrange(items, ROLE_SIDEBARS[role as keyof typeof ROLE_SIDEBARS]) : items;
 
   const [setup, pending, programs] = await Promise.all([
     getAdminSetup(user),
@@ -98,7 +148,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         style={{ background: 'radial-gradient(closest-side, rgba(61,220,151,0.16), rgba(61,220,151,0) 100%)', transform: 'translate(30%, -35%)' }}
       />
       <Navigation
-        items={items}
+        items={nav}
         user={{ name: user.name, email: user.email, roleLabel }}
         setup={setup && !setup.complete && currentStep ? { completed: setup.completed, total: setup.total, href: currentStep.href } : null}
         pending={pending.items}

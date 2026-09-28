@@ -168,6 +168,7 @@ export function Panel({
             className={`shrink-0 rounded text-sm font-medium text-primary-700 hover:text-primary-800 hover:underline ${FOCUS}`}
           >
             {viewAll.label}
+            <span aria-hidden="true"> →</span>
             <span className="sr-only"> — {title}</span>
           </Link>
         )}

@@ -167,17 +167,162 @@ export interface TablePanel {
   empty: EmptyNote;
 }
 
+// --- TVET role workspaces (Director, Coordinator, Secretary) -------------------------
+
 /**
- * The Director's layout, drawn on the reference design's grid rather than the
- * shared one. Every panel is still built from policy-gated queries.
+ * One design system, three jobs. The Director oversees, the Coordinator runs
+ * the academic structure, the Secretary processes records — so each gets its
+ * own panels, drawn from the same small kit of parts.
+ *
+ * Every number is a count from the records, gated by the policy that guards
+ * the page it summarises. Where TDMS keeps no record of something a role would
+ * naturally watch (grades, competencies, assessments, teacher assignments),
+ * the workspace lists it under `notTracked` and the page says so plainly —
+ * never a zero that looks like a measurement.
  */
-export interface DirectorPanels {
-  trend: ChartPanel | null;
-  distribution: ChartPanel | null;
-  actions: ListPanel;
-  oversight: TablePanel | null;
-  applications: TablePanel | null;
+
+export type WorkIcon =
+  | 'programs'
+  | 'students'
+  | 'teachers'
+  | 'applications'
+  | 'enrollment'
+  | 'curricula'
+  | 'subjects'
+  | 'documents'
+  | 'attention'
+  | 'graduation'
+  | 'registrations'
+  | 'tasks'
+  | 'records';
+
+export type WorkTone = 'success' | 'attention' | 'failed' | 'info' | 'neutral';
+
+export interface WorkMetric {
+  key: string;
+  label: string;
+  value: number;
+  /** What the number means, in words: "3 awaiting approval", "None created yet". */
+  hint: string;
+  tone?: WorkTone;
+  icon: WorkIcon;
+  href?: string;
 }
+
+/** Something waiting, with a count and the button that opens it. */
+export interface WorkItem {
+  key: string;
+  label: string;
+  description: string;
+  count: number;
+  href: string;
+  /** The button's verb: Review, Open, View. */
+  action: string;
+  icon: WorkIcon;
+}
+
+/** One stage of a breakdown — a pipeline step, a document state. */
+export interface WorkSegment {
+  key: string;
+  label: string;
+  value: number;
+  tone: WorkTone;
+  href?: string;
+}
+
+/** A real ratio: "4 of 6 active programs have a curriculum". */
+export interface WorkProgress {
+  key: string;
+  label: string;
+  value: number;
+  max: number;
+  detail: string;
+}
+
+export interface QuickLink {
+  label: string;
+  description: string;
+  href: string;
+  icon: WorkIcon;
+}
+
+export interface ProgramPerformanceRow {
+  id: string;
+  name: string;
+  code: string;
+  students: number | null;
+  active: number | null;
+  graduating: number | null;
+  graduated: number | null;
+  pendingApplications: number | null;
+  status: StatusLabel;
+}
+
+export interface GraduationRow {
+  id: string;
+  name: string;
+  studentNumber: string;
+  program: string;
+  yearLevel: number;
+  /** Required documents still not verified. */
+  outstanding: number;
+}
+
+export interface ProgramReadiness {
+  id: string;
+  name: string;
+  code: string;
+  curriculum: string | null;
+  subjects: number;
+  units: number;
+  /** Year/semester terms in the curriculum that have no subject yet. */
+  emptyTerms: number;
+  ready: boolean;
+  status: StatusLabel;
+}
+
+export interface EnrollmentByProgramRow {
+  id: string;
+  name: string;
+  code: string;
+  applications: number;
+  approved: number;
+  enrolled: number;
+  pending: number;
+}
+
+interface WorkspaceBase {
+  metrics: WorkMetric[];
+  activity: ListItem[];
+  quickActions: QuickLink[];
+  /** What this role would watch but TDMS does not record yet. */
+  notTracked: string[];
+}
+
+export interface DirectorWorkspace extends WorkspaceBase {
+  kind: 'director';
+  actions: WorkItem[];
+  programs: ProgramPerformanceRow[] | null;
+  progression: WorkSegment[] | null;
+  graduation: GraduationRow[] | null;
+}
+
+export interface CoordinatorWorkspace extends WorkspaceBase {
+  kind: 'coordinator';
+  tasks: WorkItem[];
+  readiness: ProgramReadiness[] | null;
+  progress: WorkProgress[] | null;
+}
+
+export interface SecretaryWorkspace extends WorkspaceBase {
+  kind: 'secretary';
+  queue: WorkItem[];
+  pipeline: WorkSegment[] | null;
+  enrollmentByProgram: EnrollmentByProgramRow[] | null;
+  documents: WorkSegment[] | null;
+}
+
+export type RoleWorkspace = DirectorWorkspace | CoordinatorWorkspace | SecretaryWorkspace;
 
 export interface QuickAction {
   label: string;
@@ -281,10 +426,10 @@ export interface DashboardView {
   /** Optional state panels, drawn after the main row. Empty for most roles. */
   statusPanels?: StatusPanel[];
   /**
-   * Set for the Director only: the page draws the Director's layout from
-   * these instead of the shared primary/secondary/chart row.
+   * Set for the Director, Coordinator and Secretary: the page draws that
+   * role's workspace instead of the shared primary/secondary/chart row.
    */
-  director?: DirectorPanels;
+  workspace?: RoleWorkspace;
   /** Set for the Admin only: the page draws the Admin workspace from these. */
   admin?: AdminPanels;
   /**

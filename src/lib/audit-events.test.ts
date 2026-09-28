@@ -89,6 +89,9 @@ describe('test addresses — a narrow, principled rule', () => {
     expect(hit(stored('e2e-owner@example.test'))).toBe(true);
     expect(hit(stored('e2e-maria-1@gmail.com'))).toBe(true);
     expect(hit(stored('jctan.student@gmail.com'))).toBe(false);
+    // The "Name (email)" form some older rows use.
+    expect(hit('Pending Super Admin (e2e-owner-1@gmail.com)')).toBe(true);
+    expect(hit('Someone (teste2e@gmail.com)')).toBe(false);
   });
 });
 

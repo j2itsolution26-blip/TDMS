@@ -60,9 +60,12 @@ export interface NavItem {
   href: string;
   /** Route prefixes that should light this item up. */
   match: string[];
-  icon: 'dashboard' | 'programs' | 'subjects' | 'students' | 'applications' | 'enrollments' | 'staff' | 'admins' | 'keys' | 'audit' | 'health';
-  group: 'main' | 'people' | 'system';
+  icon: 'dashboard' | 'programs' | 'subjects' | 'students' | 'applications' | 'enrollments' | 'staff' | 'admins' | 'keys' | 'audit' | 'health' | 'profile';
+  /** The sidebar section. Sections appear in the order their first item does. */
+  group: NavGroup;
 }
+
+export type NavGroup = 'main' | 'academic' | 'people' | 'records' | 'admissions' | 'programs' | 'system' | 'account';
 
 const ICONS: Record<NavItem['icon'] | 'profile', LucideIcon> = {
   dashboard: LayoutDashboard,
@@ -79,10 +82,15 @@ const ICONS: Record<NavItem['icon'] | 'profile', LucideIcon> = {
   profile: UserRound,
 };
 
-const GROUP_LABELS: Record<NavItem['group'], string> = {
+const GROUP_LABELS: Record<NavGroup, string> = {
   main: 'Main',
+  academic: 'Academic',
   people: 'People & Records',
+  records: 'Records',
+  admissions: 'Admissions',
+  programs: 'Programs',
   system: 'System',
+  account: 'Account',
 };
 
 const STROKE = 1.9;
@@ -210,9 +218,7 @@ function Sidebar({
   compact?: boolean;
   onNavigate?: () => void;
 }) {
-  const groups = (['main', 'people', 'system'] as const)
-    .map((g) => ({ key: g, items: items.filter((i) => i.group === g) }))
-    .filter((g) => g.items.length > 0);
+  const groups = [...new Set(items.map((i) => i.group))].map((g) => ({ key: g, items: items.filter((i) => i.group === g) }));
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden">

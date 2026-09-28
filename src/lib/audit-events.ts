@@ -239,7 +239,7 @@ export const TEST_ADDRESS_FRAGMENTS: string[] = [
   '.test>', '.example>', '.invalid>', '.localhost>',
   '@example.com>', '@example.net>', '@example.org>',
   '.test)', '.example)', '.invalid)',
-  '<e2e-',
+  '<e2e-', '(e2e-',
 ];
 
 // --- Details -------------------------------------------------------------------------

@@ -9,6 +9,8 @@ import {
 } from '@/components/dashboard/DashboardParts';
 import DashboardChart from '@/components/dashboard/DashboardChart';
 import DirectorDashboard from '@/components/dashboard/DirectorDashboard';
+import CoordinatorDashboard from '@/components/dashboard/CoordinatorDashboard';
+import SecretaryDashboard from '@/components/dashboard/SecretaryDashboard';
 import AdminDashboard from '@/components/dashboard/AdminDashboard';
 import { greetingForHour, formatLongDate, hourIn } from '@/lib/greeting';
 import { institutionTimeZone } from '@/lib/institution-time';
@@ -53,15 +55,24 @@ export default async function DashboardPage() {
     );
   }
 
-  // The Director's layout follows the reference design; every other role keeps the shared one.
-  if (view.director) {
-    return (
-      <DirectorDashboard
-        view={view}
-        panels={view.director}
-        greetingLine={`${greeting()}, ${firstName} · ${formatToday()}`}
-      />
-    );
+  // The TVET Director, Coordinator and Secretary: one design system, three workspaces.
+  if (view.workspace) {
+    const now = new Date();
+    const tz = institutionTimeZone();
+    const common = {
+      firstName,
+      greeting: greetingForHour(hourIn(now, tz)),
+      date: formatLongDate(now, tz),
+      description: view.description,
+    };
+    switch (view.workspace.kind) {
+      case 'director':
+        return <DirectorDashboard workspace={view.workspace} {...common} />;
+      case 'coordinator':
+        return <CoordinatorDashboard workspace={view.workspace} {...common} />;
+      case 'secretary':
+        return <SecretaryDashboard workspace={view.workspace} {...common} />;
+    }
   }
 
   return (

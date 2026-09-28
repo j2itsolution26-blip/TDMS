@@ -19,10 +19,12 @@ import { canSendMail } from '@/server/mail/mailer';
 import { googleConfigured } from '@/server/auth/google/oauth';
 import { staticCodeConfigured } from '@/server/auth/super-admin-code';
 import { vaultConfigured } from '@/server/auth/credential-vault';
-import { humanizeAction } from '@/lib/dates';
 import { institutionTimeZone } from '@/lib/institution-time';
 import { getAdminSetup, getPendingWork } from '@/server/services/admin-workspace';
 import { defaultSchoolYear } from '@/server/services/enrollment-service';
+import { recentSummaryEvents } from '@/server/services/audit-log-query';
+import { coordinatorWorkspace, directorWorkspace, secretaryWorkspace } from '@/server/services/role-workspaces';
+import { SECURITY_EVENTS, SYSTEM_ACTIVITY_EVENTS, TONE_BADGE_STATUS } from '@/lib/audit-dashboard';
 import type { AuthUser } from '@/types/domain';
 import { ROLE_LABELS, type RoleName } from '@/types/domain';
 import type {
@@ -117,15 +119,15 @@ const DASHBOARD_TITLES: Record<DashboardRole, { title: string; description: stri
   },
   director: {
     title: 'Director Dashboard',
-    description: 'Program leadership, oversight and academic performance.',
+    description: 'Program leadership, student progression, academic performance, faculty oversight and decisions requiring your attention.',
   },
   coordinator: {
     title: 'Coordinator Dashboard',
-    description: 'Programs, curricula and the subjects that make them up.',
+    description: 'Manage programs, curricula, subjects and academic coordination.',
   },
   secretary: {
     title: 'Secretary Dashboard',
-    description: 'Applications, documents and enrollment paperwork.',
+    description: 'Manage student records, applications, enrollment and program documents.',
   },
   teacher: {
     title: 'Teacher Dashboard',
@@ -155,11 +157,9 @@ export async function getDashboardView(user: AuthUser): Promise<DashboardView> {
     case 'admin':
       return { ...head, ...(await adminView(user)) };
     case 'director':
-      return { ...head, ...(await directorView(user)) };
     case 'coordinator':
-      return { ...head, ...(await coordinatorView(user)) };
     case 'secretary':
-      return { ...head, ...(await secretaryView(user)) };
+      return { ...head, ...(await workspaceView(user, role)) };
     case 'teacher':
       return { ...head, ...(await teacherView(user)) };
     case 'student':
@@ -182,6 +182,42 @@ export async function getDashboardView(user: AuthUser): Promise<DashboardView> {
 }
 
 type Body = Omit<DashboardView, 'role' | 'roleLabel' | 'title' | 'description'>;
+
+/**
+ * The Director, Coordinator and Secretary: each its own workspace
+ * (role-workspaces.ts), plus the operational activity feed, which is shared.
+ * The feed runs alongside the workspace's queries, not after them.
+ */
+async function workspaceView(user: AuthUser, role: 'director' | 'coordinator' | 'secretary'): Promise<Body> {
+  const canStudents = studentPolicy.viewAny(user);
+  const canApps = applicationPolicy.viewAny(user);
+  const canEnroll = enrollmentPolicy.viewAny(user);
+  const canDocs = studentCredentialPolicy.viewAny(user);
+  // A Coordinator may not see student records: their feed names nobody and leaves out students and documents.
+  const include =
+    role === 'coordinator'
+      ? { applications: canApps, students: false, enrollments: canEnroll, documents: false }
+      : { applications: canApps, students: canStudents, enrollments: canEnroll, documents: canDocs };
+
+  const [operations, workspace] = await Promise.all([
+    recentOperations(include, role === 'coordinator' ? false : canStudents, 6),
+    role === 'director' ? directorWorkspace(user) : role === 'coordinator' ? coordinatorWorkspace(user) : secretaryWorkspace(user),
+  ]);
+
+  workspace.activity = [...workspace.activity, ...operations]
+    .sort((a, b) => (b.at ?? '').localeCompare(a.at ?? ''))
+    .slice(0, 6);
+
+  return {
+    kpis: [],
+    primary: null,
+    secondary: null,
+    chart: null,
+    quickActions: operationalActions(user),
+    activity: null,
+    workspace,
+  };
+}
 
 // --- Shared queries ------------------------------------------------------------
 
@@ -505,34 +541,11 @@ function task(id: string, title: string, count: number, noun: string, href: stri
 
 // --- Super Admin ----------------------------------------------------------------
 
-/**
- * Audit actions that are about AUTHENTICATION — who got in, who did not. The
- * rest of the audit trail is account and access administration. Both halves
- * are shown to the Super Admin only.
+/*
+ * System Activity and Security are summaries of the audit trail, built by
+ * recentSummaryEvents() from the event lists in src/lib/audit-dashboard.ts.
+ * Both are shown to the Super Admin only.
  */
-const SECURITY_ACTIONS = [
-  'ADMIN_LOGIN_SUCCESS',
-  'ADMIN_LOGIN_FAILED',
-  'ADMIN_PASSWORD_ACCEPTED',
-  'ACCESS_CODE_USED',
-  'ACCESS_CODE_EXPIRED',
-  'SUPER_ADMIN_SECURITY_CODE_REJECTED',
-  'SUPER_ADMIN_VERIFICATION_ATTEMPTS_EXCEEDED',
-  'ACCOUNT_PASSWORD_RESET_COMPLETED',
-  'ADMIN_TEMP_PASSWORD_CHANGED',
-  // The same event for a staff account.
-  'TEMP_PASSWORD_CHANGED',
-  // Earlier names for the same event, still present in older rows.
-  'ADMIN_TEMPORARY_PASSWORD_CHANGED',
-  'TEMP_PASSWORD_USED',
-];
-
-function securityStatus(action: string) {
-  if (/FAILED|REJECTED|EXCEEDED/.test(action)) return { status: 'failed', label: 'Failed' };
-  if (/EXPIRED/.test(action)) return { status: 'expired', label: 'Expired' };
-  if (/ACCEPTED/.test(action)) return { status: 'pending', label: 'Step 1 of 2' };
-  return { status: 'completed', label: 'Success' };
-}
 
 /** The same checks the System Health page runs, reduced to pass/fail. */
 async function healthChecks() {
@@ -575,18 +588,8 @@ async function superAdminView(user: AuthUser): Promise<Body> {
     programPolicy.viewAny(user) ? prisma.program.count() : Promise.resolve(null),
     adminAccountPolicy.manageAccessCodes(user) ? adminAccessOverview() : Promise.resolve(null),
     healthChecks(),
-    prisma.auditLog.findMany({
-      where: { action: { notIn: SECURITY_ACTIONS } },
-      orderBy: { createdAt: 'desc' },
-      take: 6,
-      select: { id: true, action: true, target: true, createdAt: true },
-    }),
-    prisma.auditLog.findMany({
-      where: { action: { in: SECURITY_ACTIONS } },
-      orderBy: { createdAt: 'desc' },
-      take: 6,
-      select: { id: true, action: true, target: true, ipAddress: true, createdAt: true },
-    }),
+    recentSummaryEvents(SYSTEM_ACTIVITY_EVENTS, 6),
+    recentSummaryEvents(SECURITY_EVENTS, 6),
     series('audit_logs', 'day', 7),
     usersByRole(),
   ]);
@@ -709,30 +712,30 @@ async function superAdminView(user: AuthUser): Promise<Body> {
   return {
     statusPanels,
     kpis,
+    /*
+     * A summary: what happened, to whom, when — and for Security, whether it
+     * needs attention. Codes, addresses, ids, IPs and stored details stay on
+     * the Audit Logs page, which "View all" opens.
+     */
     primary: {
       title: 'System Activity',
-      description: 'Accounts, access codes and administration',
-      viewAll: { label: 'Audit logs', href: '/audit-logs' },
-      items: systemRows.map((r) => ({
-        id: r.id.toString(),
-        title: humanizeAction(r.action),
-        subtitle: r.target,
-        at: r.createdAt.toISOString(),
-      })),
-      empty: { title: 'No system activity yet', description: 'Account and access changes will be listed here as they happen.' },
+      description: 'Important account, access and administrative activity',
+      viewAll: { label: 'View all', href: '/audit-logs' },
+      items: systemRows.map((e) => ({ id: e.id, title: e.label, subtitle: e.person, at: e.at })),
+      empty: { title: 'No recent activity', description: 'Account and access changes will appear here as they happen.' },
     },
     secondary: {
-      title: 'Security Log',
-      description: 'Sign-ins, access codes and verification',
-      viewAll: { label: 'Audit logs', href: '/audit-logs' },
-      items: securityRows.map((r) => ({
-        id: r.id.toString(),
-        title: humanizeAction(r.action),
-        subtitle: r.ipAddress ? `${r.target} · ${r.ipAddress}` : r.target,
-        at: r.createdAt.toISOString(),
-        status: securityStatus(r.action),
+      title: 'Security',
+      description: 'Security events requiring attention',
+      viewAll: { label: 'View all', href: '/audit-logs' },
+      items: securityRows.map((e) => ({
+        id: e.id,
+        title: e.label,
+        subtitle: e.person,
+        at: e.at,
+        status: e.status ? { status: TONE_BADGE_STATUS[e.status.tone], label: e.status.label } : undefined,
       })),
-      empty: { title: 'No sign-in events yet', description: 'Administrator sign-ins and access-code use will appear here.' },
+      empty: { title: 'No recent activity', description: 'Sign-ins and credential events will appear here as they happen.' },
     },
     chart: {
       title: 'Audit Activity',
@@ -931,458 +934,6 @@ function operationalActions(user: AuthUser): QuickAction[] {
   if (userPolicy.viewAny(user)) actions.push({ label: 'Staff', description: 'Staff accounts and roles', href: '/staff', icon: 'staff' });
   actions.push({ label: 'My Profile', description: 'Your name, email and password', href: '/profile', icon: 'profile' });
   return actions;
-}
-
-// --- Director ---------------------------------------------------------------------
-
-async function directorView(user: AuthUser): Promise<Body> {
-  const now = new Date();
-  const weekAgo = new Date(now.getTime() - 7 * 86_400_000);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-  const canPrograms = programPolicy.viewAny(user);
-  const canStudents = studentPolicy.viewAny(user);
-  const canApps = applicationPolicy.viewAny(user);
-  const canDocs = studentCredentialPolicy.viewAny(user);
-  const canEnroll = enrollmentPolicy.viewAny(user);
-
-  const [programs, students, apps, enroll, docs, perProgram, trend, latestApps, activity] = await Promise.all([
-    canPrograms ? programCounts() : null,
-    canStudents ? studentCounts(weekAgo) : null,
-    canApps ? applicationCounts() : null,
-    canEnroll ? enrollmentCounts() : null,
-    canDocs ? documentCounts(monthStart) : null,
-    canPrograms ? programOversight(canStudents, canApps) : null,
-    canEnroll ? series('enrollments', 'month', 6) : null,
-    canApps
-      ? prisma.application.findMany({
-          where: { createdAt: { not: null } },
-          orderBy: { createdAt: 'desc' },
-          take: 5,
-          select: { id: true, firstName: true, lastName: true, status: true, createdAt: true, program: { select: { name: true, code: true } } },
-        })
-      : [],
-    recentOperations({ applications: canApps, students: canStudents, enrollments: canEnroll, documents: canDocs }, canStudents),
-  ]);
-
-  /*
-   * KPIs. Each ratio bar is a real "x of y" from the same counts — the
-   * reference design's bars, without inventing a target to measure against.
-   * No "vs last term" trends: TDMS keeps no per-term snapshots to compare.
-   */
-  const kpis: Kpi[] = [];
-  if (programs) {
-    kpis.push({
-      key: 'programs', label: 'Programs', value: programs.total, icon: 'programs', href: '/programs',
-      hint: programs.total === 0 ? 'None created yet' : `${programs.active} active`,
-      progress: programs.total > 0 ? { value: programs.active, max: programs.total, label: `${programs.active} of ${programs.total} programs active` } : undefined,
-    });
-  }
-  if (students) {
-    kpis.push({
-      key: 'students', label: 'Students', value: students.total, icon: 'students', href: '/students',
-      hint: students.total === 0 ? 'No student records yet' : `${students.active} active`,
-      tone: students.newThisWeek > 0 ? 'positive' : 'neutral',
-      progress: students.total > 0 ? { value: students.active, max: students.total, label: `${students.active} of ${students.total} students active` } : undefined,
-    });
-    // A count, not a rate: TDMS does not record the cohort a completion rate would need.
-    kpis.push({
-      key: 'graduated', label: 'Graduates', value: students.graduated, icon: 'active',
-      hint: students.graduated === 0 ? 'None recorded yet' : 'Students marked graduated',
-      progress: students.total > 0 ? { value: students.graduated, max: students.total, label: `${students.graduated} of ${students.total} students graduated` } : undefined,
-    });
-  }
-  if (apps) {
-    const decided = apps.approved + apps.returned;
-    kpis.push({
-      key: 'applications', label: 'Applications', value: apps.waiting, icon: 'applications', href: '/applications',
-      hint: apps.waiting > 0 ? 'Awaiting a decision' : 'None waiting',
-      tone: apps.waiting > 0 ? 'attention' : 'neutral',
-      progress: apps.total > 0 ? { value: decided, max: apps.total, label: `${decided} of ${apps.total} applications decided` } : undefined,
-    });
-  }
-  if (enroll) {
-    const all = enroll.enrolled + enroll.pending + enroll.dropped;
-    kpis.push({
-      key: 'enrollments', label: 'Enrolled', value: enroll.enrolled, icon: 'enrollment',
-      hint: enroll.pending > 0 ? `${enroll.pending} awaiting approval` : 'Current enrollments',
-      tone: enroll.pending > 0 ? 'attention' : 'neutral',
-      progress: all > 0 ? { value: enroll.enrolled, max: all, label: `${enroll.enrolled} of ${all} enrollments approved` } : undefined,
-    });
-  }
-
-  const actions: ListItem[] = [];
-  if (apps) actions.push({ ...task('d-apps', 'Applications awaiting decision', apps.waiting, 'application', '/applications', 'Nothing awaiting a decision'), icon: 'applications' });
-  if (enroll) actions.push({ ...task('d-enroll', 'Enrollments awaiting approval', enroll.pending, 'enrollment', '/students', 'Nothing awaiting approval'), icon: 'enrollment' });
-  if (docs) actions.push({ ...task('d-docs', 'Documents under review', docs.toReview, 'document', '/students', 'No documents under review'), icon: 'documents' });
-  if (apps) actions.push({ ...task('d-returned', 'Returned applications', apps.returned, 'application', '/applications', 'None returned'), icon: 'applications' });
-
-  const applicationStatus = (status: string) =>
-    ({ submitted: 'Submitted', under_review: 'Under review', approved: 'Approved', returned: 'Returned' })[status] ?? capitalise(status);
-
-  return {
-    kpis,
-    primary: null,
-    secondary: null,
-    chart: null,
-    quickActions: operationalActions(user),
-    activity: {
-      title: 'Recent Activity',
-      description: 'Applications, enrollments and documents',
-      items: activity,
-      empty: { title: 'No recent activity', description: 'Activity will appear here as the system is used.' },
-    },
-    director: {
-      trend: trend
-        ? {
-            title: 'Enrollment Trend',
-            description: 'Enrollments recorded per month, last 6 months',
-            kind: 'bars',
-            points: trend,
-            unit: 'enrollments',
-            empty: { title: 'No enrollments yet', description: 'Monthly enrollments will be charted once they are recorded.' },
-          }
-        : null,
-      distribution:
-        perProgram && canStudents
-          ? {
-              title: 'Enrollment by Program',
-              description: 'Student records in each program',
-              kind: 'donut',
-              points: perProgram.studentPoints,
-              unit: 'students',
-              empty: {
-                title: 'No students recorded',
-                description: 'Each program’s headcount will appear once students are recorded.',
-                action: { label: 'View students', href: '/students' },
-              },
-            }
-          : null,
-      actions: {
-        title: 'Director Actions',
-        description: 'Decisions and reviews in progress',
-        items: actions,
-        empty: { title: 'Nothing waiting', description: 'Items needing a decision will be listed here.' },
-      },
-      oversight: perProgram
-        ? {
-            id: 'oversight',
-            title: 'Program Oversight',
-            description: 'Students and pending applications per program',
-            viewAll: { label: 'All programs', href: '/programs' },
-            columns: [
-              { key: 'program', label: 'Program' },
-              ...(canStudents ? [{ key: 'students', label: 'Students', align: 'right' as const }] : []),
-              ...(canApps ? [{ key: 'pending', label: 'Pending', align: 'right' as const }] : []),
-              { key: 'status', label: 'Status', hideOnMobile: true },
-            ],
-            rows: perProgram.rows,
-            empty: { title: 'No programs yet', description: 'Programs appear here once they are created.', action: { label: 'Open programs', href: '/programs' } },
-          }
-        : null,
-      applications: canApps
-        ? {
-            id: 'applications',
-            title: 'Recent Applications',
-            description: 'The latest applications received',
-            viewAll: { label: 'All applications', href: '/applications' },
-            columns: [
-              { key: 'applicant', label: 'Applicant' },
-              { key: 'program', label: 'Program', hideOnMobile: true },
-              { key: 'status', label: 'Status' },
-              { key: 'date', label: 'Date', align: 'right', hideOnMobile: true },
-            ],
-            rows: latestApps.map((a) => ({
-              id: a.id.toString(),
-              href: '/applications',
-              cells: {
-                applicant: `${a.firstName} ${a.lastName}`,
-                program: a.program.name,
-                status: { status: a.status, label: applicationStatus(a.status) },
-                date: a.createdAt!.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: institutionTimeZone() }),
-              },
-            })),
-            empty: { title: 'No applications yet', description: 'New applications will be listed here as they arrive.', action: { label: 'Open applications', href: '/applications' } },
-          }
-        : null,
-    },
-  };
-}
-
-/** One row per program: headcount and waiting applications, in two grouped queries. */
-async function programOversight(withStudents: boolean, withApps: boolean) {
-  const [programs, students, apps] = await Promise.all([
-    prisma.program.findMany({ orderBy: { code: 'asc' }, select: { id: true, code: true, name: true, isActive: true } }),
-    withStudents ? prisma.student.groupBy({ by: ['programId'], _count: { _all: true } }) : [],
-    withApps
-      ? prisma.application.groupBy({ by: ['programId'], where: { status: { in: ['submitted', 'under_review'] } }, _count: { _all: true } })
-      : [],
-  ]);
-  const studentsBy = new Map(students.map((r) => [r.programId.toString(), r._count._all]));
-  const appsBy = new Map(apps.map((r) => [r.programId.toString(), r._count._all]));
-
-  const items: ListItem[] = programs.slice(0, 6).map((p) => {
-    const headcount = studentsBy.get(p.id.toString()) ?? 0;
-    const waiting = appsBy.get(p.id.toString()) ?? 0;
-    return {
-      id: p.id.toString(),
-      title: p.name,
-      subtitle: withStudents ? `${p.code} · ${plural(headcount, 'student')}` : p.code,
-      meta: withApps ? (waiting > 0 ? `${waiting} waiting` : 'No applications waiting') : undefined,
-      status: p.isActive ? { status: 'active', label: 'Active' } : { status: 'inactive', label: 'Inactive' },
-      href: `/programs/${p.id}`,
-    };
-  });
-
-  const studentPoints: ChartPoint[] = programs
-    .map((p) => ({ label: p.code, value: studentsBy.get(p.id.toString()) ?? 0 }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 8);
-
-  // The same figures as a table, busiest program first.
-  const rows: TableRow[] = programs
-    .map((p) => ({ p, headcount: studentsBy.get(p.id.toString()) ?? 0, waiting: appsBy.get(p.id.toString()) ?? 0 }))
-    .sort((a, b) => b.headcount - a.headcount || b.waiting - a.waiting || a.p.code.localeCompare(b.p.code))
-    .slice(0, 6)
-    .map(({ p, headcount, waiting }) => ({
-      id: p.id.toString(),
-      href: `/programs/${p.id}`,
-      cells: {
-        program: { text: p.name, sub: p.code },
-        students: headcount.toLocaleString('en-US'),
-        pending: waiting.toLocaleString('en-US'),
-        status: p.isActive ? { status: 'active', label: 'Active' } : { status: 'inactive', label: 'Inactive' },
-      },
-    }));
-
-  return { items, studentPoints, rows };
-}
-
-// --- Coordinator -------------------------------------------------------------------
-
-async function coordinatorView(user: AuthUser): Promise<Body> {
-  const canCatalogue = programPolicy.viewAny(user) && curriculumPolicy.viewAny(user);
-  const canApps = applicationPolicy.viewAny(user);
-  const canEnroll = enrollmentPolicy.viewAny(user);
-  // Coordinators may not see student records; nothing below names a student.
-  const canStudents = studentPolicy.viewAny(user);
-
-  const [programs, curricula, subjects, apps, enroll, catalogue, activity] = await Promise.all([
-    canCatalogue ? programCounts() : null,
-    canCatalogue ? prisma.curriculum.count({ where: { isActive: true } }) : null,
-    subjectPolicy.viewAny(user) ? prisma.subject.count({ where: { isActive: true } }) : null,
-    canApps ? applicationCounts() : null,
-    canEnroll ? enrollmentCounts() : null,
-    canCatalogue ? catalogueHealth() : null,
-    recentOperations({ applications: canApps, students: false, enrollments: canEnroll, documents: false }, canStudents),
-  ]);
-
-  const kpis: Kpi[] = [];
-  if (programs) kpis.push({ key: 'programs', label: 'Programs', value: programs.total, icon: 'programs', href: '/programs', hint: programs.total === 0 ? 'None created yet' : `${programs.active} active` });
-  if (curricula !== null) kpis.push({ key: 'curricula', label: 'Curricula', value: curricula, icon: 'curricula', href: '/programs', hint: curricula === 0 ? 'No active curriculum yet' : 'Active curricula' });
-  if (subjects !== null) kpis.push({ key: 'subjects', label: 'Subjects', value: subjects, icon: 'subjects', href: '/subjects', hint: subjects === 0 ? 'Catalogue is empty' : 'Active subjects' });
-  if (apps) kpis.push({ key: 'applications', label: 'Applications', value: apps.waiting, icon: 'applications', href: '/applications', hint: apps.waiting > 0 ? 'Awaiting a decision' : 'None waiting', tone: apps.waiting > 0 ? 'attention' : 'neutral' });
-  if (enroll) kpis.push({ key: 'enrollments', label: 'Enrollments', value: enroll.pending, icon: 'enrollment', hint: enroll.pending > 0 ? 'Awaiting approval' : 'None waiting', tone: enroll.pending > 0 ? 'attention' : 'neutral' });
-
-  return {
-    kpis,
-    primary: catalogue
-      ? {
-          title: 'Coordinator Tasks',
-          description: 'Active curricula that still need subjects',
-          viewAll: { label: 'Programs', href: '/programs' },
-          items: catalogue.gaps,
-          empty: {
-            title: catalogue.curricula === 0 ? 'No active curricula' : 'Every curriculum has subjects',
-            description: catalogue.curricula === 0 ? 'Create a curriculum for a program to start mapping subjects.' : 'Nothing to map right now.',
-            action: { label: 'Open programs', href: '/programs' },
-          },
-        }
-      : null,
-    secondary: catalogue
-      ? {
-          title: 'Program Checklist',
-          description: 'Is each program ready to enroll into?',
-          items: catalogue.checklist,
-          empty: { title: 'No programs yet', description: 'Programs appear here once they are created.', action: { label: 'Open programs', href: '/programs' } },
-        }
-      : null,
-    chart: catalogue
-      ? {
-          title: 'Subjects per Program',
-          description: 'Subjects mapped into each program’s active curricula',
-          kind: 'breakdown',
-          points: catalogue.subjectPoints,
-          unit: 'subjects',
-          empty: { title: 'No subjects mapped', description: 'Map subjects into a curriculum to see them here.' },
-        }
-      : null,
-    quickActions: operationalActions(user),
-    activity: {
-      title: 'Recent Activity',
-      description: 'Applications and enrollment changes',
-      items: activity,
-      empty: { title: 'No activity yet', description: 'Applications and enrollment changes will appear here.' },
-    },
-  };
-}
-
-/** Curricula with no subjects, and whether each program has something to enroll into. */
-async function catalogueHealth() {
-  const [programs, curricula] = await Promise.all([
-    prisma.program.findMany({ orderBy: { code: 'asc' }, select: { id: true, code: true, name: true, isActive: true } }),
-    prisma.curriculum.findMany({
-      where: { isActive: true },
-      select: { id: true, programId: true, versionLabel: true, program: { select: { code: true } }, _count: { select: { curriculumSubjects: true } } },
-    }),
-  ]);
-
-  const gaps: ListItem[] = curricula
-    .filter((c) => c._count.curriculumSubjects === 0)
-    .slice(0, 6)
-    .map((c) => ({
-      id: c.id.toString(),
-      title: `${c.program.code} · ${c.versionLabel}`,
-      subtitle: 'No subjects mapped yet',
-      status: { status: 'needs_review', label: 'Needs subjects' },
-      href: `/curricula/${c.id}`,
-    }));
-
-  const subjectsByProgram = new Map<string, number>();
-  for (const c of curricula) {
-    const key = c.programId.toString();
-    subjectsByProgram.set(key, (subjectsByProgram.get(key) ?? 0) + c._count.curriculumSubjects);
-  }
-
-  const checklist: ListItem[] = programs.slice(0, 6).map((p) => {
-    const mapped = subjectsByProgram.get(p.id.toString()) ?? 0;
-    const hasCurriculum = curricula.some((c) => c.programId === p.id);
-    const ready = p.isActive && hasCurriculum && mapped > 0;
-    return {
-      id: p.id.toString(),
-      title: p.name,
-      subtitle: !hasCurriculum ? `${p.code} · no active curriculum` : `${p.code} · ${plural(mapped, 'subject')} mapped`,
-      status: !p.isActive
-        ? { status: 'inactive', label: 'Inactive' }
-        : ready
-          ? { status: 'completed', label: 'Ready' }
-          : { status: 'needs_review', label: 'Incomplete' },
-      href: `/programs/${p.id}`,
-    };
-  });
-
-  const subjectPoints: ChartPoint[] = programs
-    .map((p) => ({ label: p.code, value: subjectsByProgram.get(p.id.toString()) ?? 0 }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 8);
-
-  return { gaps, checklist, subjectPoints, curricula: curricula.length };
-}
-
-// --- Secretary ---------------------------------------------------------------------
-
-async function secretaryView(user: AuthUser): Promise<Body> {
-  const now = new Date();
-  const weekAgo = new Date(now.getTime() - 7 * 86_400_000);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-  const canStudents = studentPolicy.viewAny(user);
-  const canApps = applicationPolicy.viewAny(user);
-  const canDocs = studentCredentialPolicy.viewAny(user);
-  const canEnroll = enrollmentPolicy.viewAny(user);
-
-  const [apps, docs, students, enroll, queue, waiting, verified, activity] = await Promise.all([
-    canApps ? applicationCounts() : null,
-    canDocs ? documentCounts(monthStart) : null,
-    canStudents ? studentCounts(weekAgo) : null,
-    canEnroll ? enrollmentCounts() : null,
-    canDocs
-      ? prisma.studentCredential.findMany({
-          where: { status: { in: ['submitted', 'under_review'] } },
-          orderBy: { submittedAt: 'asc' },
-          take: 6,
-          select: {
-            id: true,
-            status: true,
-            submittedAt: true,
-            studentId: true,
-            requirement: { select: { name: true } },
-            student: { select: { firstName: true, lastName: true, studentNumber: true } },
-          },
-        })
-      : [],
-    canApps
-      ? prisma.application.findMany({
-          where: { status: { in: ['submitted', 'under_review'] } },
-          orderBy: { createdAt: 'asc' },
-          take: 6,
-          select: { id: true, status: true, firstName: true, lastName: true, createdAt: true, program: { select: { code: true } } },
-        })
-      : [],
-    canDocs ? series('credentials_verified', 'month', 6) : null,
-    recentOperations({ applications: canApps, students: canStudents, enrollments: canEnroll, documents: canDocs }, canStudents),
-  ]);
-
-  const kpis: Kpi[] = [];
-  if (apps) kpis.push({ key: 'applications', label: 'Applications', value: apps.waiting, icon: 'applications', href: '/applications', hint: apps.waiting > 0 ? 'Awaiting a decision' : 'None waiting', tone: apps.waiting > 0 ? 'attention' : 'neutral' });
-  if (docs) {
-    kpis.push({ key: 'docs', label: 'Documents', value: docs.toReview, icon: 'documents', hint: docs.toReview > 0 ? 'Waiting for review' : 'None waiting', tone: docs.toReview > 0 ? 'attention' : 'neutral' });
-    kpis.push({ key: 'verified', label: 'Verified', value: docs.verifiedThisMonth, icon: 'active', hint: 'Documents this month', tone: docs.verifiedThisMonth > 0 ? 'positive' : 'neutral' });
-  }
-  if (students) kpis.push({ key: 'students', label: 'Students', value: students.total, icon: 'students', href: '/students', hint: students.total === 0 ? 'No student records yet' : `${students.active} active` });
-  if (enroll) kpis.push({ key: 'enrollments', label: 'Enrollments', value: enroll.pending, icon: 'enrollment', hint: enroll.pending > 0 ? 'Awaiting approval' : 'None waiting', tone: enroll.pending > 0 ? 'attention' : 'neutral' });
-
-  return {
-    kpis,
-    primary: canDocs
-      ? {
-          title: 'Document Queue',
-          description: 'Oldest submissions first',
-          items: queue.map((c) => ({
-            id: c.id.toString(),
-            title: c.requirement.name,
-            subtitle: `${c.student.firstName} ${c.student.lastName} · ${c.student.studentNumber}`,
-            at: c.submittedAt?.toISOString(),
-            status: c.status === 'under_review' ? { status: 'under_review', label: 'Under review' } : { status: 'submitted', label: 'Submitted' },
-            href: `/students/${c.studentId}/enrollment`,
-          })),
-          empty: { title: 'No documents waiting', description: 'Submitted requirements will queue here for review.' },
-        }
-      : null,
-    secondary: canApps
-      ? {
-          title: 'Applications to Process',
-          description: 'Oldest first',
-          viewAll: { label: 'All applications', href: '/applications' },
-          items: waiting.map((a) => ({
-            id: a.id.toString(),
-            title: `${a.firstName} ${a.lastName}`,
-            subtitle: a.program.code,
-            at: a.createdAt?.toISOString(),
-            status: a.status === 'under_review' ? { status: 'under_review', label: 'Under review' } : { status: 'submitted', label: 'Submitted' },
-            href: '/applications',
-          })),
-          empty: { title: 'No applications waiting', description: 'New applications will queue here.' },
-        }
-      : null,
-    chart: verified
-      ? {
-          title: 'Documents Verified',
-          description: 'Per month, last 6 months',
-          kind: 'bars',
-          points: verified,
-          unit: 'documents',
-          empty: { title: 'No documents verified yet', description: 'Monthly verifications will be charted here.' },
-        }
-      : null,
-    quickActions: operationalActions(user),
-    activity: {
-      title: 'Recent Activity',
-      description: 'Applications, students, enrollments and documents',
-      items: activity,
-      empty: { title: 'No activity yet', description: 'Office activity will appear here as it happens.' },
-    },
-  };
 }
 
 // --- Teacher -------------------------------------------------------------------------

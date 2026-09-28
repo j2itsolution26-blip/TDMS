@@ -24,6 +24,7 @@ import {
   type DetailField,
 } from '@/lib/audit-events';
 import type { AuditFilters } from '@/lib/audit-filters';
+import { dashboardRoleLabel, personLine, type SummaryEvent, type SummaryTone } from '@/lib/audit-dashboard';
 
 /**
  * Reading the audit trail, for the Super Admin's Audit Logs page and its
@@ -154,13 +155,13 @@ export interface AuditEventView {
 
 const ROLE_ORDER: RoleName[] = ['super_admin', 'admin', 'director', 'coordinator', 'secretary', 'teacher', 'student'];
 
-/** Current role of each address on the page, in two queries. */
-async function rolesFor(emails: string[]): Promise<Map<string, string>> {
+/** Each address's account as it is now — current name and most senior role — in two queries. */
+async function peopleByEmail(emails: string[]): Promise<Map<string, { name: string; role: RoleName | null }>> {
   const unique = [...new Set(emails.map((e) => e.toLowerCase()))];
   if (unique.length === 0) return new Map();
   const users = await prisma.user.findMany({
     where: { email: { in: unique, mode: 'insensitive' } },
-    select: { id: true, email: true },
+    select: { id: true, email: true, name: true },
   });
   if (users.length === 0) return new Map();
   const assignments = await prisma.modelHasRole.findMany({
@@ -174,11 +175,19 @@ async function rolesFor(emails: string[]): Promise<Map<string, string>> {
     list.push(a.role.name);
     byUser.set(a.modelId.toString(), list);
   }
-  const out = new Map<string, string>();
+  const out = new Map<string, { name: string; role: RoleName | null }>();
   for (const u of users) {
     const roles = byUser.get(u.id.toString()) ?? [];
-    const top = ROLE_ORDER.find((r) => roles.includes(r));
-    if (top) out.set(u.email.toLowerCase(), ROLE_LABELS[top]);
+    out.set(u.email.toLowerCase(), { name: u.name, role: ROLE_ORDER.find((r) => roles.includes(r)) ?? null });
+  }
+  return out;
+}
+
+/** Current role of each address on the page. */
+async function rolesFor(emails: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (const [email, person] of await peopleByEmail(emails)) {
+    if (person.role) out.set(email, ROLE_LABELS[person.role]);
   }
   return out;
 }
@@ -314,6 +323,70 @@ export async function listAuditLogs(f: AuditFilters, now = new Date()): Promise<
     anyEvents: everything > 0,
     hiddenTestEvents: f.includeTest ? 0 : everything - all,
   };
+}
+
+// --- Dashboard summary -----------------------------------------------------------------
+
+export interface SummaryEventView {
+  id: string;
+  label: string;
+  /** "James Tan · Administrator" — a name and a role, never an address or an id. */
+  person: string;
+  at: string;
+  status?: { tone: SummaryTone; label: string };
+}
+
+/**
+ * The few most recent events of one dashboard panel, as the dashboard shows
+ * them: a readable event, the person it concerns by their CURRENT account
+ * name and role, and when. No address, code, id or stored detail leaves this
+ * function — those stay on the Audit Logs page.
+ *
+ * Test rows are left out by the same rule the Audit Logs page uses (reserved
+ * test domains, the e2e- prefix), in SQL and again in code.
+ */
+export async function recentSummaryEvents(
+  events: Record<string, SummaryEvent>,
+  take = 6,
+): Promise<SummaryEventView[]> {
+  const rows = await prisma.auditLog.findMany({
+    where: { AND: [notTest(), { action: { in: Object.keys(events) } }] },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    // A little headroom for rows the in-code test check drops.
+    take: take * 2,
+    select: { id: true, action: true, actor: true, target: true, createdAt: true },
+  });
+
+  const parsed = rows
+    .map((r) => ({ r, actor: parseParty(r.actor), target: parseParty(r.target) }))
+    .filter((p) => !isTestAddress(p.actor.email) && !isTestAddress(p.target.email))
+    .slice(0, take);
+
+  const people = await peopleByEmail(
+    parsed.flatMap((p) => [p.actor.email, p.target.email]).filter((e): e is string => Boolean(e)),
+  );
+
+  return parsed.map(({ r, actor, target }) => {
+    const meta = events[r.action]!;
+    // The named side, or the other when the named side is not a person ("Audit log").
+    let party = meta.subject === 'actor' ? actor : target;
+    if (!party.email) {
+      const other = meta.subject === 'actor' ? target : actor;
+      if (other.email) party = other;
+    }
+    const account = party.email ? people.get(party.email.toLowerCase()) : undefined;
+    // The account's name today; the name recorded at the time if it has gone.
+    // Never an address: a row that only ever held one reads "Unknown account".
+    const stored = party.name.includes('@') ? 'Unknown account' : party.name;
+    const name = account?.name ?? stored;
+    return {
+      id: r.id.toString(),
+      label: meta.label,
+      person: personLine(name, dashboardRoleLabel(account?.role ?? null)),
+      at: r.createdAt.toISOString(),
+      ...(meta.status ? { status: meta.status } : {}),
+    };
+  });
 }
 
 // --- Export ------------------------------------------------------------------------

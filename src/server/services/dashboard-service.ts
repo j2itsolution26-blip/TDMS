@@ -130,7 +130,7 @@ const DASHBOARD_TITLES: Record<DashboardRole, { title: string; description: stri
     description: 'Manage student records, applications, enrollment and program documents.',
   },
   teacher: {
-    title: 'Teacher Dashboard',
+    title: 'Diploma Instructor Dashboard',
     description: 'The programs and subjects you teach within.',
   },
   student: {
@@ -828,7 +828,7 @@ async function adminView(user: AuthUser): Promise<Body> {
   }
   if (teachers) {
     stats.push({
-      key: 'teachers', label: 'Teachers', value: teachers.total,
+      key: 'teachers', label: 'Diploma Instructors', value: teachers.total,
       tag: teachers.newThisMonth > 0 ? `+${teachers.newThisMonth.toLocaleString('en-US')} new` : 'No new',
       link: { label: 'View staff', href: '/staff' },
     });

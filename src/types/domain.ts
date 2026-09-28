@@ -209,6 +209,8 @@ export const ROLE_LABELS: Record<RoleName, string> = {
   director: 'Director',
   coordinator: 'Coordinator',
   secretary: 'Secretary',
-  teacher: 'Teacher',
+  // The role key stays `teacher` — role rows, permissions and assignments
+  // reference it. Only what people read changes.
+  teacher: 'Diploma Instructor',
   student: 'Student',
 };

@@ -87,7 +87,7 @@ const NEXT_SENTENCE: Record<SetupStepKey, string> = {
   admin: 'Start by replacing your temporary password.',
   program: 'Start by creating your first diploma program.',
   subjects: 'Next, add the subjects your programs will teach.',
-  staff: 'Next, invite your teaching staff.',
+  staff: 'Next, invite your Diploma Instructors.',
   applications: 'Last step: record your first application.',
 };
 

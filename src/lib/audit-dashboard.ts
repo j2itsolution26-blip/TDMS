@@ -108,7 +108,7 @@ export function dashboardRoleLabel(role: string | null): string | null {
     director: 'Director',
     coordinator: 'Coordinator',
     secretary: 'Secretary',
-    teacher: 'Teacher',
+    teacher: 'Diploma Instructor',
     student: 'Student',
   };
   return labels[role] ?? null;

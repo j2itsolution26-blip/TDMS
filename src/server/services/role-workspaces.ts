@@ -254,7 +254,7 @@ export async function directorWorkspace(user: AuthUser): Promise<DirectorWorkspa
     metrics.push({ key: 'students', label: 'Total Students', value: totals.total, icon: 'students', href: '/students',
       hint: totals.total === 0 ? 'No student records yet' : `${totals.active.toLocaleString('en-US')} active` });
   }
-  metrics.push({ key: 'faculty', label: 'Faculty', value: teachers, icon: 'teachers', hint: teachers === 0 ? 'No teacher accounts yet' : 'Teacher accounts' });
+  metrics.push({ key: 'faculty', label: 'Faculty', value: teachers, icon: 'teachers', hint: teachers === 0 ? 'No Diploma Instructor accounts yet' : 'Diploma Instructor accounts' });
   if (apps) {
     metrics.push({ key: 'applications', label: 'Applications', value: apps.waiting, icon: 'applications', href: '/applications',
       hint: apps.waiting > 0 ? 'Awaiting a decision' : 'None waiting', tone: apps.waiting > 0 ? 'attention' : 'neutral' });
@@ -305,7 +305,7 @@ export async function directorWorkspace(user: AuthUser): Promise<DirectorWorkspa
     graduation,
     activity: [],
     quickActions: links(user, ['programs', 'students', 'applications', 'enrollments']),
-    notTracked: ['Grades', 'Attendance', 'Competencies', 'Assessments', 'Teacher assignments to programs'],
+    notTracked: ['Grades', 'Attendance', 'Competencies', 'Assessments', 'Instructor assignments to programs'],
   };
 }
 
@@ -494,7 +494,7 @@ export async function coordinatorWorkspace(user: AuthUser): Promise<CoordinatorW
     progress: programRows ? progress : null,
     activity,
     quickActions: links(user, ['programs', 'subjects', 'applications', 'enrollments']),
-    notTracked: ['Teacher assignments', 'Grades', 'Attendance', 'Competencies', 'Assessments'],
+    notTracked: ['Instructor assignments', 'Grades', 'Attendance', 'Competencies', 'Assessments'],
   };
 }
 

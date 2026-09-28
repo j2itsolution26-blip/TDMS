@@ -89,8 +89,8 @@ export const getAdminSetup = cache(async (user: AuthUser): Promise<SetupProgress
     },
     {
       key: 'staff',
-      title: 'Invite teaching staff',
-      detail: teachers > 0 ? `${plural(teachers, 'teacher account')} so far` : 'No teacher accounts yet',
+      title: 'Invite Diploma Instructors',
+      detail: teachers > 0 ? `${plural(teachers, 'Diploma Instructor account')} so far` : 'No Diploma Instructor accounts yet',
       done: teachers > 0,
       href: '/staff?new=1',
       action: 'Invite',

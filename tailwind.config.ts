@@ -61,6 +61,8 @@ export default {
           'Inter',
           ...defaultTheme.fontFamily.sans,
         ],
+        /** The signed-in workspace (shell and dashboard). */
+        jakarta: ['"Plus Jakarta Sans"', '"Segoe UI"', ...defaultTheme.fontFamily.sans],
       },
       colors: {
         primary,
@@ -91,6 +93,28 @@ export default {
         },
 
         brand: { blue: '#2563EB' },
+
+        /**
+         * The workspace palette (shell and Admin dashboard). Contrast, measured:
+         *   ink   #0F2A2E on bg #F3F6F5 ....... 13.9:1
+         *   muted #5C6E71 on bg / white ........ 4.9 / 5.3:1 — the brief's
+         *         #6A7C7F measured 4.0:1 on the page background, short of AA
+         *   text  #0E7A50 on white ............. 5.4:1 — green TEXT; the brand
+         *         green #16A06A is 3.4:1, so it is a fill and icon colour only
+         *   deep  #0E4D37 on mint #3DDC97 ...... 5.6:1 (the sidebar's mint button)
+         */
+        tdms: {
+          deep: '#0E4D37',
+          deeper: '#093626',
+          green: '#16A06A',
+          mint: '#3DDC97',
+          ink: '#0F2A2E',
+          muted: '#5C6E71',
+          text: '#0E7A50',
+          bg: '#F3F6F5',
+          wash: '#E9F8F0',
+          hairline: '#E8EEEB',
+        },
         surface: '#F5F8F7',
         card: '#FFFFFF',
         border: '#DCE7E2',
@@ -102,6 +126,9 @@ export default {
       boxShadow: {
         // Restrained: a hairline lift, not a floating card.
         card: '0 1px 2px rgba(16, 42, 67, 0.04), 0 1px 3px rgba(16, 42, 67, 0.06)',
+        // The workspace card: a 1px hairline ring and a large diffuse shadow, no border.
+        soft: '0 0 0 1px #E8EEEB, 0 1px 2px rgba(15, 42, 46, 0.04), 0 14px 36px -14px rgba(15, 42, 46, 0.14)',
+        'soft-lg': '0 0 0 1px #E1E9E5, 0 2px 4px rgba(15, 42, 46, 0.05), 0 22px 48px -16px rgba(15, 42, 46, 0.24)',
       },
     },
   },

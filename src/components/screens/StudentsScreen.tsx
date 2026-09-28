@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useOpenOnNew } from '@/lib/use-open-on-new';
 import { api } from '@/lib/api-client';
 import Modal from '@/components/Modal';
 import {
@@ -50,6 +51,7 @@ export default function StudentsScreen({
   rows, page, lastPage, total, search, programs, canCreate, canUpdate,
 }: Props) {
   const router = useRouter();
+  useOpenOnNew(canCreate, openCreate);
   const [term, setTerm] = useState(search);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<StudentRow | null>(null);

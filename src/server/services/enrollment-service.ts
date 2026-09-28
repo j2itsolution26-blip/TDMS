@@ -127,6 +127,65 @@ export async function listEnrollments(studentId: bigint) {
   }));
 }
 
+const ENROLLMENTS_PAGE_SIZE = 15;
+
+/**
+ * Every enrollment, newest first — the Enrollments page. Read-only: changing
+ * an enrollment still happens on the student's record, where the credential
+ * gate lives.
+ */
+export async function listAllEnrollments(options: { page?: number; status?: string } = {}) {
+  const page = options.page ?? 1;
+  const where = options.status ? { status: options.status } : {};
+
+  const [rows, total] = await Promise.all([
+    prisma.enrollment.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip: (page - 1) * ENROLLMENTS_PAGE_SIZE,
+      take: ENROLLMENTS_PAGE_SIZE,
+      select: {
+        id: true,
+        schoolYear: true,
+        semester: true,
+        yearLevel: true,
+        status: true,
+        createdAt: true,
+        student: {
+          select: {
+            id: true,
+            studentNumber: true,
+            firstName: true,
+            lastName: true,
+            program: { select: { code: true } },
+          },
+        },
+      },
+    }),
+    prisma.enrollment.count({ where }),
+  ]);
+
+  return {
+    rows: rows.map((e) => ({
+      id: e.id.toString(),
+      schoolYear: e.schoolYear,
+      semester: e.semester,
+      yearLevel: e.yearLevel,
+      status: e.status,
+      createdAt: e.createdAt?.toISOString() ?? null,
+      student: {
+        id: e.student.id.toString(),
+        studentNumber: e.student.studentNumber,
+        name: `${e.student.firstName} ${e.student.lastName}`,
+        programCode: e.student.program.code,
+      },
+    })),
+    page,
+    total,
+    lastPage: Math.max(1, Math.ceil(total / ENROLLMENTS_PAGE_SIZE)),
+  };
+}
+
 export async function createEnrollment(input: z.infer<typeof enrollmentSchema>) {
   // The composite unique index is (student_id, school_year, semester).
   const clash = await prisma.enrollment.findFirst({

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useOpenOnNew } from '@/lib/use-open-on-new';
 import { api } from '@/lib/api-client';
 import Modal from '@/components/Modal';
 import {
@@ -68,6 +69,7 @@ export default function StaffScreen({
   canCreate, institutionalDomain,
 }: Props) {
   const router = useRouter();
+  useOpenOnNew(canCreate, openCreate);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<AccountRow | null>(null);
   const [form, setForm] = useState({ name: '', email: '', role: 'secretary' });

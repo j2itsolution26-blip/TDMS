@@ -186,6 +186,87 @@ export interface QuickAction {
   icon: DashboardIcon;
 }
 
+// --- Admin workspace ---------------------------------------------------------------
+
+export type SetupStepKey = 'admin' | 'program' | 'subjects' | 'staff' | 'applications';
+
+/**
+ * One step of getting TDMS ready, decided by the records themselves — a
+ * program exists, a subject exists — never by a flag someone ticks.
+ */
+export interface SetupStep {
+  key: SetupStepKey;
+  title: string;
+  /** What is true now: "Account verified", "1 teacher account so far". */
+  detail: string;
+  done: boolean;
+  href: string;
+  /** The verb on the step's button: Create, Add, Invite, Open. */
+  action: string;
+}
+
+/**
+ * The one setup state the dashboard checklist, the hero and the sidebar card
+ * all read, so they can never disagree.
+ */
+export interface SetupProgress {
+  steps: SetupStep[];
+  completed: number;
+  total: number;
+  /** The first step not yet done; null once everything is. */
+  current: SetupStepKey | null;
+  complete: boolean;
+}
+
+export type PendingKey = 'applications' | 'returned' | 'documents' | 'enrollments' | 'staff';
+
+/** Work waiting on the office, as counts. The bell and Operational Tasks read it. */
+export interface PendingItem {
+  key: PendingKey;
+  label: string;
+  count: number;
+  href: string;
+}
+
+export interface PendingWork {
+  items: PendingItem[];
+  total: number;
+}
+
+/** A stat card on the Admin dashboard. */
+export interface AdminStat {
+  key: 'students' | 'teachers' | 'programs' | 'applications' | 'enrollments';
+  label: string;
+  value: number;
+  /** The small tag top-right: "+1 new", "Next step", "0 pending". */
+  tag: string;
+  link: { label: string; href: string };
+  /** Monthly counts for the faint sparkline; absent when there is no trend. */
+  trend?: number[];
+}
+
+export interface AdminQuickAction {
+  key: 'program' | 'subject' | 'staff' | 'student';
+  label: string;
+  caption: string;
+  href: string;
+  /** Present when the action cannot be taken yet — the caption says why. */
+  disabled?: boolean;
+}
+
+export interface AdminPanels {
+  /** Null for an account that is not an Admin (a Super Admin never sees setup). */
+  setup: SetupProgress | null;
+  stats: AdminStat[];
+  pending: PendingWork;
+  activity: ListItem[];
+  quickActions: AdminQuickAction[];
+  /** Students added per month, last 6 months; null when students are not visible. */
+  newStudents: ChartPoint[] | null;
+  /** "1st Semester, SY 2026–2027" — from the enrollment records, never guessed. */
+  term: string;
+}
+
 export interface DashboardView {
   role: DashboardRole;
   roleLabel: string;
@@ -204,6 +285,8 @@ export interface DashboardView {
    * these instead of the shared primary/secondary/chart row.
    */
   director?: DirectorPanels;
+  /** Set for the Admin only: the page draws the Admin workspace from these. */
+  admin?: AdminPanels;
   /**
    * An honest note about what this role's dashboard cannot show yet — the
    * teaching and learning records TDMS does not hold. Shown once, plainly,

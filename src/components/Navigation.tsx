@@ -1,26 +1,58 @@
 'use client';
 
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Avatar } from './ui';
+import {
+  Activity,
+  Bell,
+  BookOpen,
+  ChevronDown,
+  CircleQuestionMark,
+  ClipboardCheck,
+  FileText,
+  GraduationCap,
+  KeyRound,
+  Layers,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  ScrollText,
+  Search,
+  ShieldCheck,
+  UserRound,
+  UsersRound,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
+import type { PendingItem } from '@/types/dashboard';
 
 /**
- * The application shell: sidebar, header, search and the profile menu.
+ * The application shell: the floating sidebar, the top bar, and the content
+ * well they frame.
  *
  * Which links appear is decided on the SERVER and passed in as `items` — the
  * browser is never told the shape of the permission model, and hiding a link
  * is cosmetic anyway: each destination re-checks its own policy.
  *
- * TWO THINGS THIS HEADER DELIBERATELY DOES NOT HAVE
+ * HONEST BY DESIGN
  *
- *   * A notification bell. TDMS has no notification system, so a bell could
- *     only ever be decoration or a fabricated count. The previous header had
- *     one that did nothing when pressed.
- *   * A search box that searches records. There is no search backend. The box
- *     here searches what it can honestly search — the pages this user may open
- *     — and jumps straight to one. The previous box accepted text and did
- *     nothing with it.
+ *   * The bell is not a notification feed — TDMS has no notification system.
+ *     It shows the work waiting on the office (applications to review,
+ *     documents to verify…), counted from the records by the same service the
+ *     dashboard's Operational Tasks read, and its red dot means exactly that:
+ *     something is waiting.
+ *   * Search jumps to what it can honestly find: the pages this user may
+ *     open, programs by name or code, and — for those who may see students —
+ *     the Students list filtered by the query. Ctrl/⌘ K focuses it.
+ *   * The setup card appears only for an Admin whose setup is unfinished,
+ *     from the same progress the dashboard checklist shows.
+ *
+ * RESPONSIVE
+ *
+ *   ≥ 1024px  a 292px floating sidebar, inset 16px from the window edges
+ *   768–1023  an icon rail; every icon keeps its name as its accessible label
+ *   < 768px   a drawer behind the menu button
  */
 
 export interface NavItem {
@@ -28,80 +60,139 @@ export interface NavItem {
   href: string;
   /** Route prefixes that should light this item up. */
   match: string[];
-  icon: 'dashboard' | 'programs' | 'subjects' | 'students' | 'applications' | 'staff' | 'admins' | 'keys' | 'audit' | 'health';
+  icon: 'dashboard' | 'programs' | 'subjects' | 'students' | 'applications' | 'enrollments' | 'staff' | 'admins' | 'keys' | 'audit' | 'health';
+  group: 'main' | 'people' | 'system';
 }
 
-const ICONS: Record<NavItem['icon'] | 'profile', string> = {
-  dashboard:
-    'M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z',
-  programs:
-    'M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.62 48.62 0 0112 20.904a48.62 48.62 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.636 50.636 0 00-2.658-.813A59.906 59.906 0 0112 3.493a59.903 59.903 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0112 13.489a50.702 50.702 0 017.74-3.342M6.75 15a.75.75 0 100-1.5.75.75 0 000 1.5zm0 0v-3.675A55.378 55.378 0 0112 8.443',
-  subjects:
-    'M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25',
-  students:
-    'M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z',
-  applications:
-    'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z',
-  staff:
-    'M17.982 18.725A7.488 7.488 0 0012 15.75a7.488 7.488 0 00-5.982 2.975m11.963 0a9 9 0 10-11.963 0m11.963 0A8.966 8.966 0 0112 21a8.966 8.966 0 01-5.982-2.275M15 9.75a3 3 0 11-6 0 3 3 0 016 0z',
-  audit:
-    'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z',
-  health:
-    'M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z',
-  keys:
-    'M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z',
-  admins:
-    'M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z',
-  profile:
-    'M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z',
+const ICONS: Record<NavItem['icon'] | 'profile', LucideIcon> = {
+  dashboard: LayoutDashboard,
+  programs: Layers,
+  subjects: BookOpen,
+  students: GraduationCap,
+  applications: FileText,
+  enrollments: ClipboardCheck,
+  staff: UsersRound,
+  admins: ShieldCheck,
+  keys: KeyRound,
+  audit: ScrollText,
+  health: Activity,
+  profile: UserRound,
 };
 
-function Glyph({ name, className = 'h-5 w-5' }: { name: keyof typeof ICONS; className?: string }) {
+const GROUP_LABELS: Record<NavItem['group'], string> = {
+  main: 'Main',
+  people: 'People & Records',
+  system: 'System',
+};
+
+const STROKE = 1.9;
+const FOCUS_DARK = 'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3DDC97] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0E4D37]';
+const FOCUS_LIGHT = 'focus:outline-none focus-visible:ring-2 focus-visible:ring-tdms-text focus-visible:ring-offset-2 focus-visible:ring-offset-tdms-bg';
+
+export interface SetupSummary {
+  completed: number;
+  total: number;
+  /** The current step's page. */
+  href: string;
+}
+
+function initialsOf(name: string): string {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true" focusable="false">
-      <path d={ICONS[name]} />
-    </svg>
+    name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p.charAt(0).toUpperCase())
+      .join('') || '?'
   );
 }
 
-const FOCUS_DARK = 'focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-forest';
-const FOCUS_LIGHT = 'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2';
+// --- Sidebar ------------------------------------------------------------------------
 
-/**
- * The TDMS mark: the Diploma Program Department's own logo, the same file the
- * sign-in screen uses — not a stand-in icon. It is green artwork on a
- * transparent background, so it sits on a white disc to stay legible against
- * the green sidebar.
- */
-function Brand() {
+function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <span className="flex items-center gap-3">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white p-1 shadow-sm">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/images/auth/logo.png" alt="" width={32} height={28} className="h-auto w-full" />
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-gradient-to-br from-[#3DDC97] to-[#16A06A] text-white shadow-[0_8px_24px_-6px_rgba(61,220,151,0.65)]">
+        <GraduationCap className="h-6 w-6" strokeWidth={STROKE} aria-hidden="true" />
       </span>
-      <span className="min-w-0">
-        <span className="block text-lg font-bold leading-tight tracking-tight text-white">TDMS</span>
-        <span className="block truncate text-[11px] leading-tight text-primary-100">Diploma Management System</span>
-      </span>
+      {!compact && (
+        <span className="min-w-0">
+          <span className="block text-lg font-extrabold leading-tight tracking-[-0.02em] text-white">TDMS</span>
+          <span className="block truncate text-xs leading-tight text-[#BFE6D4]">Diploma Management</span>
+        </span>
+      )}
     </span>
   );
 }
 
-function SidebarLink({ item, active, onNavigate }: { item: NavItem; active: boolean; onNavigate?: () => void }) {
+/** A conic-gradient progress ring. Decorative: the text beside it says the same. */
+function ProgressRing({ percent, size = 48 }: { percent: number; size?: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="relative flex shrink-0 items-center justify-center rounded-full"
+      style={{ width: size, height: size, background: `conic-gradient(#3DDC97 ${percent * 3.6}deg, rgba(255,255,255,0.14) 0deg)` }}
+    >
+      <span className="absolute inset-[5px] rounded-full bg-[#0B4430]" />
+      <span className="relative text-[11px] font-bold text-white">{percent}%</span>
+    </span>
+  );
+}
+
+function SetupCard({ setup, onNavigate }: { setup: SetupSummary; onNavigate?: () => void }) {
+  const percent = Math.round((setup.completed / setup.total) * 100);
+  return (
+    <div className="rounded-[18px] bg-white/[0.08] p-4 ring-1 ring-inset ring-white/10 backdrop-blur-sm">
+      <div className="flex items-center gap-3">
+        <ProgressRing percent={percent} />
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-white">Setup in progress</p>
+          <p className="text-xs text-[#BFE6D4]">
+            {setup.completed} of {setup.total} steps complete
+          </p>
+        </div>
+      </div>
+      <Link
+        href={setup.href}
+        onClick={onNavigate}
+        className={`mt-3.5 block w-full rounded-xl bg-[#3DDC97] py-2.5 text-center text-sm font-bold text-[#0E4D37] transition hover:bg-[#5BE5A9] ${FOCUS_DARK}`}
+      >
+        Continue setup
+      </Link>
+    </div>
+  );
+}
+
+function SidebarLink({
+  item,
+  active,
+  compact,
+  onNavigate,
+}: {
+  item: NavItem;
+  active: boolean;
+  compact: boolean;
+  onNavigate?: () => void;
+}) {
+  const Icon = ICONS[item.icon];
   return (
     <Link
       href={item.href}
       onClick={onNavigate}
       aria-current={active ? 'page' : undefined}
-      className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${FOCUS_DARK} ${
-        active ? 'bg-primary-600 text-white shadow-sm' : 'text-[#CFE3DA] hover:bg-white/[0.07] hover:text-white'
+      aria-label={compact ? item.label : undefined}
+      title={compact ? item.label : undefined}
+      className={`group flex items-center gap-3 rounded-[14px] text-sm font-semibold transition ${FOCUS_DARK} ${
+        compact ? 'h-12 w-12 justify-center' : 'px-3.5 py-2.5'
+      } ${
+        active
+          ? 'bg-white text-[#0E4D37] shadow-[0_8px_20px_-8px_rgba(0,0,0,0.45)]'
+          : 'text-[#BFE6D4] hover:bg-white/[0.08] hover:text-white'
       }`}
     >
-      <span className={active ? 'text-white' : 'text-primary-200 group-hover:text-white'}>
-        <Glyph name={item.icon} />
-      </span>
-      <span className="truncate">{item.label}</span>
+      <Icon className={`h-5 w-5 shrink-0 ${active ? 'text-[#16A06A]' : ''}`} strokeWidth={STROKE} aria-hidden="true" />
+      {!compact && <span className="truncate">{item.label}</span>}
     </Link>
   );
 }
@@ -109,82 +200,158 @@ function SidebarLink({ item, active, onNavigate }: { item: NavItem; active: bool
 function Sidebar({
   items,
   isActive,
-  roleLabel,
-  userName,
+  setup,
+  compact = false,
   onNavigate,
 }: {
   items: NavItem[];
   isActive: (item: NavItem) => boolean;
-  roleLabel: string;
-  userName: string;
+  setup: SetupSummary | null;
+  compact?: boolean;
   onNavigate?: () => void;
 }) {
+  const groups = (['main', 'people', 'system'] as const)
+    .map((g) => ({ key: g, items: items.filter((i) => i.group === g) }))
+    .filter((g) => g.items.length > 0);
+
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex h-16 shrink-0 items-center border-b border-forest-line px-5">
-        <Link href="/dashboard" onClick={onNavigate} className={`rounded-lg ${FOCUS_DARK}`} aria-label="TDMS — go to dashboard">
-          <Brand />
+    <div className="relative flex h-full flex-col overflow-hidden">
+      {/* A faint mint glow in the bottom-left corner. */}
+      <div aria-hidden="true" className="pointer-events-none absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-[#3DDC97]/20 blur-3xl" />
+
+      <div className={`relative flex shrink-0 items-center ${compact ? 'justify-center px-2 pb-4 pt-6' : 'px-6 pb-5 pt-7'}`}>
+        <Link href="/dashboard" onClick={onNavigate} className={`rounded-[14px] ${FOCUS_DARK}`} aria-label="TDMS — go to dashboard">
+          <Brand compact={compact} />
         </Link>
       </div>
 
-      <nav aria-label="Main" className="flex-1 overflow-y-auto px-3 py-4">
-        <ul className="space-y-1">
-          {items.map((item) => (
-            <li key={item.href}>
-              <SidebarLink item={item} active={isActive(item)} onNavigate={onNavigate} />
-            </li>
-          ))}
-        </ul>
+      <nav aria-label="Main" className={`relative flex-1 overflow-y-auto ${compact ? 'px-2' : 'px-4'} pb-4`}>
+        {groups.map((group, gi) => (
+          <div key={group.key} className={gi > 0 ? (compact ? 'mt-3 border-t border-white/10 pt-3' : 'mt-6') : 'mt-2'}>
+            {compact ? (
+              <h2 className="sr-only">{GROUP_LABELS[group.key]}</h2>
+            ) : (
+              <h2 className="mb-2 px-3.5 text-[11px] font-bold uppercase tracking-[0.12em] text-[#8FC7AE]">{GROUP_LABELS[group.key]}</h2>
+            )}
+            <ul className={`space-y-1 ${compact ? 'flex flex-col items-center' : ''}`}>
+              {group.items.map((item) => (
+                <li key={item.href}>
+                  <SidebarLink item={item} active={isActive(item)} compact={compact} onNavigate={onNavigate} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </nav>
 
-      <div className="shrink-0 p-3">
-        <div className="flex items-center gap-3 rounded-lg border border-forest-line bg-forest-light px-3 py-2.5">
-          <Avatar name={userName} size="sm" />
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-white">{userName}</p>
-            <p className="truncate text-[11px] text-primary-100">{roleLabel}</p>
-          </div>
+      {setup && (
+        <div className={`relative shrink-0 ${compact ? 'flex justify-center p-3 pb-6' : 'p-4 pb-5'}`}>
+          {compact ? (
+            <Link
+              href={setup.href}
+              onClick={onNavigate}
+              aria-label={`Continue setup — ${setup.completed} of ${setup.total} steps complete`}
+              title="Continue setup"
+              className={`rounded-full ${FOCUS_DARK}`}
+            >
+              <ProgressRing percent={Math.round((setup.completed / setup.total) * 100)} size={44} />
+            </Link>
+          ) : (
+            <SetupCard setup={setup} onNavigate={onNavigate} />
+          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
 
+// --- Top bar: search ------------------------------------------------------------------
+
+interface SearchResult {
+  key: string;
+  label: string;
+  kind: string;
+  href: string;
+  icon: LucideIcon;
+}
+
 /**
- * Jump to a page. Searches the pages this user is allowed to open — the same
- * list the sidebar shows — plus their profile. An ARIA combobox: arrows move,
- * Enter opens, Escape closes.
+ * Search: pages this user may open, programs by name or code, and — for
+ * those who may see students — the Students list filtered by the query. An
+ * ARIA combobox: arrows move, Enter opens, Escape closes. Ctrl/⌘ K focuses it.
  */
-function PageSearch({ items }: { items: NavItem[] }) {
+function GlobalSearch({
+  items,
+  programs,
+  canSearchStudents,
+}: {
+  items: NavItem[];
+  programs: { id: string; code: string; name: string }[];
+  canSearchStudents: boolean;
+}) {
   const router = useRouter();
   const listId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const wrapRef = useRef<HTMLDivElement>(null);
+  const [shortcut, setShortcut] = useState('Ctrl K');
+
+  useEffect(() => {
+    if (/Mac|iPhone|iPad/.test(navigator.platform)) setShortcut('⌘ K');
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }
+    }
+    function onDown(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    window.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDown);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDown);
+    };
+  }, []);
 
   const pages = useMemo(
     () => [
-      ...items.map((i) => ({ label: i.label, href: i.href, icon: i.icon as keyof typeof ICONS })),
-      { label: 'My Profile', href: '/profile', icon: 'profile' as const },
+      ...items.map((i) => ({ label: i.label, href: i.href, icon: ICONS[i.icon] })),
+      { label: 'My Profile', href: '/profile', icon: ICONS.profile },
     ],
     [items],
   );
 
   const q = query.trim().toLowerCase();
-  const results = q ? pages.filter((p) => p.label.toLowerCase().includes(q)) : [];
-
-  useEffect(() => {
-    function onDown(e: MouseEvent) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, []);
+  const results: SearchResult[] = q
+    ? [
+        ...pages
+          .filter((p) => p.label.toLowerCase().includes(q))
+          .map((p) => ({ key: `page-${p.href}`, label: p.label, kind: 'Page', href: p.href, icon: p.icon })),
+        ...programs
+          .filter((p) => p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q))
+          .slice(0, 5)
+          .map((p) => ({ key: `program-${p.id}`, label: `${p.code} — ${p.name}`, kind: 'Program', href: `/programs/${p.id}`, icon: Layers })),
+        ...(canSearchStudents && q.length >= 2
+          ? [{
+              key: 'students',
+              label: `Search students for “${query.trim()}”`,
+              kind: 'Students',
+              href: `/students?search=${encodeURIComponent(query.trim())}`,
+              icon: GraduationCap,
+            }]
+          : []),
+      ]
+    : [];
 
   function go(href: string) {
     setQuery('');
     setOpen(false);
+    inputRef.current?.blur();
     router.push(href);
   }
 
@@ -208,25 +375,26 @@ function PageSearch({ items }: { items: NavItem[] }) {
   }
 
   const showList = open && q.length > 0;
+  const placeholder = canSearchStudents ? 'Search pages, students, programs…' : 'Search pages and programs…';
 
   return (
     <div ref={wrapRef} className="relative w-full">
-      <label htmlFor="page-search" className="sr-only">
-        Go to a page
+      <label htmlFor="global-search" className="sr-only">
+        Search
       </label>
-      <svg className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-      </svg>
+      <Search className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-tdms-muted" strokeWidth={STROKE} aria-hidden="true" />
       <input
-        id="page-search"
+        ref={inputRef}
+        id="global-search"
         type="search"
         role="combobox"
         aria-expanded={showList}
         aria-controls={listId}
         aria-autocomplete="list"
+        aria-keyshortcuts="Control+K Meta+K"
         aria-activedescendant={showList && results[active] ? `${listId}-${active}` : undefined}
         autoComplete="off"
-        placeholder="Go to a page…"
+        placeholder={placeholder}
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);
@@ -235,40 +403,50 @@ function PageSearch({ items }: { items: NavItem[] }) {
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={onKeyDown}
-        className="w-full rounded-lg border-border bg-surface py-2 pl-9 text-sm text-ink placeholder:text-slate-500 focus:border-primary-600 focus:bg-white focus:ring-primary-600"
+        className="h-12 w-full rounded-[14px] border-0 bg-white pl-11 pr-20 text-sm text-tdms-ink shadow-soft placeholder:text-tdms-muted focus:ring-2 focus:ring-tdms-text [&::-webkit-search-cancel-button]:hidden"
       />
+      <kbd
+        aria-hidden="true"
+        className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md bg-tdms-bg px-2 py-1 font-jakarta text-[11px] font-semibold text-tdms-muted ring-1 ring-inset ring-tdms-hairline sm:block"
+      >
+        {shortcut}
+      </kbd>
 
       {showList && (
         <ul
           id={listId}
           role="listbox"
-          aria-label="Pages"
-          className="absolute left-0 right-0 z-50 mt-1 max-h-72 overflow-y-auto rounded-lg border border-border bg-white py-1 shadow-lg"
+          aria-label="Search results"
+          className="absolute left-0 right-0 z-50 mt-2 max-h-80 overflow-y-auto rounded-2xl bg-white p-1.5 shadow-soft-lg"
         >
           {results.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-muted" role="option" aria-selected="false" aria-disabled="true">
-              No page matches “{query.trim()}”
+            <li className="px-3 py-2.5 text-sm text-tdms-muted" role="option" aria-selected="false" aria-disabled="true">
+              Nothing matches “{query.trim()}”
             </li>
           ) : (
-            results.map((r, i) => (
-              <li
-                key={r.href}
-                id={`${listId}-${i}`}
-                role="option"
-                aria-selected={i === active}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  go(r.href);
-                }}
-                onMouseEnter={() => setActive(i)}
-                className={`flex cursor-pointer items-center gap-2.5 px-3 py-2 text-sm ${
-                  i === active ? 'bg-primary-50 text-primary-800' : 'text-ink'
-                }`}
-              >
-                <Glyph name={r.icon} className="h-4 w-4 text-primary-600" />
-                {r.label}
-              </li>
-            ))
+            results.map((r, i) => {
+              const Icon = r.icon;
+              return (
+                <li
+                  key={r.key}
+                  id={`${listId}-${i}`}
+                  role="option"
+                  aria-selected={i === active}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    go(r.href);
+                  }}
+                  onMouseEnter={() => setActive(i)}
+                  className={`flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${
+                    i === active ? 'bg-tdms-wash text-tdms-deep' : 'text-tdms-ink'
+                  }`}
+                >
+                  <Icon className="h-4 w-4 shrink-0 text-tdms-text" strokeWidth={STROKE} aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate font-medium">{r.label}</span>
+                  <span className="shrink-0 text-xs text-tdms-muted">{r.kind}</span>
+                </li>
+              );
+            })
           )}
         </ul>
       )}
@@ -276,42 +454,141 @@ function PageSearch({ items }: { items: NavItem[] }) {
   );
 }
 
-export default function Navigation({
-  items,
-  user,
-}: {
-  items: NavItem[];
-  user: { name: string; email: string; roleLabel: string };
-}) {
-  const pathname = usePathname();
-  const router = useRouter();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [signingOut, setSigningOut] = useState(false);
-  const menuButton = useRef<HTMLButtonElement>(null);
+// --- Top bar: popovers ----------------------------------------------------------------
+
+/** Open state for a small popover: closes on an outside click, and on Escape back to its button. */
+function usePopover() {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false);
+    }
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        setSidebarOpen(false);
-        if (menuOpen) {
-          setMenuOpen(false);
-          menuButton.current?.focus();
-        }
+        setOpen(false);
+        trigger.current?.focus();
       }
     }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [menuOpen]);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
 
-  // Close the drawer when navigation happens by any route, not only a click.
-  useEffect(() => {
-    setSidebarOpen(false);
-    setMenuOpen(false);
-  }, [pathname]);
+  return { open, setOpen, wrap, trigger };
+}
 
-  const isActive = (item: NavItem) =>
-    item.match.some((m) => pathname === m || pathname.startsWith(`${m}/`));
+const ICON_BUTTON = `relative flex h-12 w-12 items-center justify-center rounded-[14px] bg-white text-tdms-ink shadow-soft transition hover:text-tdms-text ${FOCUS_LIGHT}`;
+const POPOVER = 'absolute right-0 z-50 mt-2 w-[300px] max-w-[calc(100vw-2rem)] rounded-2xl bg-white p-2 shadow-soft-lg';
+
+function HelpButton({ setup }: { setup: SetupSummary | null }) {
+  const { open, setOpen, wrap, trigger } = usePopover();
+  const id = useId();
+  return (
+    <div ref={wrap} className="relative">
+      <button
+        ref={trigger}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={id}
+        aria-label="Help"
+        className={ICON_BUTTON}
+      >
+        <CircleQuestionMark className="h-5 w-5" strokeWidth={STROKE} aria-hidden="true" />
+      </button>
+      {open && (
+        <div id={id} role="region" aria-label="Help" className={POPOVER}>
+          <p className="px-3 pb-1 pt-2 text-xs font-bold uppercase tracking-[0.1em] text-tdms-muted">Keyboard shortcuts</p>
+          <dl className="px-3 pb-2 text-sm">
+            <div className="flex items-center justify-between py-1.5">
+              <dt className="text-tdms-ink">Search</dt>
+              <dd><kbd className="rounded-md bg-tdms-bg px-2 py-0.5 text-xs font-semibold text-tdms-muted ring-1 ring-inset ring-tdms-hairline">Ctrl / ⌘ K</kbd></dd>
+            </div>
+            <div className="flex items-center justify-between py-1.5">
+              <dt className="text-tdms-ink">Close a menu or dialog</dt>
+              <dd><kbd className="rounded-md bg-tdms-bg px-2 py-0.5 text-xs font-semibold text-tdms-muted ring-1 ring-inset ring-tdms-hairline">Esc</kbd></dd>
+            </div>
+          </dl>
+          <div className="border-t border-tdms-hairline pt-1">
+            {setup && (
+              <Link href={setup.href} onClick={() => setOpen(false)} className="block rounded-xl px-3 py-2 text-sm font-medium text-tdms-ink hover:bg-tdms-bg focus:bg-tdms-bg focus:outline-none">
+                Continue setup ({setup.completed} of {setup.total} done)
+              </Link>
+            )}
+            <Link href="/profile" onClick={() => setOpen(false)} className="block rounded-xl px-3 py-2 text-sm font-medium text-tdms-ink hover:bg-tdms-bg focus:bg-tdms-bg focus:outline-none">
+              Your profile and password
+            </Link>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PendingBell({ pending }: { pending: PendingItem[] }) {
+  const { open, setOpen, wrap, trigger } = usePopover();
+  const id = useId();
+  const waiting = pending.filter((p) => p.count > 0);
+  const total = waiting.reduce((sum, p) => sum + p.count, 0);
+
+  return (
+    <div ref={wrap} className="relative">
+      <button
+        ref={trigger}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={id}
+        aria-label={total > 0 ? `Needs attention: ${total} ${total === 1 ? 'item' : 'items'}` : 'Needs attention: nothing waiting'}
+        className={ICON_BUTTON}
+      >
+        <Bell className="h-5 w-5" strokeWidth={STROKE} aria-hidden="true" />
+        {total > 0 && (
+          <span aria-hidden="true" className="absolute right-3 top-3 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white" />
+        )}
+      </button>
+      {open && (
+        <div id={id} role="region" aria-label="Needs attention" className={POPOVER}>
+          <p className="px-3 pb-1 pt-2 text-xs font-bold uppercase tracking-[0.1em] text-tdms-muted">Needs attention</p>
+          {waiting.length === 0 ? (
+            <div className="px-3 pb-3 pt-1">
+              <p className="text-sm font-semibold text-tdms-ink">You&apos;re all caught up</p>
+              <p className="text-xs text-tdms-muted">Nothing needs your attention right now.</p>
+            </div>
+          ) : (
+            <ul>
+              {waiting.map((p) => (
+                <li key={p.key}>
+                  <Link
+                    href={p.href}
+                    onClick={() => setOpen(false)}
+                    className="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm hover:bg-tdms-bg focus:bg-tdms-bg focus:outline-none"
+                  >
+                    <span className="font-medium text-tdms-ink">{p.label}</span>
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800 tabular-nums">{p.count}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UserMenu({ user }: { user: { name: string; email: string; roleLabel: string } }) {
+  const router = useRouter();
+  const { open, setOpen, wrap, trigger } = usePopover();
+  const id = useId();
+  const [signingOut, setSigningOut] = useState(false);
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -325,111 +602,170 @@ export default function Navigation({
   }
 
   return (
-    <div>
+    <div ref={wrap} className="relative">
+      <button
+        ref={trigger}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={id}
+        aria-label={`Account menu for ${user.name}, ${user.roleLabel}`}
+        className={`flex h-12 items-center gap-3 rounded-[14px] bg-white pl-1.5 pr-3 shadow-soft transition hover:shadow-soft-lg ${FOCUS_LIGHT}`}
+      >
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] bg-gradient-to-br from-[#16A06A] to-[#0E4D37] text-[13px] font-bold text-white">
+          {initialsOf(user.name)}
+        </span>
+        <span className="hidden text-left md:block">
+          <span className="block max-w-[11rem] truncate text-sm font-bold leading-tight text-tdms-ink">{user.name}</span>
+          <span className="block text-xs leading-tight text-tdms-muted">{user.roleLabel === 'Admin' ? 'Administrator' : user.roleLabel}</span>
+        </span>
+        <ChevronDown className="hidden h-4 w-4 text-tdms-muted md:block" strokeWidth={STROKE} aria-hidden="true" />
+      </button>
+      {open && (
+        <div id={id} role="region" aria-label="Account" className={`${POPOVER} w-64`}>
+          <div className="border-b border-tdms-hairline px-3 pb-2.5 pt-2">
+            <p className="truncate text-sm font-bold text-tdms-ink">{user.name}</p>
+            <p className="truncate text-xs text-tdms-muted">{user.email}</p>
+          </div>
+          <Link
+            href="/profile"
+            onClick={() => setOpen(false)}
+            className="mt-1 flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium text-tdms-ink hover:bg-tdms-bg focus:bg-tdms-bg focus:outline-none"
+          >
+            <UserRound className="h-4 w-4 text-tdms-muted" strokeWidth={STROKE} aria-hidden="true" />
+            My Profile
+          </Link>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            disabled={signingOut}
+            className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm font-medium text-tdms-ink hover:bg-tdms-bg focus:bg-tdms-bg focus:outline-none disabled:opacity-50"
+          >
+            <LogOut className="h-4 w-4 text-tdms-muted" strokeWidth={STROKE} aria-hidden="true" />
+            {signingOut ? 'Signing Out…' : 'Sign Out'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- The shell -------------------------------------------------------------------------
+
+export default function Navigation({
+  items,
+  user,
+  setup,
+  pending,
+  programs,
+  canSearchStudents,
+  children,
+}: {
+  items: NavItem[];
+  user: { name: string; email: string; roleLabel: string };
+  setup: SetupSummary | null;
+  pending: PendingItem[];
+  programs: { id: string; code: string; name: string }[];
+  canSearchStudents: boolean;
+  children: ReactNode;
+}) {
+  const pathname = usePathname();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const menuButton = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    closeButton.current?.focus();
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setDrawerOpen(false);
+        menuButton.current?.focus();
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawerOpen]);
+
+  // Close the drawer when navigation happens by any route, not only a click.
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [pathname]);
+
+  const isActive = (item: NavItem) => item.match.some((m) => pathname === m || pathname.startsWith(`${m}/`));
+
+  return (
+    <>
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-700 focus:shadow-lg"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-xl focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-tdms-deep focus:shadow-soft-lg"
       >
         Skip to content
       </a>
 
-      {/* Desktop sidebar */}
-      <aside className="hidden bg-forest lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:block lg:w-64" aria-label="Sidebar">
-        <Sidebar items={items} isActive={isActive} roleLabel={user.roleLabel} userName={user.name} />
+      {/* Desktop: the floating sidebar. Tablet: the icon rail. */}
+      <aside
+        aria-label="Sidebar"
+        className="fixed bottom-4 left-4 top-4 z-40 hidden w-[88px] rounded-[24px] bg-gradient-to-b from-[#0E4D37] to-[#093626] shadow-[0_24px_48px_-24px_rgba(9,54,38,0.7)] md:block lg:hidden"
+      >
+        <Sidebar items={items} isActive={isActive} setup={setup} compact />
+      </aside>
+      <aside
+        aria-label="Sidebar"
+        className="fixed bottom-4 left-4 top-4 z-40 hidden w-[292px] rounded-[24px] bg-gradient-to-b from-[#0E4D37] to-[#093626] shadow-[0_24px_48px_-24px_rgba(9,54,38,0.7)] lg:block"
+      >
+        <Sidebar items={items} isActive={isActive} setup={setup} />
       </aside>
 
-      {/* Mobile drawer */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
-          <div className="fixed inset-0 bg-ink/60" onClick={() => setSidebarOpen(false)} aria-hidden="true" />
-          <aside className="fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] bg-forest">
+      {/* Mobile: the drawer. */}
+      {drawerOpen && (
+        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
+          <div className="fixed inset-0 bg-[#062a1d]/60 backdrop-blur-[2px]" onClick={() => setDrawerOpen(false)} aria-hidden="true" />
+          <aside className="fixed bottom-3 left-3 top-3 z-50 w-[292px] max-w-[calc(100vw-1.5rem)] rounded-[24px] bg-gradient-to-b from-[#0E4D37] to-[#093626] shadow-2xl">
             <button
+              ref={closeButton}
               type="button"
-              onClick={() => setSidebarOpen(false)}
-              className={`absolute right-3 top-4 rounded-lg p-2 text-primary-100 hover:bg-white/10 ${FOCUS_DARK}`}
+              onClick={() => setDrawerOpen(false)}
+              className={`absolute right-3 top-6 z-10 rounded-xl p-2 text-[#BFE6D4] hover:bg-white/10 hover:text-white ${FOCUS_DARK}`}
               aria-label="Close navigation"
             >
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <X className="h-5 w-5" strokeWidth={STROKE} aria-hidden="true" />
             </button>
-            <Sidebar items={items} isActive={isActive} roleLabel={user.roleLabel} userName={user.name} onNavigate={() => setSidebarOpen(false)} />
+            <Sidebar items={items} isActive={isActive} setup={setup} onNavigate={() => setDrawerOpen(false)} />
           </aside>
         </div>
       )}
 
-      {/* Header */}
-      <header className="sticky top-0 z-30 border-b border-border bg-white lg:pl-64">
-        <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
+      <div className="relative md:pl-[120px] lg:pl-[324px]">
+        <header className="mx-auto flex h-[88px] max-w-[1600px] items-center gap-3 px-4 sm:px-6 lg:px-8">
           <button
+            ref={menuButton}
             type="button"
-            onClick={() => setSidebarOpen(true)}
-            className={`-ml-2 rounded-lg p-2 text-slate-600 hover:bg-surface lg:hidden ${FOCUS_LIGHT}`}
+            onClick={() => setDrawerOpen(true)}
+            className={`${ICON_BUTTON} shrink-0 md:hidden`}
             aria-label="Open navigation"
-            aria-expanded={sidebarOpen}
+            aria-expanded={drawerOpen}
           >
-            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
-            </svg>
+            <Menu className="h-5 w-5" strokeWidth={STROKE} aria-hidden="true" />
           </button>
 
-          <div className="min-w-0 max-w-md flex-1">
-            <PageSearch items={items} />
+          <div className="min-w-0 max-w-[520px] flex-1">
+            <GlobalSearch items={items} programs={programs} canSearchStudents={canSearchStudents} />
           </div>
 
-          <div className="ml-auto">
-            <div className="relative">
-              <button
-                ref={menuButton}
-                type="button"
-                onClick={() => setMenuOpen((v) => !v)}
-                className={`flex items-center gap-2.5 rounded-lg py-1 pl-1 pr-2 hover:bg-surface ${FOCUS_LIGHT}`}
-                aria-haspopup="menu"
-                aria-expanded={menuOpen}
-                aria-label={`Account menu for ${user.name}, ${user.roleLabel}`}
-              >
-                <Avatar name={user.name} />
-                <span className="hidden text-left md:block">
-                  <span className="block max-w-[12rem] truncate text-sm font-semibold leading-tight text-ink">{user.name}</span>
-                  <span className="block text-xs leading-tight text-muted">{user.roleLabel}</span>
-                </span>
-                <svg className="hidden h-4 w-4 text-slate-500 md:block" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-                </svg>
-              </button>
-
-              {menuOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} aria-hidden="true" />
-                  <div role="menu" aria-label="Account" className="absolute right-0 z-50 mt-2 w-60 rounded-lg border border-border bg-white py-1 shadow-lg">
-                    <div className="border-b border-border px-4 py-2.5">
-                      <p className="truncate text-sm font-semibold text-ink">{user.name}</p>
-                      <p className="truncate text-xs text-muted">{user.email}</p>
-                    </div>
-                    <Link
-                      role="menuitem"
-                      href="/profile"
-                      onClick={() => setMenuOpen(false)}
-                      className="block w-full px-4 py-2 text-start text-sm text-ink hover:bg-surface focus:bg-surface focus:outline-none"
-                    >
-                      My Profile
-                    </Link>
-                    <button
-                      role="menuitem"
-                      type="button"
-                      onClick={handleSignOut}
-                      disabled={signingOut}
-                      className="block w-full px-4 py-2 text-start text-sm text-ink hover:bg-surface focus:bg-surface focus:outline-none disabled:opacity-50"
-                    >
-                      {signingOut ? 'Signing Out…' : 'Sign Out'}
-                    </button>
-                  </div>
-                </>
-              )}
+          <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+            <div className="hidden sm:block">
+              <HelpButton setup={setup} />
             </div>
+            <PendingBell pending={pending} />
+            <UserMenu user={user} />
           </div>
-        </div>
-      </header>
-    </div>
+        </header>
+
+        <main id="main-content" tabIndex={-1} className="focus:outline-none">
+          <div className="mx-auto max-w-[1600px] px-4 pb-10 pt-2 sm:px-6 lg:px-8">{children}</div>
+        </main>
+      </div>
+    </>
   );
 }

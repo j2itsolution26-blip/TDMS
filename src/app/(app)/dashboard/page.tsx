@@ -9,6 +9,9 @@ import {
 } from '@/components/dashboard/DashboardParts';
 import DashboardChart from '@/components/dashboard/DashboardChart';
 import DirectorDashboard from '@/components/dashboard/DirectorDashboard';
+import AdminDashboard from '@/components/dashboard/AdminDashboard';
+import { greetingForHour, formatLongDate, hourIn } from '@/lib/greeting';
+import { institutionTimeZone } from '@/lib/institution-time';
 
 /**
  * /dashboard — one page for every role.
@@ -34,6 +37,21 @@ export default async function DashboardPage() {
 
   const firstName = user.name.trim().split(/\s+/)[0] ?? user.name;
   const hasMain = Boolean(view.primary || view.secondary || view.chart);
+
+  // The Admin's workspace. Greeting and date start in the institution's
+  // timezone and are switched to the viewer's own in the browser.
+  if (view.admin) {
+    const now = new Date();
+    const tz = institutionTimeZone();
+    return (
+      <AdminDashboard
+        panels={view.admin}
+        firstName={firstName}
+        greeting={greetingForHour(hourIn(now, tz))}
+        date={formatLongDate(now, tz)}
+      />
+    );
+  }
 
   // The Director's layout follows the reference design; every other role keeps the shared one.
   if (view.director) {

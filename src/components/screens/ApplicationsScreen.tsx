@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useOpenOnNew } from '@/lib/use-open-on-new';
 import { api } from '@/lib/api-client';
 import Modal from '@/components/Modal';
 import {
@@ -45,6 +46,7 @@ export default function ApplicationsScreen({
   rows, page, lastPage, total, statusFilter, programs, canCreate, canReview,
 }: Props) {
   const router = useRouter();
+  useOpenOnNew(canCreate, openCreate);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [errors, setErrors] = useState<Record<string, string[]>>({});

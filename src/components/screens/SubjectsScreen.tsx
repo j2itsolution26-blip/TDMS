@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useOpenOnNew } from '@/lib/use-open-on-new';
 import { api } from '@/lib/api-client';
 import Modal from '@/components/Modal';
 import {
@@ -38,6 +39,7 @@ const EMPTY = {
 
 export default function SubjectsScreen({ rows, page, lastPage, total, canCreate, canUpdate }: Props) {
   const router = useRouter();
+  useOpenOnNew(canCreate, openCreate);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<SubjectRow | null>(null);
   const [form, setForm] = useState(EMPTY);

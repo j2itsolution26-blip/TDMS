@@ -21,9 +21,13 @@ import { staticCodeConfigured } from '@/server/auth/super-admin-code';
 import { vaultConfigured } from '@/server/auth/credential-vault';
 import { humanizeAction } from '@/lib/dates';
 import { institutionTimeZone } from '@/lib/institution-time';
+import { getAdminSetup, getPendingWork } from '@/server/services/admin-workspace';
+import { defaultSchoolYear } from '@/server/services/enrollment-service';
 import type { AuthUser } from '@/types/domain';
 import { ROLE_LABELS, type RoleName } from '@/types/domain';
 import type {
+  AdminQuickAction,
+  AdminStat,
   ChartPoint,
   DashboardRole,
   DashboardView,
@@ -253,17 +257,6 @@ async function usersByRole(): Promise<Record<string, number>> {
     WHERE m.model_type = ${USER_MODEL_TYPE} AND r.guard_name = ${GUARD}
     GROUP BY r.name`;
   return Object.fromEntries(rows.map((r) => [r.name, Number(r.n)]));
-}
-
-/** Ids of users holding a role — for figures that must also filter by account state. */
-async function userIdsWithRole(roleName: string): Promise<bigint[]> {
-  const role = await prisma.role.findFirst({ where: { name: roleName, guardName: GUARD }, select: { id: true } });
-  if (!role) return [];
-  const rows = await prisma.modelHasRole.findMany({
-    where: { roleId: role.id, modelType: USER_MODEL_TYPE },
-    select: { modelId: true },
-  });
-  return rows.map((r) => r.modelId);
 }
 
 // --- Time series ----------------------------------------------------------------
@@ -792,117 +785,140 @@ async function adminView(user: AuthUser): Promise<Body> {
   const canDocs = studentCredentialPolicy.viewAny(user);
   const canEnroll = enrollmentPolicy.viewAny(user);
 
-  const [students, teacherIds, staffIds, programs, apps, enroll, docs, monthly, activity] = await Promise.all([
+  const [
+    setup, pending, students, newStudents, teachers, programs, apps, enrollTotal, enroll,
+    studentTrend, appTrend, enrollTrend, term, activity,
+  ] = await Promise.all([
+    getAdminSetup(user),
+    getPendingWork(user),
     canStudents ? studentCounts(weekAgo) : null,
-    canStaff ? userIdsWithRole('teacher') : null,
-    canStaff ? staffAwaitingSetup() : null,
+    canStudents ? prisma.student.count({ where: { createdAt: { gte: monthStart } } }) : 0,
+    canStaff ? teacherCounts(monthStart) : null,
     canPrograms ? programCounts() : null,
     canApps ? applicationCounts() : null,
+    canEnroll ? prisma.enrollment.count() : 0,
     canEnroll ? enrollmentCounts() : null,
-    canDocs ? documentCounts(monthStart) : null,
     canStudents ? series('students', 'month', 6) : null,
+    canApps ? series('applications', 'month', 6) : null,
+    canEnroll ? series('enrollments', 'month', 6) : null,
+    currentTerm(canEnroll),
     recentOperations(
       { applications: canApps, students: canStudents, enrollments: canEnroll, documents: canDocs },
       canStudents,
+      5,
     ),
   ]);
 
-  const teachers = teacherIds ? await prisma.user.count({ where: { id: { in: teacherIds } } }) : null;
+  const hasProgram = (programs?.total ?? 0) > 0;
+  const trend = (points: ChartPoint[] | null) =>
+    points && points.some((p) => p.value > 0) ? points.map((p) => p.value) : undefined;
 
-  const kpis: Kpi[] = [];
+  const stats: AdminStat[] = [];
   if (students) {
-    kpis.push({
-      key: 'students', label: 'Students', value: students.total, icon: 'students', href: '/students',
-      hint: students.total === 0 ? 'No student records yet' : students.newThisWeek > 0 ? `+${students.newThisWeek} this week` : `${students.active} active`,
-      tone: students.newThisWeek > 0 ? 'positive' : 'neutral',
+    const canAdd = hasProgram && studentPolicy.create(user);
+    stats.push({
+      key: 'students', label: 'Students', value: students.total,
+      tag: newStudents > 0 ? `+${newStudents.toLocaleString('en-US')} this month` : '— this month',
+      link: canAdd ? { label: 'Add student', href: '/students?new=1' } : { label: 'View students', href: '/students' },
+      trend: trend(studentTrend),
     });
   }
-  if (teachers !== null) {
-    kpis.push({
-      key: 'teachers', label: 'Teachers', value: teachers, icon: 'staff', href: '/staff',
-      hint: teachers === 0 ? 'No teacher accounts yet' : 'Teacher accounts',
+  if (teachers) {
+    stats.push({
+      key: 'teachers', label: 'Teachers', value: teachers.total,
+      tag: teachers.newThisMonth > 0 ? `+${teachers.newThisMonth.toLocaleString('en-US')} new` : 'No new',
+      link: { label: 'View staff', href: '/staff' },
     });
   }
   if (programs) {
-    kpis.push({
-      key: 'programs', label: 'Programs', value: programs.total, icon: 'programs', href: '/programs',
-      hint: programs.total === 0 ? 'None created yet' : `${programs.active} active`,
+    stats.push({
+      key: 'programs', label: 'Programs', value: programs.total,
+      tag: setup?.current === 'program' ? 'Next step' : `${programs.active.toLocaleString('en-US')} active`,
+      link: programPolicy.create(user)
+        ? { label: 'Create program', href: '/programs?new=1' }
+        : { label: 'View all', href: '/programs' },
     });
   }
   if (apps) {
-    kpis.push({
-      key: 'applications', label: 'Applications', value: apps.waiting, icon: 'applications', href: '/applications',
-      hint: apps.waiting > 0 ? 'Awaiting a decision' : 'None waiting',
-      tone: apps.waiting > 0 ? 'attention' : 'neutral',
+    stats.push({
+      key: 'applications', label: 'Applications', value: apps.total,
+      // "Closed" until the first application is recorded — the last setup step.
+      tag: apps.total === 0 ? 'Closed' : `${apps.waiting.toLocaleString('en-US')} pending`,
+      link: { label: 'View all', href: '/applications' },
+      trend: trend(appTrend),
     });
   }
   if (enroll) {
-    kpis.push({
-      key: 'enrollments', label: 'Enrollments', value: enroll.pending, icon: 'enrollment',
-      hint: enroll.pending > 0 ? 'Awaiting approval' : `${enroll.enrolled} enrolled`,
-      tone: enroll.pending > 0 ? 'attention' : 'neutral',
+    stats.push({
+      key: 'enrollments', label: 'Enrollments', value: enrollTotal,
+      tag: `${enroll.pending.toLocaleString('en-US')} pending`,
+      link: { label: 'View all', href: '/enrollments' },
+      trend: trend(enrollTrend),
     });
   }
 
-  const tasks: ListItem[] = [];
-  if (apps) {
-    tasks.push(task('t-apps', 'Application review', apps.waiting, 'application', '/applications', 'No applications waiting'));
-    tasks.push(task('t-returned', 'Returned applications', apps.returned, 'application', '/applications', 'None returned for correction'));
+  const quickActions: AdminQuickAction[] = [];
+  if (programPolicy.create(user)) {
+    quickActions.push({ key: 'program', label: 'New program', caption: 'Set up a diploma program', href: '/programs?new=1' });
   }
-  if (docs) tasks.push(task('t-docs', 'Documents to verify', docs.toReview, 'document', '/students', 'No documents waiting'));
-  if (enroll) tasks.push(task('t-enroll', 'Enrollments to approve', enroll.pending, 'enrollment', '/students', 'No enrollments waiting'));
-  if (staffIds !== null) {
-    tasks.push(task('t-staff', 'Staff accounts not yet set up', staffIds, 'account', '/staff', 'Every staff account is set up'));
+  if (subjectPolicy.create(user)) {
+    quickActions.push({ key: 'subject', label: 'New subject', caption: 'Add to the catalogue', href: '/subjects?new=1' });
+  }
+  if (userPolicy.create(user)) {
+    quickActions.push({ key: 'staff', label: 'Invite staff', caption: 'Create a staff account', href: '/staff?new=1' });
+  }
+  if (studentPolicy.create(user)) {
+    quickActions.push(
+      hasProgram
+        ? { key: 'student', label: 'Add student', caption: 'Create a student record', href: '/students?new=1' }
+        : { key: 'student', label: 'Add student', caption: 'Needs a program first', href: '/programs?new=1', disabled: true },
+    );
   }
 
   return {
-    kpis,
-    primary: {
-      title: 'Operational Tasks',
-      description: 'What is waiting on the office',
-      items: tasks,
-      empty: { title: 'Nothing to do', description: 'Tasks appear here when records need attention.' },
-    },
-    secondary: {
-      title: 'Recent Activity',
-      description: 'Applications, students, enrollments and documents',
-      items: activity,
-      empty: {
-        title: 'No activity yet',
-        description: 'New applications, student records and enrollment changes will appear here.',
-        ...(canStudents ? { action: { label: 'Add a student', href: '/students' } } : {}),
-      },
-    },
-    chart: monthly
-      ? {
-          title: 'New Students',
-          description: 'Student records added per month, last 6 months',
-          kind: 'bars',
-          points: monthly,
-          unit: 'students',
-          empty: { title: 'No student records yet', description: 'Monthly additions will be charted once students are recorded.' },
-        }
-      : null,
+    // The shared fields stay valid so nothing reading a DashboardView breaks;
+    // the page draws the Admin workspace from `admin`.
+    kpis: [],
+    primary: null,
+    secondary: null,
+    chart: null,
     quickActions: operationalActions(user),
     activity: null,
+    admin: { setup, stats, pending, activity, quickActions, newStudents: studentTrend, term },
   };
 }
 
-/** Staff accounts still on a temporary password — issued but never used. */
-async function staffAwaitingSetup(): Promise<number> {
-  const staffRoles = await prisma.role.findMany({
-    where: { guardName: GUARD, name: { notIn: ['student', 'super_admin', 'admin'] } },
-    select: { id: true },
+/** Teacher accounts, and how many were created this month. */
+async function teacherCounts(monthStart: Date) {
+  const rows = await prisma.$queryRaw<{ total: number; recent: number }[]>`
+    SELECT count(DISTINCT u.id)::int AS total,
+           count(DISTINCT u.id) FILTER (WHERE u.created_at >= ${monthStart})::int AS recent
+    FROM model_has_roles m
+    JOIN users u ON u.id = m.model_id
+    JOIN roles r ON r.id = m.role_id
+    WHERE m.model_type = ${USER_MODEL_TYPE} AND r.guard_name = ${GUARD} AND r.name = 'teacher'`;
+  return { total: Number(rows[0]?.total ?? 0), newThisMonth: Number(rows[0]?.recent ?? 0) };
+}
+
+/**
+ * The current term, for the hero. The school year follows TDMS's own rule
+ * (it rolls over in June — defaultSchoolYear); the semester is named only
+ * when an enrollment for this school year says which one is running. TDMS has
+ * no academic calendar, so it is never guessed from the month.
+ */
+async function currentTerm(canEnroll: boolean): Promise<string> {
+  const schoolYear = defaultSchoolYear();
+  const label = `SY ${schoolYear.replace('-', '–')}`;
+  if (!canEnroll) return label;
+  const latest = await prisma.enrollment.findFirst({
+    where: { schoolYear },
+    orderBy: { semester: 'desc' },
+    select: { semester: true },
   });
-  if (staffRoles.length === 0) return 0;
-  const rows = await prisma.modelHasRole.findMany({
-    where: { modelType: USER_MODEL_TYPE, roleId: { in: staffRoles.map((r) => r.id) } },
-    select: { modelId: true },
-  });
-  if (rows.length === 0) return 0;
-  return prisma.user.count({
-    where: { id: { in: [...new Set(rows.map((r) => r.modelId))] }, mustChangePassword: true },
-  });
+  if (!latest) return label;
+  const n = latest.semester;
+  const ordinal = n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`;
+  return `${ordinal} Semester, ${label}`;
 }
 
 /** The operational screens this user may open, in a stable order. */

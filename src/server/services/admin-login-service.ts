@@ -78,6 +78,9 @@ export interface AdminVerificationState {
 const NO_CHALLENGE =
   'That sign-in has expired. Please enter your email address and password again.';
 
+const SETUP_COMPLETE =
+  'Your account is already set up, so no access code is needed. Sign in with your email and password.';
+
 // --- Step 1 → step 2 -------------------------------------------------------
 
 /**
@@ -209,6 +212,9 @@ export async function describeAdminChallenge(): Promise<AdminVerificationState |
 
   const admin = await loadEligibleAdmin(challenge.userId);
   if (!admin) return null;
+  // Setup complete: there is no verification screen to draw. The page sends
+  // the browser back to /login, where email and password are enough.
+  if (!admin.mustChangePassword) return null;
 
   const code = await loadCurrentCode(challenge.userId);
   const live = code && accessCodeRefusal(code) === null ? code : null;
@@ -296,6 +302,18 @@ export async function verifyAdminAccessCode(
       undefined,
       'ADMIN_NOT_ELIGIBLE',
     );
+  }
+
+  /*
+   * Setup is already complete, so there is nothing for an access code to do:
+   * this Admin signs in with email and password. Reached only through a
+   * half-finished sign-in started before they finished setup (or before this
+   * rule existed) — so the stale challenge is dropped and they are sent back to
+   * the ordinary sign-in, never asked for a code.
+   */
+  if (!admin.mustChangePassword) {
+    await abandonAdminChallenge();
+    throw new AppError(SETUP_COMPLETE, 410, undefined, 'ADMIN_SETUP_COMPLETE');
   }
 
   /*
@@ -479,6 +497,18 @@ export async function requestNewAccessCode(
       undefined,
       'ADMIN_NOT_ELIGIBLE',
     );
+  }
+
+  /*
+   * Setup is already complete, so there is nothing for an access code to do:
+   * this Admin signs in with email and password. Reached only through a
+   * half-finished sign-in started before they finished setup (or before this
+   * rule existed) — so the stale challenge is dropped and they are sent back to
+   * the ordinary sign-in, never asked for a code.
+   */
+  if (!admin.mustChangePassword) {
+    await abandonAdminChallenge();
+    throw new AppError(SETUP_COMPLETE, 410, undefined, 'ADMIN_SETUP_COMPLETE');
   }
 
   const throttle = await consumeRateLimit(

@@ -50,6 +50,8 @@ function errorMessages(domainNotice: string | null): Record<string, string> {
     'Your account is not active yet. An administrator needs to activate it and assign your role before you can sign in.',
   account_inactive: 'Your account is inactive. Please contact the administrator.',
   account_suspended: 'Your account has been suspended. Please contact the administrator.',
+  admin_setup_required:
+    'Finish setting up your administrator account first: sign in below with your email and temporary password, then enter the access code from the Super Admin.',
   invalid_state: 'That sign-in attempt could not be verified. Please try again.',
   expired: 'That sign-in attempt timed out. Please try again.',
   google_failed: 'Google sign-in failed. Please try again.',

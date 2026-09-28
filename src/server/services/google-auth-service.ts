@@ -7,6 +7,8 @@ import {
   domainRestrictionEnabled,
 } from '@/lib/institutional-email';
 import { createSession } from '@/server/auth/session';
+import { loadRolesAndPermissions } from '@/server/auth/rbac';
+import { requiresAdminAccessCode } from '@/server/auth/policies';
 import { recordAudit } from './audit-log';
 import type { GoogleIdentity } from '@/server/auth/google/oauth';
 
@@ -26,7 +28,9 @@ export type GoogleSignInOutcome =
   | { kind: 'wrong_domain' }
   | { kind: 'pending'; created: boolean }
   | { kind: 'inactive' }
-  | { kind: 'suspended' };
+  | { kind: 'suspended' }
+  /** An Admin still in initial setup: that sign-in needs the access code. */
+  | { kind: 'admin_setup_required' };
 
 export interface SignInContext {
   ip: string;
@@ -92,6 +96,7 @@ export async function signInWithGoogle(
       googleId: true,
       status: true,
       emailVerifiedAt: true,
+      mustChangePassword: true,
       name: true,
     },
   });
@@ -201,6 +206,24 @@ export async function signInWithGoogle(
   if (status === 'SUSPENDED') return { kind: 'suspended' };
   if (status === 'INACTIVE') return { kind: 'inactive' };
   if (status !== 'ACTIVE') return { kind: 'pending', created: false };
+
+  /*
+   * An Admin still in initial setup must finish it the one way it can be
+   * finished: temporary password, then the Super Admin's one-time access code,
+   * then a permanent password. Google proving who they are must not let them
+   * skip the code. Once setup is complete, Google sign-in works as for anyone.
+   */
+  /*
+   * Roles are only looked up for an account still on a temporary password —
+   * the only case the rule can apply to — so an ordinary sign-in costs no more
+   * than it did.
+   */
+  if (existing.mustChangePassword) {
+    const { roles } = await loadRolesAndPermissions(existing.id);
+    if (requiresAdminAccessCode({ roles, mustChangePassword: true })) {
+      return { kind: 'admin_setup_required' };
+    }
+  }
 
   await createSession(existing.id, {
     remember: false,

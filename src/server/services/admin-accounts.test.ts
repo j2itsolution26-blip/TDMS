@@ -684,12 +684,32 @@ describe('the Admin sign-in', () => {
     expect(expires.getTime() - Date.now()).toBeGreaterThan(365 * 24 * 3600 * 1000);
   });
 
-  it('goes to the dashboard once the password is permanent', async () => {
+  it('never puts an Admin who finished setup through the code screen again', async () => {
+    /*
+     * A half-finished sign-in left over from before setup was completed (or
+     * from before this rule): the screen must not appear, the code must not be
+     * accepted or needed, and the stale challenge is dropped so the browser is
+     * sent back to the ordinary email-and-password sign-in.
+     */
     await createAdmin();
     const issued = await issueCode();
-    rowFor(JAMES.email).mustChangePassword = false;
     await passwordStep();
-    expect((await verifyAdminAccessCode(issued.accessCode, CONTEXT)).redirectTo).toBe('/dashboard');
+    rowFor(JAMES.email).mustChangePassword = false;
+
+    expect(await describeAdminChallenge()).toBeNull();
+    await expect(verifyAdminAccessCode(issued.accessCode, CONTEXT)).rejects.toMatchObject({
+      code: 'ADMIN_SETUP_COMPLETE',
+    });
+    expect(store.adminLoginChallenges).toHaveLength(0);
+    expect(store.sessions).toHaveLength(0);
+  });
+
+  it('will not issue a code to an Admin who finished setup', async () => {
+    await createAdmin();
+    rowFor(JAMES.email).mustChangePassword = false;
+    await expect(issueCode()).rejects.toMatchObject({ code: 'ADMIN_SETUP_COMPLETE' });
+    const admins = await listIssuableAdmins();
+    expect(admins.find((a) => a.email === JAMES.email)!.blockedReason).toMatch(/setup complete/i);
   });
 
   it('clears everything when abandoned', async () => {

@@ -16,8 +16,11 @@ const db = {
 };
 const createSession = vi.fn();
 const recordAudit = vi.fn();
+/** The roles loadRolesAndPermissions reports, per test. */
+const rolesOf = vi.fn(async () => ({ roles: [] as string[], permissions: [] as string[] }));
 
 vi.mock('@/lib/prisma', () => ({ prisma: db }));
+vi.mock('@/server/auth/rbac', () => ({ loadRolesAndPermissions: () => rolesOf() }));
 vi.mock('@/server/auth/session', () => ({ createSession: (...a: unknown[]) => createSession(...a) }));
 vi.mock('@/server/services/audit-log', () => ({
   recordAudit: (...a: unknown[]) => recordAudit(...a),
@@ -222,6 +225,21 @@ describe('account status governs access, not Google', () => {
     found('ACTIVE');
     expect((await signInWithGoogle(identity(), context)).kind).toBe('signed_in');
     expect(createSession).toHaveBeenCalledOnce();
+  });
+
+  it('sends an Admin still in initial setup to the password-and-code sign-in', async () => {
+    // Google proving who they are must not let them skip the one-time code.
+    found('ACTIVE', { mustChangePassword: true });
+    rolesOf.mockResolvedValueOnce({ roles: ['admin'], permissions: [] });
+    expect((await signInWithGoogle(identity(), context)).kind).toBe('admin_setup_required');
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it('lets an Admin who finished setup sign in with Google normally', async () => {
+    found('ACTIVE', { mustChangePassword: false });
+    expect((await signInWithGoogle(identity(), context)).kind).toBe('signed_in');
+    // And no role lookup was needed to decide it.
+    expect(rolesOf).not.toHaveBeenCalled();
   });
 
   it('refuses SUSPENDED', async () => {

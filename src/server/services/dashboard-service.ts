@@ -29,6 +29,7 @@ import type {
   Kpi,
   ListItem,
   QuickAction,
+  StatusPanel,
 } from '@/types/dashboard';
 
 /**
@@ -528,6 +529,8 @@ const SECURITY_ACTIONS = [
   'SUPER_ADMIN_VERIFICATION_ATTEMPTS_EXCEEDED',
   'ACCOUNT_PASSWORD_RESET_COMPLETED',
   'ADMIN_TEMP_PASSWORD_CHANGED',
+  // The same event for a staff account.
+  'TEMP_PASSWORD_CHANGED',
   // Earlier names for the same event, still present in older rows.
   'ADMIN_TEMPORARY_PASSWORD_CHANGED',
   'TEMP_PASSWORD_USED',
@@ -662,7 +665,58 @@ async function superAdminView(user: AuthUser): Promise<Body> {
 
   const roleOrder = ['super_admin', 'admin', 'director', 'coordinator', 'secretary', 'teacher', 'student'];
 
+  const ok = (yes: boolean, good: string, bad: string) =>
+    yes ? { status: 'active', label: good } : { status: 'pending', label: bad };
+
+  /*
+   * Admin Access: where Admin sign-in credentials stand, and the way in to
+   * manage them. Numbers from adminAccessOverview(); the security code only as
+   * configured / not configured — never a value.
+   */
+  const statusPanels: StatusPanel[] = [];
+  if (access) {
+    statusPanels.push({
+      id: 'admin-access',
+      title: 'Admin Access Codes',
+      description: 'One-time codes Admins use to finish their first sign-in',
+      rows: [
+        { label: 'Active Admins', value: access.activeAdmins.toLocaleString('en-US'), href: '/admins' },
+        { label: 'Active access codes', value: access.activeCodes.toLocaleString('en-US') },
+        { label: 'Expired codes', value: access.expiredCodes.toLocaleString('en-US') },
+        { label: 'Used codes', value: access.usedCodes.toLocaleString('en-US') },
+        {
+          label: 'Super Admin security code',
+          status: ok(access.securityCodeConfigured, 'Configured', 'Not configured'),
+        },
+        {
+          label: 'Temporary password reveal',
+          status: ok(access.revealConfigured, 'Configured', 'Not configured'),
+        },
+      ],
+      actions: [
+        { label: 'Generate Access Code', href: '/admin-access-codes?generate=new', primary: true },
+        { label: 'Manage Access Codes', href: '/admin-access-codes' },
+        { label: 'Admin Accounts', href: '/admins' },
+      ],
+    });
+  }
+
+  // System Status: the health checks by name, not just a count.
+  statusPanels.push({
+    id: 'system-status',
+    title: 'System Status',
+    description: 'Configuration and service checks',
+    rows: checks.map((c) => ({
+      label: c.name,
+      status: ok(c.ok, c.name === 'Database' ? 'Online' : 'OK', 'Needs attention'),
+    })),
+    actions: systemPolicy.viewSystemHealth(user)
+      ? [{ label: 'View System Health', href: '/system-health' }]
+      : [],
+  });
+
   return {
+    statusPanels,
     kpis,
     primary: {
       title: 'System Activity',

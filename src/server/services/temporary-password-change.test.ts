@@ -41,9 +41,21 @@ const jar = vi.hoisted(() => {
 
 vi.mock('@/lib/prisma', async () => ({ prisma: (await fake).prisma }));
 vi.mock('next/headers', () => ({ cookies: async () => jar.api }));
+/*
+ * Roles as the in-memory database actually holds them, so a test that makes a
+ * teacher gets a teacher. (The real function's permission join is more than
+ * the fake models; the roles are what these tests need.)
+ */
 vi.mock('@/server/auth/rbac', async (original) => ({
   ...(await original<typeof import('@/server/auth/rbac')>()),
-  loadRolesAndPermissions: async () => ({ roles: ['admin'], permissions: [] }),
+  loadRolesAndPermissions: async (userId: bigint) => {
+    const { store } = await fake;
+    const roles = store.modelHasRoles
+      .filter((m) => String(m.modelId) === String(userId))
+      .map((m) => store.roles.find((r) => String(r.id) === String(m.roleId))?.name)
+      .filter((name): name is string => typeof name === 'string');
+    return { roles, permissions: [] };
+  },
 }));
 
 const { NextRequest } = await import('next/server');
@@ -61,7 +73,17 @@ const OTHER = 'SomebodyElse#2026';
 
 type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-async function makeAdmin(overrides: Partial<Row> = {}): Promise<Row> {
+/** Give a user a role, creating the role row the first time. */
+async function grant(userId: bigint, roleName: string) {
+  const role =
+    (await prisma.role.findFirst({ where: { name: roleName } })) ??
+    (await prisma.role.create({ data: { name: roleName, guardName: 'web' } }));
+  await prisma.modelHasRole.create({
+    data: { roleId: role.id, modelType: 'App\\Models\\User', modelId: userId },
+  });
+}
+
+async function makeAdmin(overrides: Partial<Row> = {}, roleName = 'admin'): Promise<Row> {
   const user = await prisma.user.create({
     data: {
       name: 'James Tan',
@@ -84,6 +106,7 @@ async function makeAdmin(overrides: Partial<Row> = {}): Promise<Row> {
       revokedAt: null,
     },
   });
+  await grant(user.id, roleName);
   return user;
 }
 
@@ -171,6 +194,16 @@ describe('TEST 1 & 7 — a correct change', () => {
     expect(text).not.toContain(NEW);
     expect(text).not.toContain(userRow(admin.id).password);
     expect(text).not.toMatch(/\$2[aby]\$/);
+  });
+
+  it('records a staff member\'s change as TEMP_PASSWORD_CHANGED, not as an Admin event', async () => {
+    const teacher = await makeAdmin({ name: 'Ana Teacher' }, 'teacher');
+    await signIn(teacher.id);
+    const res = await post(valid);
+    expect(res.status, JSON.stringify(res.json)).toBe(200);
+
+    expect(store.auditLogs.map((a) => a.action)).toContain("TEMP_PASSWORD_CHANGED");
+    expect(store.auditLogs.some((a) => a.action === 'ADMIN_TEMP_PASSWORD_CHANGED')).toBe(false);
   });
 
   it('records ADMIN_TEMP_PASSWORD_CHANGED, with no password in it', async () => {

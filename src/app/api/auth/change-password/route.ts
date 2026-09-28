@@ -59,8 +59,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     userAgent: context.userAgent,
   });
 
+  /*
+   * Named for who changed it. Staff accounts are issued temporary passwords too
+   * (by the Admin), and a teacher's first password change logged as an "Admin"
+   * event would mislead whoever reads the security log.
+   */
+  const isAdmin = user.roles.includes('admin') && !user.roles.includes('super_admin');
+
   await recordAudit({
-    action: 'ADMIN_TEMP_PASSWORD_CHANGED',
+    action: isAdmin ? 'ADMIN_TEMP_PASSWORD_CHANGED' : 'TEMP_PASSWORD_CHANGED',
     actor: `${user.name} <${user.email}>`,
     target: `${user.name} <${user.email}>`,
     // That it happened and what it ended; never a password or a hash.

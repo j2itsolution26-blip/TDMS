@@ -2,7 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui';
 import { diffForHumans } from '@/lib/dates';
-import type { EmptyNote, Kpi, ListItem, ListPanel, QuickAction } from '@/types/dashboard';
+import type { EmptyNote, Kpi, ListItem, ListPanel, QuickAction, StatusPanel } from '@/types/dashboard';
 import DashboardIcon from './DashboardIcon';
 
 /**
@@ -203,6 +203,56 @@ export function ListPanelView({ id, panel }: { id: string; panel: ListPanel }) {
             <ItemRow key={item.id} item={item} />
           ))}
         </ul>
+      )}
+    </Panel>
+  );
+}
+
+// --- Status panels -------------------------------------------------------------------
+
+export function StatusPanelView({ panel }: { panel: StatusPanel }) {
+  return (
+    <Panel id={panel.id} title={panel.title} description={panel.description}>
+      <dl className="divide-y divide-border">
+        {panel.rows.map((row) => {
+          const value = (
+            <span className="flex shrink-0 items-center gap-2">
+              {row.value && <span className="text-sm font-semibold text-ink tabular-nums">{row.value}</span>}
+              {row.status && <Badge status={row.status.status} label={row.status.label} />}
+            </span>
+          );
+          return (
+            <div key={row.label} className="flex items-center justify-between gap-3 py-2.5">
+              <dt className="min-w-0 truncate text-sm text-ink">
+                {row.href ? (
+                  <Link href={row.href} className={`rounded hover:text-primary-700 hover:underline ${FOCUS}`}>
+                    {row.label}
+                  </Link>
+                ) : (
+                  row.label
+                )}
+              </dt>
+              <dd>{value}</dd>
+            </div>
+          );
+        })}
+      </dl>
+      {panel.actions && panel.actions.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
+          {panel.actions.map((action) => (
+            <Link
+              key={action.href}
+              href={action.href}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${FOCUS} ${
+                action.primary
+                  ? 'bg-primary-600 text-white hover:bg-primary-700'
+                  : 'border border-border bg-card text-ink hover:border-primary-200 hover:bg-primary-50'
+              }`}
+            >
+              {action.label}
+            </Link>
+          ))}
+        </div>
       )}
     </Panel>
   );

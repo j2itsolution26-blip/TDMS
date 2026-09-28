@@ -108,6 +108,30 @@ export interface ChartPanel {
   empty: EmptyNote;
 }
 
+/**
+ * A labelled figure or state, with a badge that says in words what the colour
+ * means. The row a status panel is made of.
+ */
+export interface StatusRow {
+  label: string;
+  value?: string;
+  status?: StatusLabel;
+  href?: string;
+}
+
+/**
+ * A compact panel of states — "is this set up, is that running" — with the
+ * actions that act on them. Used where a list of events would be the wrong
+ * shape: the Super Admin's Admin Access and System Status.
+ */
+export interface StatusPanel {
+  id: string;
+  title: string;
+  description?: string;
+  rows: StatusRow[];
+  actions?: { label: string; href: string; primary?: boolean }[];
+}
+
 export interface QuickAction {
   label: string;
   description: string;
@@ -126,6 +150,8 @@ export interface DashboardView {
   chart: ChartPanel | null;
   quickActions: QuickAction[];
   activity: ListPanel | null;
+  /** Optional state panels, drawn after the main row. Empty for most roles. */
+  statusPanels?: StatusPanel[];
   /**
    * An honest note about what this role's dashboard cannot show yet — the
    * teaching and learning records TDMS does not hold. Shown once, plainly,

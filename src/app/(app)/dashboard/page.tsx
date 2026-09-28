@@ -5,6 +5,7 @@ import {
   KpiGrid,
   ListPanelView,
   QuickActions,
+  StatusPanelView,
 } from '@/components/dashboard/DashboardParts';
 import DashboardChart from '@/components/dashboard/DashboardChart';
 
@@ -56,6 +57,14 @@ export default async function DashboardPage() {
               <DashboardChart chart={view.chart} />
             </div>
           )}
+        </div>
+      )}
+
+      {view.statusPanels && view.statusPanels.length > 0 && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {view.statusPanels.map((panel) => (
+            <StatusPanelView key={panel.id} panel={panel} />
+          ))}
         </div>
       )}
 

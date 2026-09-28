@@ -109,7 +109,7 @@ The copy is **destroyed** — the ciphertext emptied, not merely flagged — whe
 
 | Event | Result |
 | ----- | ------ |
-| The Admin chooses their own password (change screen or emailed reset link) | `used_at`; the change screen audits `ADMIN_TEMPORARY_PASSWORD_CHANGED`. The modal shows **No active temporary password.** |
+| The Admin chooses their own password (change screen or emailed reset link) | `used_at`; the change screen audits `ADMIN_TEMP_PASSWORD_CHANGED`. The modal shows **No active temporary password.** |
 | The Super Admin resets it | The old one stops working *and* stops being revealable; the new one can be shown. |
 | The reveal window passes (`TEMP_CREDENTIAL_REVEAL_HOURS`, default 72) | Can no longer be shown; the password itself still works. |
 
@@ -248,7 +248,7 @@ it.
 * **Every session ends, and this browser gets a new one** on the same
   response. The holder stays signed in; anybody else who signed in with the
   temporary password — which two people knew — does not.
-* Audited `ADMIN_TEMPORARY_PASSWORD_CHANGED` (sessions ended, whether a
+* Audited `ADMIN_TEMP_PASSWORD_CHANGED` (sessions ended, whether a
   revealable copy was destroyed). Never a password or a hash.
 
 **The live check.** `POST /api/auth/change-password/verify` powers
@@ -342,7 +342,7 @@ Admin's job. See `managesStaff()` in the same file.
 | `TEMP_PASSWORD_GENERATED` | A temporary password was issued with a new account |
 | `TEMP_PASSWORD_RESET` | A Super Admin reissued one (with codes revoked) |
 | `TEMP_PASSWORD_REVEALED` | A Super Admin showed one — every time |
-| `ADMIN_TEMPORARY_PASSWORD_CHANGED` | The Admin replaced it with their own (formerly `TEMP_PASSWORD_USED`) |
+| `ADMIN_TEMP_PASSWORD_CHANGED` | The Admin replaced it with their own (formerly `TEMP_PASSWORD_USED`) |
 | `ADMIN_PASSWORD_ACCEPTED` | Step 1 passed — **not** a sign-in |
 | `ADMIN_LOGIN_SUCCESS` / `ADMIN_LOGIN_FAILED` | Step 2 outcome, with the reason |
 | `ADMIN_SUSPENDED` / `ADMIN_REACTIVATED` | Status changed |

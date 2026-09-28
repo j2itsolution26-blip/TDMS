@@ -173,12 +173,12 @@ describe('TEST 1 & 7 — a correct change', () => {
     expect(text).not.toMatch(/\$2[aby]\$/);
   });
 
-  it('records ADMIN_TEMPORARY_PASSWORD_CHANGED, with no password in it', async () => {
+  it('records ADMIN_TEMP_PASSWORD_CHANGED, with no password in it', async () => {
     const admin = await makeAdmin();
     await signIn(admin.id);
     await post(valid);
 
-    const event = store.auditLogs.find((a) => a.action === 'ADMIN_TEMPORARY_PASSWORD_CHANGED');
+    const event = store.auditLogs.find((a) => a.action === 'ADMIN_TEMP_PASSWORD_CHANGED');
     expect(event).toBeDefined();
     expect(event!.target).toContain(admin.email);
     expect(event!.createdAt ?? new Date()).toBeTruthy();
@@ -417,7 +417,7 @@ describe('what a real browser does', () => {
     expect(statuses[0]).toBe(200);
     expect(statuses[1]).toBeGreaterThanOrEqual(400);
     expect(await bcrypt.compare(NEW, userRow(admin.id).password)).toBe(true);
-    expect(store.auditLogs.filter((e) => e.action === 'ADMIN_TEMPORARY_PASSWORD_CHANGED')).toHaveLength(1);
+    expect(store.auditLogs.filter((e) => e.action === 'ADMIN_TEMP_PASSWORD_CHANGED')).toHaveLength(1);
   });
 
   it('ignores a user id in the body: only the session decides whose password changes', async () => {

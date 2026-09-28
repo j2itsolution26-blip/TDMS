@@ -60,7 +60,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   });
 
   await recordAudit({
-    action: 'ADMIN_TEMPORARY_PASSWORD_CHANGED',
+    action: 'ADMIN_TEMP_PASSWORD_CHANGED',
     actor: `${user.name} <${user.email}>`,
     target: `${user.name} <${user.email}>`,
     // That it happened and what it ended; never a password or a hash.

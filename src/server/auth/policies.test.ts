@@ -15,6 +15,7 @@ import {
   managesStaff,
   adminAccountPolicy,
   requiresAdminAccessCode,
+  systemPolicy,
 } from './policies';
 
 /**
@@ -349,6 +350,21 @@ describe('requiresAdminAccessCode', () => {
   it('does not require one of anybody else', () => {
     for (const roles of [['director'], ['coordinator'], ['secretary'], ['teacher'], ['student'], []]) {
       expect(requiresAdminAccessCode(roles)).toBe(false);
+    }
+  });
+});
+
+describe('systemPolicy: audit logs and system health belong to the Super Admin', () => {
+  it('lets the Super Admin in', () => {
+    expect(systemPolicy.viewAuditLogs(superAdmin)).toBe(true);
+    expect(systemPolicy.viewSystemHealth(superAdmin)).toBe(true);
+  });
+
+  it('keeps everybody else out — the Admin included, even with audit-logs.view', () => {
+    const adminWithAudit = user(['admin'], ['audit-logs.view']);
+    for (const principal of [admin, adminWithAudit, director, coordinator, secretary, teacher, student]) {
+      expect(systemPolicy.viewAuditLogs(principal)).toBe(false);
+      expect(systemPolicy.viewSystemHealth(principal)).toBe(false);
     }
   });
 });

@@ -7,6 +7,7 @@ import {
   applicationPolicy,
   userPolicy,
   adminAccountPolicy,
+  systemPolicy,
 } from '@/server/auth/policies';
 
 /**
@@ -72,6 +73,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       match: ['/admin-access-codes'],
       icon: 'keys',
     });
+  }
+  // Super Admin: "Who controls the system?" — security and health, read-only.
+  if (systemPolicy.viewAuditLogs(user)) {
+    items.push({ label: 'Audit Logs', href: '/audit-logs', match: ['/audit-logs'], icon: 'audit' });
+  }
+  if (systemPolicy.viewSystemHealth(user)) {
+    items.push({ label: 'System Health', href: '/system-health', match: ['/system-health'], icon: 'health' });
   }
 
   return (

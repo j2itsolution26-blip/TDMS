@@ -296,3 +296,16 @@ export function requiresAdminAccessCode(roles: readonly string[]): boolean {
   if (roles.includes('super_admin')) return false;
   return roles.includes('admin');
 }
+
+// --- System (Super Admin) --------------------------------------------------
+
+/**
+ * The Super Admin's system screens — "Who controls the system?". Checked with
+ * isSuperAdmin directly: the audit trail and the system's health are security
+ * controls, and the TDMS structure keeps them from the Admin so that a
+ * compromised Admin account cannot read or reason about them.
+ */
+export const systemPolicy = {
+  viewAuditLogs: (u: AuthUser) => isSuperAdmin(u),
+  viewSystemHealth: (u: AuthUser) => isSuperAdmin(u),
+};

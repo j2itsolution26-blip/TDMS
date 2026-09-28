@@ -1,5 +1,6 @@
 import type { ChartPanel } from '@/types/dashboard';
 import { Panel, PanelEmpty } from './DashboardParts';
+import type { DashboardIcon as DashboardIconName } from '@/types/dashboard';
 
 /**
  * Two chart shapes, drawn with plain HTML and CSS.
@@ -93,18 +94,87 @@ function Breakdown({ chart }: { chart: ChartPanel }) {
   );
 }
 
-export default function DashboardChart({ chart }: { chart: ChartPanel }) {
+/**
+ * Share of a whole, as a ring. Greens for the largest parts, a neutral grey
+ * for "Others", and every segment named in the legend with its count and
+ * percentage — the colour is never the only way to tell parts apart.
+ */
+const DONUT_COLOURS = ['#006B4F', '#2F9E74', '#6FC2A0', '#0B4A36', '#A8DCC5'];
+const OTHERS_COLOUR = '#94A3B8';
+
+function Donut({ chart }: { chart: ChartPanel }) {
+  const sorted = [...chart.points].filter((p) => p.value > 0).sort((a, b) => b.value - a.value);
+  const top = sorted.slice(0, DONUT_COLOURS.length);
+  const rest = sorted.slice(DONUT_COLOURS.length).reduce((sum, p) => sum + p.value, 0);
+  const parts = [
+    ...top.map((p, i) => ({ ...p, colour: DONUT_COLOURS[i]! })),
+    ...(rest > 0 ? [{ label: 'Others', value: rest, colour: OTHERS_COLOUR }] : []),
+  ];
+  const total = parts.reduce((sum, p) => sum + p.value, 0);
+
+  let at = 0;
+  const stops = parts
+    .map((p) => {
+      const from = at;
+      at += (p.value / total) * 100;
+      return `${p.colour} ${from}% ${at}%`;
+    })
+    .join(', ');
+
+  const pct = (n: number) => Math.round((n / total) * 100);
+
+  return (
+    <div aria-hidden="true" className="flex flex-col items-center gap-5 pt-2 sm:flex-row sm:items-center">
+      <div className="relative h-36 w-36 shrink-0 rounded-full" style={{ background: `conic-gradient(${stops})` }}>
+        <div className="absolute inset-[18px] flex flex-col items-center justify-center rounded-full bg-card">
+          <span className="text-2xl font-semibold leading-none text-ink tabular-nums">{total.toLocaleString('en-US')}</span>
+          <span className="mt-1 text-xs capitalize text-muted">{chart.unit}</span>
+        </div>
+      </div>
+      <ul className="w-full min-w-0 space-y-2">
+        {parts.map((p) => (
+          <li key={p.label} className="flex items-center justify-between gap-3 text-xs">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: p.colour }} />
+              <span className="truncate text-ink">{p.label}</span>
+            </span>
+            <span className="shrink-0 text-muted tabular-nums">
+              {p.value.toLocaleString('en-US')} · {pct(p.value)}%
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export default function DashboardChart({
+  chart,
+  icon,
+  large = false,
+}: {
+  chart: ChartPanel;
+  icon?: DashboardIconName;
+  large?: boolean;
+}) {
   // An all-zero chart is a flat line that looks like a rendering fault; say
   // what it means instead.
   const empty = chart.points.length === 0 || chart.points.every((p) => p.value === 0);
 
   return (
-    <Panel id="chart" title={chart.title} description={chart.description}>
+    <Panel
+      id={`chart-${chart.title.toLowerCase().replace(/[^a-z]+/g, '-')}`}
+      title={chart.title}
+      description={chart.description}
+      icon={icon}
+      large={large}
+      className="h-full"
+    >
       {empty ? (
-        <PanelEmpty note={chart.empty} />
+        <PanelEmpty note={chart.empty} icon={icon} />
       ) : (
         <figure>
-          {chart.kind === 'bars' ? <Bars chart={chart} /> : <Breakdown chart={chart} />}
+          {chart.kind === 'bars' ? <Bars chart={chart} /> : chart.kind === 'donut' ? <Donut chart={chart} /> : <Breakdown chart={chart} />}
           <Summary chart={chart} />
         </figure>
       )}

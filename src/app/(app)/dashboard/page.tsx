@@ -8,6 +8,7 @@ import {
   StatusPanelView,
 } from '@/components/dashboard/DashboardParts';
 import DashboardChart from '@/components/dashboard/DashboardChart';
+import DirectorDashboard from '@/components/dashboard/DirectorDashboard';
 
 /**
  * /dashboard — one page for every role.
@@ -33,6 +34,17 @@ export default async function DashboardPage() {
 
   const firstName = user.name.trim().split(/\s+/)[0] ?? user.name;
   const hasMain = Boolean(view.primary || view.secondary || view.chart);
+
+  // The Director's layout follows the reference design; every other role keeps the shared one.
+  if (view.director) {
+    return (
+      <DirectorDashboard
+        view={view}
+        panels={view.director}
+        greetingLine={`${greeting()}, ${firstName} · ${formatToday()}`}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">

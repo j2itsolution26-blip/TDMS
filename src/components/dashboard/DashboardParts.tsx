@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui';
 import { diffForHumans } from '@/lib/dates';
 import type { EmptyNote, Kpi, ListItem, ListPanel, QuickAction, StatusPanel } from '@/types/dashboard';
 import DashboardIcon from './DashboardIcon';
+import type { DashboardIcon as DashboardIconName } from '@/types/dashboard';
 
 /**
  * The building blocks every dashboard is assembled from.
@@ -30,30 +31,55 @@ const HINT_TONE: Record<NonNullable<Kpi['tone']>, string> = {
   attention: 'text-amber-800',
 };
 
-export function KpiCard({ kpi }: { kpi: Kpi }) {
+export function KpiCard({ kpi, size = 'default' }: { kpi: Kpi; size?: 'default' | 'large' }) {
   const value = typeof kpi.value === 'number' ? kpi.value.toLocaleString('en-US') : kpi.value;
+  const large = size === 'large';
+  const pct = kpi.progress && kpi.progress.max > 0 ? Math.round((kpi.progress.value / kpi.progress.max) * 100) : null;
 
   const body = (
     <>
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
-        <DashboardIcon name={kpi.icon} />
-      </span>
-      <span className="min-w-0">
-        <span className="block text-sm text-muted">{kpi.label}</span>
-        <span className="mt-0.5 block truncate text-2xl font-semibold leading-tight text-ink tabular-nums">
-          {value}
+      <span className="flex items-start gap-3">
+        <span
+          className={`flex shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600 ${large ? 'h-12 w-12' : 'h-10 w-10'}`}
+        >
+          <DashboardIcon name={kpi.icon} className={large ? 'h-6 w-6' : 'h-5 w-5'} />
         </span>
-        {kpi.hint && (
-          // Two lines, not one-and-an-ellipsis: the end of a hint is often the point.
-          <span className={`mt-1 block line-clamp-2 text-xs font-medium ${HINT_TONE[kpi.tone ?? 'neutral']}`}>
-            {kpi.hint}
+        <span className="min-w-0">
+          <span className="block text-sm text-muted">{kpi.label}</span>
+          <span
+            className={`mt-0.5 block truncate font-semibold leading-tight text-ink tabular-nums ${large ? 'text-[28px]' : 'text-2xl'}`}
+          >
+            {value}
           </span>
-        )}
+          {kpi.hint && (
+            // Two lines, not one-and-an-ellipsis: the end of a hint is often the point.
+            <span className={`mt-1 block line-clamp-2 text-xs font-medium ${HINT_TONE[kpi.tone ?? 'neutral']}`}>
+              {kpi.hint}
+            </span>
+          )}
+        </span>
       </span>
+      {pct !== null && kpi.progress && (
+        /*
+         * A meter, because it is one: a real "x of y". The label is the
+         * accessible name, so the bar means the same thing to a screen reader.
+         */
+        <span
+          role="meter"
+          aria-label={kpi.progress.label}
+          aria-valuemin={0}
+          aria-valuemax={kpi.progress.max}
+          aria-valuenow={kpi.progress.value}
+          title={kpi.progress.label}
+          className="mt-4 block h-1.5 w-full overflow-hidden rounded-full bg-primary-50"
+        >
+          <span className="block h-full rounded-full bg-primary-500" style={{ width: `${pct}%` }} />
+        </span>
+      )}
     </>
   );
 
-  const shell = 'flex h-full items-start gap-3 rounded-xl border border-border bg-card p-4 shadow-card';
+  const shell = `flex h-full flex-col rounded-xl border border-border bg-card shadow-card ${large ? 'p-5' : 'p-4'}`;
 
   return kpi.href ? (
     <Link href={kpi.href} className={`${shell} transition-colors hover:border-primary-200 ${FOCUS}`}>
@@ -77,7 +103,7 @@ const KPI_COLUMNS: Record<number, string> = {
   6: 'sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6',
 };
 
-export function KpiGrid({ kpis }: { kpis: Kpi[] }) {
+export function KpiGrid({ kpis, size = 'default' }: { kpis: Kpi[]; size?: 'default' | 'large' }) {
   if (kpis.length === 0) return null;
   return (
     <ul
@@ -86,7 +112,7 @@ export function KpiGrid({ kpis }: { kpis: Kpi[] }) {
     >
       {kpis.map((kpi) => (
         <li key={kpi.key}>
-          <KpiCard kpi={kpi} />
+          <KpiCard kpi={kpi} size={size} />
         </li>
       ))}
     </ul>
@@ -102,6 +128,8 @@ export function Panel({
   viewAll,
   children,
   className = '',
+  icon,
+  large = false,
 }: {
   id: string;
   title: string;
@@ -109,6 +137,10 @@ export function Panel({
   viewAll?: { label: string; href: string };
   children: ReactNode;
   className?: string;
+  /** A glyph beside the title, as the Director layout draws its sections. */
+  icon?: DashboardIconName;
+  /** An 18px section title rather than 16px. */
+  large?: boolean;
 }) {
   const headingId = `${id}-heading`;
   return (
@@ -116,12 +148,19 @@ export function Panel({
       aria-labelledby={headingId}
       className={`flex min-w-0 flex-col rounded-xl border border-border bg-card shadow-card ${className}`}
     >
-      <header className="flex items-start justify-between gap-3 px-5 pt-4 pb-3">
-        <div className="min-w-0">
-          <h2 id={headingId} className="text-base font-semibold text-ink">
-            {title}
-          </h2>
-          {description && <p className="mt-0.5 text-xs text-muted">{description}</p>}
+      <header className={`flex items-start justify-between gap-3 ${large ? 'px-6 pt-5 pb-3' : 'px-5 pt-4 pb-3'}`}>
+        <div className="flex min-w-0 items-start gap-2.5">
+          {icon && (
+            <span className="mt-0.5 text-primary-600">
+              <DashboardIcon name={icon} />
+            </span>
+          )}
+          <div className="min-w-0">
+            <h2 id={headingId} className={`font-semibold text-ink ${large ? 'text-lg' : 'text-base'}`}>
+              {title}
+            </h2>
+            {description && <p className="mt-0.5 text-xs text-muted">{description}</p>}
+          </div>
         </div>
         {viewAll && (
           <Link
@@ -133,15 +172,20 @@ export function Panel({
           </Link>
         )}
       </header>
-      <div className="flex-1 px-5 pb-4">{children}</div>
+      <div className={`flex-1 ${large ? 'px-6 pb-5' : 'px-5 pb-4'}`}>{children}</div>
     </section>
   );
 }
 
 /** "No data" that says what the absence means — never a bare zero. */
-export function PanelEmpty({ note }: { note: EmptyNote }) {
+export function PanelEmpty({ note, icon }: { note: EmptyNote; icon?: DashboardIconName }) {
   return (
     <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed border-border px-4 py-8 text-center">
+      {icon && (
+        <span className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-primary-50 text-primary-600">
+          <DashboardIcon name={icon} />
+        </span>
+      )}
       <p className="text-sm font-medium text-ink">{note.title}</p>
       <p className="mt-1 max-w-xs text-xs text-muted">{note.description}</p>
       {note.action && (

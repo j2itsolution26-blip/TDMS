@@ -59,6 +59,11 @@ export interface Kpi {
   icon: DashboardIcon;
   /** Where the number comes from, when there is a page for it. */
   href?: string;
+  /**
+   * A real ratio drawn as a thin bar under the figure — "4 of 6 programs
+   * active". Only set where both numbers exist; never a decorative bar.
+   */
+  progress?: { value: number; max: number; label: string };
 }
 
 export interface StatusLabel {
@@ -77,6 +82,8 @@ export interface ListItem {
   at?: string;
   status?: StatusLabel;
   href?: string;
+  /** A glyph for the row's kind, where a layout draws one (the Director's activity feed). */
+  icon?: DashboardIcon;
 }
 
 export interface EmptyNote {
@@ -101,7 +108,7 @@ export interface ChartPoint {
 export interface ChartPanel {
   title: string;
   description: string;
-  kind: 'bars' | 'breakdown';
+  kind: 'bars' | 'breakdown' | 'donut';
   points: ChartPoint[];
   /** What the numbers count, for the axis and the accessible summary. */
   unit: string;
@@ -132,6 +139,46 @@ export interface StatusPanel {
   actions?: { label: string; href: string; primary?: boolean }[];
 }
 
+/** A small table of records: the Director's Program Oversight and Recent Applications. */
+export interface TableColumn {
+  key: string;
+  label: string;
+  align?: 'left' | 'right';
+  /** Drops the column on narrow screens so the table fits without scrolling. */
+  hideOnMobile?: boolean;
+}
+
+/** A cell: plain text, a status badge, or a primary line with a smaller second one. */
+export type TableCell = string | StatusLabel | { text: string; sub?: string };
+
+export interface TableRow {
+  id: string;
+  href?: string;
+  cells: Record<string, TableCell>;
+}
+
+export interface TablePanel {
+  id: string;
+  title: string;
+  description?: string;
+  viewAll?: { label: string; href: string };
+  columns: TableColumn[];
+  rows: TableRow[];
+  empty: EmptyNote;
+}
+
+/**
+ * The Director's layout, drawn on the reference design's grid rather than the
+ * shared one. Every panel is still built from policy-gated queries.
+ */
+export interface DirectorPanels {
+  trend: ChartPanel | null;
+  distribution: ChartPanel | null;
+  actions: ListPanel;
+  oversight: TablePanel | null;
+  applications: TablePanel | null;
+}
+
 export interface QuickAction {
   label: string;
   description: string;
@@ -152,6 +199,11 @@ export interface DashboardView {
   activity: ListPanel | null;
   /** Optional state panels, drawn after the main row. Empty for most roles. */
   statusPanels?: StatusPanel[];
+  /**
+   * Set for the Director only: the page draws the Director's layout from
+   * these instead of the shared primary/secondary/chart row.
+   */
+  director?: DirectorPanels;
   /**
    * An honest note about what this role's dashboard cannot show yet — the
    * teaching and learning records TDMS does not hold. Shown once, plainly,

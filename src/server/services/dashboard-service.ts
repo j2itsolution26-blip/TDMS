@@ -20,6 +20,7 @@ import { googleConfigured } from '@/server/auth/google/oauth';
 import { staticCodeConfigured } from '@/server/auth/super-admin-code';
 import { vaultConfigured } from '@/server/auth/credential-vault';
 import { humanizeAction } from '@/lib/dates';
+import { institutionTimeZone } from '@/lib/institution-time';
 import type { AuthUser } from '@/types/domain';
 import { ROLE_LABELS, type RoleName } from '@/types/domain';
 import type {
@@ -30,6 +31,7 @@ import type {
   ListItem,
   QuickAction,
   StatusPanel,
+  TableRow,
 } from '@/types/dashboard';
 
 /**
@@ -266,21 +268,7 @@ async function userIdsWithRole(roleName: string): Promise<bigint[]> {
 
 // --- Time series ----------------------------------------------------------------
 
-/**
- * Buckets are drawn in the institution's timezone, not the server's: a
- * serverless function runs in UTC, and "today" at a Philippine campus starts
- * eight hours before UTC midnight. Configurable; validated before use so a
- * typo cannot reach SQL.
- */
-function institutionTimeZone(): string {
-  const tz = process.env.APP_TIMEZONE?.trim() || 'Asia/Manila';
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: tz });
-    return tz;
-  } catch {
-    return 'UTC';
-  }
-}
+// Buckets are drawn in the institution's timezone — see src/lib/institution-time.ts.
 
 function localKey(date: Date, tz: string, granularity: 'day' | 'month'): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -312,7 +300,7 @@ function buckets(n: number, granularity: 'day' | 'month', tz: string) {
   return out;
 }
 
-type SeriesTable = 'audit_logs' | 'students' | 'applications' | 'credentials_verified';
+type SeriesTable = 'audit_logs' | 'students' | 'applications' | 'enrollments' | 'credentials_verified';
 
 /**
  * Grouped counts per local day or month, straight from Postgres.
@@ -344,6 +332,11 @@ async function series(table: SeriesTable, granularity: 'day' | 'month', n: numbe
       rows = await prisma.$queryRaw`
         SELECT to_char((created_at AT TIME ZONE 'UTC') AT TIME ZONE ${tz}, ${fmt}) AS k, count(*)::int AS n
         FROM applications WHERE created_at >= ${since} GROUP BY 1`;
+      break;
+    case 'enrollments':
+      rows = await prisma.$queryRaw`
+        SELECT to_char((created_at AT TIME ZONE 'UTC') AT TIME ZONE ${tz}, ${fmt}) AS k, count(*)::int AS n
+        FROM enrollments WHERE created_at >= ${since} GROUP BY 1`;
       break;
     case 'credentials_verified':
       rows = await prisma.$queryRaw`
@@ -442,6 +435,7 @@ async function recentOperations(
     items.push({
       id: `app-new-${a.id}`,
       title: 'New application',
+      icon: 'applications',
       subtitle: `${a.firstName} ${a.lastName} · ${a.program.code}`,
       at: a.createdAt!.toISOString(),
       status: { status: 'submitted', label: 'Submitted' },
@@ -451,6 +445,7 @@ async function recentOperations(
   for (const a of decided) {
     items.push({
       id: `app-decided-${a.id}`,
+      icon: 'applications',
       title: a.status === 'approved' ? 'Application approved' : a.status === 'returned' ? 'Application returned' : 'Application reviewed',
       subtitle: `${a.firstName} ${a.lastName} · ${a.program.code}`,
       at: a.reviewedAt!.toISOString(),
@@ -462,6 +457,7 @@ async function recentOperations(
     items.push({
       id: `student-${s.id}`,
       title: 'Student record added',
+      icon: 'students',
       subtitle: `${s.firstName} ${s.lastName} · ${s.studentNumber}`,
       at: s.createdAt!.toISOString(),
       href: `/students/${s.id}/enrollment`,
@@ -472,6 +468,7 @@ async function recentOperations(
     items.push({
       id: `enrollment-${h.id}`,
       title: `Enrollment ${h.toStatus}`,
+      icon: 'enrollment',
       subtitle: names ? `${h.enrollment.student.firstName} ${h.enrollment.student.lastName} · ${term}` : term,
       at: h.createdAt.toISOString(),
       status: { status: h.toStatus, label: capitalise(h.toStatus) },
@@ -482,6 +479,7 @@ async function recentOperations(
     items.push({
       id: `document-${c.id}`,
       title: 'Document verified',
+      icon: 'documents',
       subtitle: `${c.requirement.name} · ${c.student.firstName} ${c.student.lastName}`,
       at: c.verifiedAt!.toISOString(),
       status: { status: 'verified', label: 'Verified' },
@@ -926,70 +924,171 @@ async function directorView(user: AuthUser): Promise<Body> {
   const weekAgo = new Date(now.getTime() - 7 * 86_400_000);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
+  const canPrograms = programPolicy.viewAny(user);
   const canStudents = studentPolicy.viewAny(user);
   const canApps = applicationPolicy.viewAny(user);
   const canDocs = studentCredentialPolicy.viewAny(user);
   const canEnroll = enrollmentPolicy.viewAny(user);
 
-  const [programs, students, apps, enroll, docs, perProgram, activity] = await Promise.all([
-    programPolicy.viewAny(user) ? programCounts() : null,
+  const [programs, students, apps, enroll, docs, perProgram, trend, latestApps, activity] = await Promise.all([
+    canPrograms ? programCounts() : null,
     canStudents ? studentCounts(weekAgo) : null,
     canApps ? applicationCounts() : null,
     canEnroll ? enrollmentCounts() : null,
     canDocs ? documentCounts(monthStart) : null,
-    programPolicy.viewAny(user) ? programOversight(canStudents, canApps) : null,
+    canPrograms ? programOversight(canStudents, canApps) : null,
+    canEnroll ? series('enrollments', 'month', 6) : null,
+    canApps
+      ? prisma.application.findMany({
+          where: { createdAt: { not: null } },
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+          select: { id: true, firstName: true, lastName: true, status: true, createdAt: true, program: { select: { name: true, code: true } } },
+        })
+      : [],
     recentOperations({ applications: canApps, students: canStudents, enrollments: canEnroll, documents: canDocs }, canStudents),
   ]);
 
+  /*
+   * KPIs. Each ratio bar is a real "x of y" from the same counts — the
+   * reference design's bars, without inventing a target to measure against.
+   * No "vs last term" trends: TDMS keeps no per-term snapshots to compare.
+   */
   const kpis: Kpi[] = [];
-  if (programs) kpis.push({ key: 'programs', label: 'Programs', value: programs.total, icon: 'programs', href: '/programs', hint: programs.total === 0 ? 'None created yet' : `${programs.active} active` });
-  if (students) {
-    kpis.push({ key: 'students', label: 'Students', value: students.total, icon: 'students', href: '/students', hint: students.total === 0 ? 'No student records yet' : `${students.active} active`, tone: students.newThisWeek > 0 ? 'positive' : 'neutral' });
-    // A count, not a rate: TDMS does not record the cohort a completion rate would need.
-    kpis.push({ key: 'graduated', label: 'Graduates', value: students.graduated, icon: 'active', hint: students.graduated === 0 ? 'None recorded yet' : 'Students marked graduated' });
+  if (programs) {
+    kpis.push({
+      key: 'programs', label: 'Programs', value: programs.total, icon: 'programs', href: '/programs',
+      hint: programs.total === 0 ? 'None created yet' : `${programs.active} active`,
+      progress: programs.total > 0 ? { value: programs.active, max: programs.total, label: `${programs.active} of ${programs.total} programs active` } : undefined,
+    });
   }
-  if (apps) kpis.push({ key: 'applications', label: 'Applications', value: apps.waiting, icon: 'applications', href: '/applications', hint: apps.waiting > 0 ? 'Awaiting a decision' : 'None waiting', tone: apps.waiting > 0 ? 'attention' : 'neutral' });
-  if (enroll) kpis.push({ key: 'enrollments', label: 'Enrolled', value: enroll.enrolled, icon: 'enrollment', hint: enroll.pending > 0 ? `${enroll.pending} awaiting approval` : 'Current enrollments' });
+  if (students) {
+    kpis.push({
+      key: 'students', label: 'Students', value: students.total, icon: 'students', href: '/students',
+      hint: students.total === 0 ? 'No student records yet' : `${students.active} active`,
+      tone: students.newThisWeek > 0 ? 'positive' : 'neutral',
+      progress: students.total > 0 ? { value: students.active, max: students.total, label: `${students.active} of ${students.total} students active` } : undefined,
+    });
+    // A count, not a rate: TDMS does not record the cohort a completion rate would need.
+    kpis.push({
+      key: 'graduated', label: 'Graduates', value: students.graduated, icon: 'active',
+      hint: students.graduated === 0 ? 'None recorded yet' : 'Students marked graduated',
+      progress: students.total > 0 ? { value: students.graduated, max: students.total, label: `${students.graduated} of ${students.total} students graduated` } : undefined,
+    });
+  }
+  if (apps) {
+    const decided = apps.approved + apps.returned;
+    kpis.push({
+      key: 'applications', label: 'Applications', value: apps.waiting, icon: 'applications', href: '/applications',
+      hint: apps.waiting > 0 ? 'Awaiting a decision' : 'None waiting',
+      tone: apps.waiting > 0 ? 'attention' : 'neutral',
+      progress: apps.total > 0 ? { value: decided, max: apps.total, label: `${decided} of ${apps.total} applications decided` } : undefined,
+    });
+  }
+  if (enroll) {
+    const all = enroll.enrolled + enroll.pending + enroll.dropped;
+    kpis.push({
+      key: 'enrollments', label: 'Enrolled', value: enroll.enrolled, icon: 'enrollment',
+      hint: enroll.pending > 0 ? `${enroll.pending} awaiting approval` : 'Current enrollments',
+      tone: enroll.pending > 0 ? 'attention' : 'neutral',
+      progress: all > 0 ? { value: enroll.enrolled, max: all, label: `${enroll.enrolled} of ${all} enrollments approved` } : undefined,
+    });
+  }
 
   const actions: ListItem[] = [];
-  if (apps) actions.push(task('d-apps', 'Applications awaiting decision', apps.waiting, 'application', '/applications', 'Nothing awaiting a decision'));
-  if (enroll) actions.push(task('d-enroll', 'Enrollments awaiting approval', enroll.pending, 'enrollment', '/students', 'Nothing awaiting approval'));
-  if (docs) actions.push(task('d-docs', 'Documents under review', docs.toReview, 'document', '/students', 'No documents under review'));
-  if (apps) actions.push(task('d-returned', 'Returned applications', apps.returned, 'application', '/applications', 'None returned'));
+  if (apps) actions.push({ ...task('d-apps', 'Applications awaiting decision', apps.waiting, 'application', '/applications', 'Nothing awaiting a decision'), icon: 'applications' });
+  if (enroll) actions.push({ ...task('d-enroll', 'Enrollments awaiting approval', enroll.pending, 'enrollment', '/students', 'Nothing awaiting approval'), icon: 'enrollment' });
+  if (docs) actions.push({ ...task('d-docs', 'Documents under review', docs.toReview, 'document', '/students', 'No documents under review'), icon: 'documents' });
+  if (apps) actions.push({ ...task('d-returned', 'Returned applications', apps.returned, 'application', '/applications', 'None returned'), icon: 'applications' });
+
+  const applicationStatus = (status: string) =>
+    ({ submitted: 'Submitted', under_review: 'Under review', approved: 'Approved', returned: 'Returned' })[status] ?? capitalise(status);
 
   return {
     kpis,
-    primary: perProgram
-      ? {
-          title: 'Program Oversight',
-          description: 'Students and pending applications per program',
-          viewAll: { label: 'All programs', href: '/programs' },
-          items: perProgram.items,
-          empty: { title: 'No programs yet', description: 'Programs appear here once they are created.', action: { label: 'Open programs', href: '/programs' } },
-        }
-      : null,
-    secondary: {
-      title: 'Director Actions',
-      description: 'Decisions and reviews in progress',
-      items: actions,
-      empty: { title: 'Nothing waiting', description: 'Items needing a decision will be listed here.' },
-    },
-    chart: perProgram && canStudents
-      ? {
-          title: 'Enrollment by Program',
-          description: 'Student records in each program',
-          kind: 'breakdown',
-          points: perProgram.studentPoints,
-          unit: 'students',
-          empty: { title: 'No students recorded', description: 'Each program’s headcount will appear once students are recorded.' },
-        }
-      : null,
+    primary: null,
+    secondary: null,
+    chart: null,
     quickActions: operationalActions(user),
     activity: {
       title: 'Recent Activity',
       description: 'Applications, enrollments and documents',
       items: activity,
-      empty: { title: 'No activity yet', description: 'Operational changes will appear here as they happen.' },
+      empty: { title: 'No recent activity', description: 'Activity will appear here as the system is used.' },
+    },
+    director: {
+      trend: trend
+        ? {
+            title: 'Enrollment Trend',
+            description: 'Enrollments recorded per month, last 6 months',
+            kind: 'bars',
+            points: trend,
+            unit: 'enrollments',
+            empty: { title: 'No enrollments yet', description: 'Monthly enrollments will be charted once they are recorded.' },
+          }
+        : null,
+      distribution:
+        perProgram && canStudents
+          ? {
+              title: 'Enrollment by Program',
+              description: 'Student records in each program',
+              kind: 'donut',
+              points: perProgram.studentPoints,
+              unit: 'students',
+              empty: {
+                title: 'No students recorded',
+                description: 'Each program’s headcount will appear once students are recorded.',
+                action: { label: 'View students', href: '/students' },
+              },
+            }
+          : null,
+      actions: {
+        title: 'Director Actions',
+        description: 'Decisions and reviews in progress',
+        items: actions,
+        empty: { title: 'Nothing waiting', description: 'Items needing a decision will be listed here.' },
+      },
+      oversight: perProgram
+        ? {
+            id: 'oversight',
+            title: 'Program Oversight',
+            description: 'Students and pending applications per program',
+            viewAll: { label: 'All programs', href: '/programs' },
+            columns: [
+              { key: 'program', label: 'Program' },
+              ...(canStudents ? [{ key: 'students', label: 'Students', align: 'right' as const }] : []),
+              ...(canApps ? [{ key: 'pending', label: 'Pending', align: 'right' as const }] : []),
+              { key: 'status', label: 'Status', hideOnMobile: true },
+            ],
+            rows: perProgram.rows,
+            empty: { title: 'No programs yet', description: 'Programs appear here once they are created.', action: { label: 'Open programs', href: '/programs' } },
+          }
+        : null,
+      applications: canApps
+        ? {
+            id: 'applications',
+            title: 'Recent Applications',
+            description: 'The latest applications received',
+            viewAll: { label: 'All applications', href: '/applications' },
+            columns: [
+              { key: 'applicant', label: 'Applicant' },
+              { key: 'program', label: 'Program', hideOnMobile: true },
+              { key: 'status', label: 'Status' },
+              { key: 'date', label: 'Date', align: 'right', hideOnMobile: true },
+            ],
+            rows: latestApps.map((a) => ({
+              id: a.id.toString(),
+              href: '/applications',
+              cells: {
+                applicant: `${a.firstName} ${a.lastName}`,
+                program: a.program.name,
+                status: { status: a.status, label: applicationStatus(a.status) },
+                date: a.createdAt!.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: institutionTimeZone() }),
+              },
+            })),
+            empty: { title: 'No applications yet', description: 'New applications will be listed here as they arrive.', action: { label: 'Open applications', href: '/applications' } },
+          }
+        : null,
     },
   };
 }
@@ -1024,7 +1123,23 @@ async function programOversight(withStudents: boolean, withApps: boolean) {
     .sort((a, b) => b.value - a.value)
     .slice(0, 8);
 
-  return { items, studentPoints };
+  // The same figures as a table, busiest program first.
+  const rows: TableRow[] = programs
+    .map((p) => ({ p, headcount: studentsBy.get(p.id.toString()) ?? 0, waiting: appsBy.get(p.id.toString()) ?? 0 }))
+    .sort((a, b) => b.headcount - a.headcount || b.waiting - a.waiting || a.p.code.localeCompare(b.p.code))
+    .slice(0, 6)
+    .map(({ p, headcount, waiting }) => ({
+      id: p.id.toString(),
+      href: `/programs/${p.id}`,
+      cells: {
+        program: { text: p.name, sub: p.code },
+        students: headcount.toLocaleString('en-US'),
+        pending: waiting.toLocaleString('en-US'),
+        status: p.isActive ? { status: 'active', label: 'Active' } : { status: 'inactive', label: 'Inactive' },
+      },
+    }));
+
+  return { items, studentPoints, rows };
 }
 
 // --- Coordinator -------------------------------------------------------------------

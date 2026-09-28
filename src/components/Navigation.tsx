@@ -67,15 +67,18 @@ function Glyph({ name, className = 'h-5 w-5' }: { name: keyof typeof ICONS; clas
 const FOCUS_DARK = 'focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-forest';
 const FOCUS_LIGHT = 'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2';
 
-/** The TDMS mark: a diploma cap in a shield, drawn inline so it needs no asset. */
+/**
+ * The TDMS mark: the Diploma Program Department's own logo, the same file the
+ * sign-in screen uses — not a stand-in icon. It is green artwork on a
+ * transparent background, so it sits on a white disc to stay legible against
+ * the green sidebar.
+ */
 function Brand() {
   return (
     <span className="flex items-center gap-3">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-white" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
-          <path d="M22 10 12 5 2 10l10 5 10-5Z" />
-          <path d="M6 12v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5" />
-        </svg>
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white p-1 shadow-sm">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/images/auth/logo.png" alt="" width={32} height={28} className="h-auto w-full" />
       </span>
       <span className="min-w-0">
         <span className="block text-lg font-bold leading-tight tracking-tight text-white">TDMS</span>
@@ -107,11 +110,13 @@ function Sidebar({
   items,
   isActive,
   roleLabel,
+  userName,
   onNavigate,
 }: {
   items: NavItem[];
   isActive: (item: NavItem) => boolean;
   roleLabel: string;
+  userName: string;
   onNavigate?: () => void;
 }) {
   return (
@@ -133,9 +138,12 @@ function Sidebar({
       </nav>
 
       <div className="shrink-0 p-3">
-        <div className="rounded-lg border border-forest-line bg-forest-light px-3 py-2.5">
-          <p className="text-sm font-semibold text-white">{roleLabel}</p>
-          <p className="text-[11px] text-primary-100">TDMS</p>
+        <div className="flex items-center gap-3 rounded-lg border border-forest-line bg-forest-light px-3 py-2.5">
+          <Avatar name={userName} size="sm" />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-white">{userName}</p>
+            <p className="truncate text-[11px] text-primary-100">{roleLabel}</p>
+          </div>
         </div>
       </div>
     </div>
@@ -327,7 +335,7 @@ export default function Navigation({
 
       {/* Desktop sidebar */}
       <aside className="hidden bg-forest lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:block lg:w-64" aria-label="Sidebar">
-        <Sidebar items={items} isActive={isActive} roleLabel={user.roleLabel} />
+        <Sidebar items={items} isActive={isActive} roleLabel={user.roleLabel} userName={user.name} />
       </aside>
 
       {/* Mobile drawer */}
@@ -345,7 +353,7 @@ export default function Navigation({
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
-            <Sidebar items={items} isActive={isActive} roleLabel={user.roleLabel} onNavigate={() => setSidebarOpen(false)} />
+            <Sidebar items={items} isActive={isActive} roleLabel={user.roleLabel} userName={user.name} onNavigate={() => setSidebarOpen(false)} />
           </aside>
         </div>
       )}

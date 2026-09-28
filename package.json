@@ -22,7 +22,8 @@
     "test:e2e": "node scripts/e2e/session-redirect.mjs",
     "test:accounts": "node scripts/e2e/institutional-auth.mjs",
     "test:prod": "node scripts/e2e/production-flow.mjs",
-    "test:admins": "node scripts/e2e/admin-access-code.mjs"
+    "test:admins": "node scripts/e2e/admin-access-code.mjs",
+    "test:staff": "node scripts/e2e/staff-accounts.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.1.0",

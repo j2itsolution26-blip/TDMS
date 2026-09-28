@@ -371,15 +371,29 @@ export const staffRoleSchema = z.enum(
 );
 
 /**
- * Inviting or editing a staff account. No password field: the invitee sets
- * their own through the verification link, so none is ever transmitted,
- * generated or displayed.
+ * A staff account's details: name, address, role. Used as-is for editing, and
+ * extended with a temporary password for creation below.
  */
 export const inviteAccountSchema = z.object({
   name: z.string().trim().min(1, 'The name is required.').max(255),
   email: institutionalEmail,
   role: staffRoleSchema,
 });
+
+/**
+ * Creating a staff account: details plus a temporary password, which goes
+ * through the same strength rule as every other password. It is temporary, not
+ * exempt — a live credential from the moment the account exists.
+ */
+export const createStaffSchema = inviteAccountSchema
+  .extend({
+    temporaryPassword: strongPassword,
+    temporaryPasswordConfirmation: z.string(),
+  })
+  .refine((d) => d.temporaryPassword === d.temporaryPasswordConfirmation, {
+    message: 'The password confirmation does not match.',
+    path: ['temporaryPasswordConfirmation'],
+  });
 
 export const accountStatusChangeSchema = z.object({
   status: accountStatusSchema.refine((s) => s !== 'PENDING', {

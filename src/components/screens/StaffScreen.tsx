@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api-client';
 import Modal from '@/components/Modal';
@@ -13,18 +13,32 @@ import {
   type RoleName, type AccountStatus,
 } from '@/types/domain';
 import { formatDate } from '@/lib/dates';
-import { succeeded, undelivered, type Notice } from '@/lib/notice';
+import { succeeded, type Notice } from '@/lib/notice';
+import { PASSWORD_REQUIREMENTS, evaluatePassword } from '@/lib/password-policy';
+import { generateTemporaryPassword } from '@/lib/temporary-password';
 
 /**
- * Account administration.
+ * Staff accounts — the Admin's screen.
  *
- * Differs from the Laravel screen in one respect that matters: creating an
- * account no longer produces a password for the administrator to read out.
- * It sends an invitation, and the person sets their own password through the
- * verification link. So there is no "one-time password" panel here, because
- * there is no longer a moment at which anyone but the account holder knows
- * the password.
+ * Add Staff creates the account directly: ACTIVE, with a temporary password
+ * shown here once. The staff member signs in with it and must choose their own
+ * before doing anything else. Reset password issues a fresh temporary password
+ * the same way. No email is involved, so onboarding never waits on delivery.
+ *
+ * A temporary password is held only in component state while its panel is open
+ * — never localStorage, never the URL — and the server keeps only its hash.
  */
+
+interface IssuedPassword {
+  name: string;
+  email: string;
+  temporaryPassword: string;
+  /** 'created' for a new account, 'reset' for a reissue. */
+  kind: 'created' | 'reset';
+  activated?: boolean;
+}
+
+const EMPTY_PASSWORDS = { temporaryPassword: '', temporaryPasswordConfirmation: '' };
 
 export interface AccountRow {
   id: string;
@@ -45,14 +59,13 @@ interface Props {
   roleOptions: string[];
   currentUserId: string;
   canCreate: boolean;
-  mailConfigured: boolean;
   /** Enforced domain, or null when the restriction is off. */
   institutionalDomain: string | null;
 }
 
 export default function StaffScreen({
   rows, page, lastPage, total, roleOptions, currentUserId,
-  canCreate, mailConfigured, institutionalDomain,
+  canCreate, institutionalDomain,
 }: Props) {
   const router = useRouter();
   const [showForm, setShowForm] = useState(false);
@@ -68,6 +81,16 @@ export default function StaffScreen({
    */
   const [notice, setNotice] = useState<Notice | null>(null);
   const [busy, setBusy] = useState(false);
+  const [passwords, setPasswords] = useState(EMPTY_PASSWORDS);
+  const [revealPassword, setRevealPassword] = useState(false);
+  const [issued, setIssued] = useState<IssuedPassword | null>(null);
+  const [resetTarget, setResetTarget] = useState<AccountRow | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const requirements = useMemo(
+    () => evaluatePassword(passwords.temporaryPassword),
+    [passwords.temporaryPassword],
+  );
 
   function reset() { setErrors({}); setMessage(null); setNotice(null); }
 
@@ -77,7 +100,26 @@ export default function StaffScreen({
       name: '', email: '',
       role: roleOptions.includes('secretary') ? 'secretary' : (roleOptions[0] ?? ''),
     });
+    setPasswords(EMPTY_PASSWORDS);
+    setRevealPassword(false);
     reset(); setShowForm(true);
+  }
+
+  function fillGeneratedPassword() {
+    // Web Crypto, via the same generator the server uses for a reset.
+    const generated = generateTemporaryPassword();
+    setPasswords({ temporaryPassword: generated, temporaryPasswordConfirmation: generated });
+    setRevealPassword(true);
+  }
+
+  async function copy(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setNotice({ tone: 'warning', text: 'Could not reach the clipboard. Copy it by hand.' });
+    }
   }
 
   function openEdit(row: AccountRow) {
@@ -92,7 +134,10 @@ export default function StaffScreen({
 
     const result = editing
       ? await api.put<{ emailChanged: boolean }>(`/api/staff/${editing.id}`, form)
-      : await api.post<{ mailDelivered: boolean; mailDetail?: string }>('/api/staff', form);
+      : await api.post<{ name: string; email: string; temporaryPassword: string }>('/api/staff', {
+          ...form,
+          ...passwords,
+        });
 
     setBusy(false);
     if (!result.ok) {
@@ -103,21 +148,12 @@ export default function StaffScreen({
 
     setShowForm(false);
     if (!editing) {
-      const d = result.data as { mailDelivered: boolean; mailDetail?: string };
-      setNotice(
-        d.mailDelivered
-          ? succeeded(
-              `Invitation sent to ${form.email}. They will set their own password from the link.`,
-            )
-          : undelivered(
-              `Account created for ${form.email}, but the invitation could not be sent`,
-              `${d.mailDetail ?? ''} Use "Resend invite" once that is resolved.`.trim(),
-            ),
-      );
+      const d = result.data as { name: string; email: string; temporaryPassword: string };
+      setPasswords(EMPTY_PASSWORDS);
+      setCopied(false);
+      setIssued({ name: d.name, email: d.email, temporaryPassword: d.temporaryPassword, kind: 'created' });
     } else if ((result.data as { emailChanged: boolean }).emailChanged) {
-      setNotice(
-        succeeded('Email changed. The account must verify the new address before signing in again.'),
-      );
+      setNotice(succeeded('Email changed. Their sessions have been signed out.'));
     }
     router.refresh();
   }
@@ -131,34 +167,18 @@ export default function StaffScreen({
     router.refresh();
   }
 
-  async function resendInvite(row: AccountRow) {
+  async function confirmReset() {
+    if (!resetTarget) return;
     setBusy(true); reset();
-    const result = await api.post<{ mailDelivered: boolean; mailDetail?: string }>(
-      `/api/staff/${row.id}/resend-verification`,
+    const result = await api.post<{ name: string; email: string; temporaryPassword: string; activated: boolean }>(
+      `/api/staff/${resetTarget.id}/reset-password`,
     );
     setBusy(false);
+    setResetTarget(null);
     if (!result.ok) { setMessage(result.message); return; }
-    setNotice(
-      result.data.mailDelivered
-        ? succeeded(`Verification email re-sent to ${row.email}.`)
-        : undelivered('Could not send the email', result.data.mailDetail),
-    );
-  }
-
-  async function sendReset(row: AccountRow) {
-    setBusy(true); reset();
-    const result = await api.post<{ mailDelivered: boolean; mailDetail?: string }>(
-      `/api/staff/${row.id}/reset-password`,
-    );
-    setBusy(false);
-    if (!result.ok) { setMessage(result.message); return; }
-    setNotice(
-      result.data.mailDelivered
-        ? succeeded(
-            `Password reset link sent to ${row.email}. Their sessions have been signed out.`,
-          )
-        : undelivered('Could not send the email', result.data.mailDetail),
-    );
+    setCopied(false);
+    setIssued({ ...result.data, kind: 'reset' });
+    router.refresh();
   }
 
   return (
@@ -168,25 +188,17 @@ export default function StaffScreen({
         subtitle={
           institutionalDomain
             ? `Institutional accounts. Every address must be @${institutionalDomain}.`
-            : 'Staff accounts. Invitations are sent to the address you enter.'
+            : 'Staff accounts. Each is created with a temporary password they change at first sign-in.'
         }
         actions={canCreate ? (
           <button type="button" className={BUTTON_PRIMARY} onClick={openCreate}>
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
-            Invite Staff
+            Add Staff
           </button>
         ) : null}
       />
-
-      {!mailConfigured && (
-        <Alert type="warning" title="Email is not configured">
-          Invitations and password resets cannot be delivered until mail is configured
-          (<code>RESEND_API_KEY</code> and <code>EMAIL_FROM</code>). Accounts can still be
-          created, but the people invited will not receive anything.
-        </Alert>
-      )}
 
       {message && <Alert type="danger">{message}</Alert>}
       {notice && <Alert type={notice.tone}>{notice.text}</Alert>}
@@ -197,8 +209,8 @@ export default function StaffScreen({
             title="No staff accounts yet"
             description={
               institutionalDomain
-                ? 'Invite a colleague using their institutional email address.'
-                : 'Invite a colleague using their email address.'
+                ? 'Add a colleague using their institutional email address.'
+                : 'Add a colleague using their email address.'
             }
           />
         ) : (
@@ -226,7 +238,7 @@ export default function StaffScreen({
                       <td className="px-6 py-3.5 text-sm text-slate-500">
                         {row.email}
                         <p className="text-xs text-slate-400">
-                          {row.emailVerified ? 'Verified' : 'Not verified'}
+                          {row.emailVerified ? 'Set up' : 'Never set up — use Reset password'}
                           {row.createdAt && ` · added ${formatDate(row.createdAt)}`}
                         </p>
                       </td>
@@ -243,17 +255,10 @@ export default function StaffScreen({
                             Edit
                           </button>
 
-                          {!row.emailVerified && (
-                            <button type="button" onClick={() => resendInvite(row)} disabled={busy}
+                          {row.id !== currentUserId && (
+                            <button type="button" onClick={() => { reset(); setResetTarget(row); }} disabled={busy}
                               className="font-medium text-slate-600 hover:text-indigo-600 disabled:opacity-50">
-                              Resend invite
-                            </button>
-                          )}
-
-                          {row.emailVerified && (
-                            <button type="button" onClick={() => sendReset(row)} disabled={busy}
-                              className="font-medium text-slate-600 hover:text-indigo-600 disabled:opacity-50">
-                              Send reset link
+                              Reset password
                             </button>
                           )}
 
@@ -292,7 +297,7 @@ export default function StaffScreen({
         )}
       </Card>
 
-      <Modal open={showForm} onClose={() => setShowForm(false)} title={editing ? 'Edit Account' : 'Invite Staff'}>
+      <Modal open={showForm} onClose={() => setShowForm(false)} title={editing ? 'Edit Account' : 'Add Staff'}>
         <form onSubmit={save} className="space-y-4">
           <div>
             <label className={LABEL_CLASS} htmlFor="sf-name">Full Name</label>
@@ -328,11 +333,49 @@ export default function StaffScreen({
           </div>
 
           {!editing && (
-            <Alert type="info">
-              No password is created. The account waits on email verification, and an email is
-              sent asking them to confirm the address and choose their own password. Administrator
-              accounts are not invited from here — a Super Admin creates those from Admin Accounts.
-            </Alert>
+            <>
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className={LABEL_CLASS} htmlFor="sf-password">Temporary Password</label>
+                  <button type="button" onClick={fillGeneratedPassword}
+                    className="text-sm font-medium text-indigo-600 hover:text-indigo-700">
+                    Generate password
+                  </button>
+                </div>
+                <input id="sf-password" type={revealPassword ? 'text' : 'password'}
+                  className={`${INPUT_CLASS} font-mono`} autoComplete="new-password"
+                  value={passwords.temporaryPassword}
+                  onChange={(e) => setPasswords({ ...passwords, temporaryPassword: e.target.value })} required />
+                <button type="button" onClick={() => setRevealPassword((v) => !v)}
+                  className="mt-1 text-xs font-medium text-slate-500 hover:text-slate-700">
+                  {revealPassword ? 'Hide' : 'Show'}
+                </button>
+                {/* The same PASSWORD_REQUIREMENTS the server validates against. */}
+                <ul className="mt-2 space-y-1 text-xs" aria-live="polite">
+                  {PASSWORD_REQUIREMENTS.map((r) => (
+                    <li key={r.id} className={requirements[r.id] ? 'text-green-700' : 'text-slate-500'}>
+                      <span aria-hidden="true">{requirements[r.id] ? '✓ ' : '· '}</span>{r.label}
+                    </li>
+                  ))}
+                </ul>
+                <FieldError messages={errors.temporaryPassword} />
+              </div>
+
+              <div>
+                <label className={LABEL_CLASS} htmlFor="sf-password-confirm">Confirm Temporary Password</label>
+                <input id="sf-password-confirm" type={revealPassword ? 'text' : 'password'}
+                  className={`${INPUT_CLASS} font-mono`} autoComplete="new-password"
+                  value={passwords.temporaryPasswordConfirmation}
+                  onChange={(e) => setPasswords({ ...passwords, temporaryPasswordConfirmation: e.target.value })} required />
+                <FieldError messages={errors.temporaryPasswordConfirmation} />
+              </div>
+
+              <Alert type="info">
+                The account is created Active. They sign in with this temporary password and must
+                choose their own straight away. Admin accounts are not created here — a Super Admin
+                creates those.
+              </Alert>
+            </>
           )}
 
           {message && <p className="text-sm text-red-600">{message}</p>}
@@ -340,10 +383,68 @@ export default function StaffScreen({
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" className={BUTTON_SECONDARY} onClick={() => setShowForm(false)}>Cancel</button>
             <button type="submit" className={BUTTON_PRIMARY} disabled={busy}>
-              {busy ? 'Saving…' : editing ? 'Save' : 'Send Invitation'}
+              {busy ? 'Saving…' : editing ? 'Save' : 'Create Account'}
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* --- Reset password: confirm ---------------------------------- */}
+      <Modal open={resetTarget !== null} onClose={() => setResetTarget(null)} title="Reset password" maxWidth="sm:max-w-lg">
+        {resetTarget && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              For <span className="font-medium text-navy-900">{resetTarget.name}</span> &lt;{resetTarget.email}&gt;
+            </p>
+            <p className="text-sm text-slate-600">
+              A new temporary password will be generated and shown once. Their current password
+              stops working, they are signed out everywhere, and they must choose their own at the
+              next sign-in.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button type="button" className={BUTTON_SECONDARY} onClick={() => setResetTarget(null)}>Cancel</button>
+              <button type="button" className={BUTTON_PRIMARY} onClick={confirmReset} disabled={busy}>
+                {busy ? 'Resetting…' : 'Reset password'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* --- One-shot: the temporary password ------------------------- */}
+      <Modal open={issued !== null} onClose={() => setIssued(null)}
+        title={issued?.kind === 'reset' ? 'Password reset' : 'Account created'} maxWidth="sm:max-w-lg">
+        {issued && (
+          <div className="space-y-4">
+            <Alert type="warning" title="Shown once">
+              Copy the temporary password now and give it to {issued.name} securely. Only its hash is
+              stored, so it cannot be shown again — you would reset it.
+            </Alert>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Account</p>
+              <p className="mt-1 text-sm text-navy-900">{issued.name}</p>
+              <p className="break-all text-sm text-slate-500">{issued.email}</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Temporary password</p>
+              <p className="mt-1 select-all break-all rounded-lg border border-border bg-slate-50 px-3 py-2 font-mono text-sm text-navy-900">
+                {issued.temporaryPassword}
+              </p>
+            </div>
+            {issued.activated && (
+              <Alert type="success">This account had never been set up and is now active.</Alert>
+            )}
+            <p className="text-sm text-slate-600">
+              They sign in with their email and this password, then choose their own.
+            </p>
+            <div className="flex justify-end gap-3 border-t border-border pt-4">
+              <button type="button" className={BUTTON_SECONDARY} onClick={() => copy(issued.temporaryPassword)}>
+                {copied ? 'Copied' : 'Copy password'}
+              </button>
+              <button type="button" className={BUTTON_PRIMARY} onClick={() => setIssued(null)}>Done</button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

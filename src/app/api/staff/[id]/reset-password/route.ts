@@ -1,17 +1,19 @@
 import type { NextRequest } from 'next/server';
-import { ok } from '@/lib/http';
-import { withErrorHandling, parseJson, requestContext } from '@/server/api-handler';
+import { okSecret } from '@/lib/http';
+import { withErrorHandling, requestContext } from '@/server/api-handler';
 import { requireApiUser, authorize } from '@/server/auth/current-user';
 import { userPolicy } from '@/server/auth/policies';
 import { idSchema } from '@/server/validation/schemas';
-import { getAccount, sendAdminPasswordReset } from '@/server/services/account-service';
+import { getAccount, resetStaffTemporaryPassword } from '@/server/services/account-service';
 
 type Params = { params: Promise<{ id: string }> };
 
 /**
- * Sends a reset link to the account's verified institutional address. The
- * administrator never learns the new password, which is the point — the old
- * flow displayed a generated one on screen.
+ * POST /api/staff/:id/reset-password — issue a fresh temporary password.
+ *
+ * Generated on the server and returned once (`no-store`). Every session for the
+ * account ends, and the holder must choose their own password at the next
+ * sign-in. No email is involved.
  */
 export const POST = withErrorHandling(async (request: NextRequest, { params }: Params) => {
   const user = await requireApiUser();
@@ -19,5 +21,5 @@ export const POST = withErrorHandling(async (request: NextRequest, { params }: P
   const targetId = idSchema.parse(id);
   const target = await getAccount(targetId);
   authorize(userPolicy.resetPassword(user, { id: target.id.toString(), roles: target.roles }));
-  return ok(await sendAdminPasswordReset(user, targetId, requestContext(request)));
+  return okSecret(await resetStaffTemporaryPassword(user, targetId, requestContext(request)));
 });

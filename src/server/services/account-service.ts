@@ -5,12 +5,12 @@ import { hashPassword } from '@/server/auth/password';
 import { USER_MODEL_TYPE, GUARD } from '@/server/auth/rbac';
 import { destroyAllSessionsFor } from '@/server/auth/session';
 import {
-  issueEmailVerificationToken,
   issuePasswordResetToken,
   consumeEmailVerificationToken,
   consumePasswordResetToken,
 } from '@/server/auth/tokens';
-import { sendVerificationEmail, sendPasswordResetEmail } from '@/server/mail/messages';
+import { sendPasswordResetEmail } from '@/server/mail/messages';
+import { generateTemporaryPassword } from '@/lib/temporary-password';
 import { canSendMail } from '@/server/mail/mailer';
 import { consumeRateLimit } from '@/server/auth/rate-limit';
 import { checkInstitutionalEmail } from '@/lib/institutional-email';
@@ -19,13 +19,19 @@ import { consumeTemporaryCredential } from './admin-account-service';
 import type { AuthUser, AccountStatus } from '@/types/domain';
 
 /**
- * Account administration and the account lifecycle.
+ * Staff account administration — the Admin's job.
  *
- * No function here ever invents a password. An account is created without
- * one and the person sets their own through a verification link — which is
- * also what proves they control the address. That removes the two things the
- * old flow relied on: a generated password read off a screen, and an
- * administrator who therefore knew it.
+ * The Admin creates a staff account (Director, Coordinator, Secretary,
+ * Teacher) directly: ACTIVE, with a temporary password shown to the Admin once.
+ * The staff member signs in with it and is made to choose their own before
+ * they can do anything else (`mustChangePassword`, enforced by requireUser()
+ * and requireApiUser()). Staff sign-in needs no access code; that second factor
+ * is for Admins only.
+ *
+ * No email is involved in creating an account or resetting its password, so
+ * onboarding does not depend on mail delivery. Only the temporary password's
+ * bcrypt hash is stored. The Admin knows it until the holder changes it, which
+ * the holder is forced to do at first sign-in.
  */
 
 /**
@@ -178,33 +184,41 @@ export async function getAccount(id: bigint) {
   return { ...user, roles: roles.map((r) => r.role.name) };
 }
 
-// --- Invitation ------------------------------------------------------------
+// --- Creation --------------------------------------------------------------
 
-export interface InviteResult {
+export interface CreatedStaff {
   id: string;
+  name: string;
   email: string;
-  mailDelivered: boolean;
-  mailDetail?: string;
+  role: string;
+  /** Plaintext, in this response only. The account stores a bcrypt hash. */
+  temporaryPassword: string;
 }
 
+const CREATE_LIMIT_PER_ACTOR = { max: 30, windowSeconds: 3600 };
+
 /**
- * Invite a member of staff.
+ * Create a staff account with a temporary password.
  *
- * The account is created PENDING with an unusable password
- * placeholder — a random value that is hashed and immediately forgotten, so
- * the row is never password-less and nobody, including the administrator who
- * created it, can sign in as this person. The invitee sets their own
- * password through the verification link.
+ * The address is confirmed on the Admin's authority rather than by an emailed
+ * link — the Admin is typing it for a colleague they are also handing a
+ * password to. The audit record says so, so the trail does not claim the
+ * holder proved anything.
  */
-export async function inviteAccount(
+export async function createStaffAccount(
   actor: AuthUser,
-  input: { name: string; email: string; role: string },
+  input: { name: string; email: string; role: string; temporaryPassword: string },
   context: AuditContext,
-): Promise<InviteResult> {
+): Promise<CreatedStaff> {
   if (!assignableRoles(actor).includes(input.role)) {
     throw new AppError('You may not assign that role.', 403, {
       role: ['You may not assign that role.'],
     });
+  }
+
+  const throttle = await consumeRateLimit('staff-create', actor.id, CREATE_LIMIT_PER_ACTOR);
+  if (throttle.limited) {
+    throw new AppError('Many accounts have been created recently. Please wait a while.', 429);
   }
 
   const check = checkInstitutionalEmail(input.email);
@@ -221,37 +235,36 @@ export async function inviteAccount(
     data: {
       name: input.name.trim(),
       email: check.email,
-      // Unusable by construction: the plaintext is discarded on this line.
-      password: await hashPassword(crypto.randomUUID() + crypto.randomUUID()),
-      emailVerifiedAt: null,
-      ...stateFields('PENDING'),
+      password: await hashPassword(input.temporaryPassword),
+      emailVerifiedAt: new Date(),
+      mustChangePassword: true,
+      ...stateFields('ACTIVE'),
       createdAt: new Date(),
     },
   });
 
   await syncRole(user.id, input.role);
 
-  const { token, expiresAt } = await issueEmailVerificationToken(user.id, user.email);
-  const mail = await sendVerificationEmail({
-    to: user.email,
-    name: user.name,
-    token,
-    expiresAt,
-  });
-
   await recordAudit({
-    action: 'ACCOUNT_INVITED',
+    action: 'STAFF_CREATED',
     actor: actorLabel(actor),
     target: `${user.name} <${user.email}>`,
-    details: { role: input.role, mail_transport: mail.transport, mail_delivered: mail.delivered },
+    // That a temporary password was issued; never what it was.
+    details: {
+      role: input.role,
+      status: 'ACTIVE',
+      email_confirmation: 'administrative',
+      must_change_password: true,
+    },
     context,
   });
 
   return {
     id: user.id.toString(),
+    name: user.name,
     email: user.email,
-    mailDelivered: mail.delivered,
-    mailDetail: mail.detail,
+    role: input.role,
+    temporaryPassword: input.temporaryPassword,
   };
 }
 
@@ -289,22 +302,20 @@ export async function updateAccount(
     data: {
       name: input.name.trim(),
       email: check.email,
-      // A new address is unproven, so it must be verified again and the
-      // account returns to pending until it is.
-      ...(emailChanged
-        ? { emailVerifiedAt: null, ...stateFields('PENDING') }
-        : { updatedAt: new Date() }),
+      /*
+       * A changed address is confirmed on the Admin's authority, exactly as at
+       * creation. It no longer sends the account back to pending behind an
+       * emailed link the holder may never receive.
+       */
+      ...(emailChanged ? { emailVerifiedAt: new Date() } : {}),
+      updatedAt: new Date(),
     },
   });
 
   await syncRole(id, input.role);
 
-  if (emailChanged) {
-    // Any session was authenticated against the old address.
-    await destroyAllSessionsFor(id);
-    const { token, expiresAt } = await issueEmailVerificationToken(id, check.email);
-    await sendVerificationEmail({ to: check.email, name: input.name, token, expiresAt });
-  }
+  // Any session was authenticated against the old address.
+  if (emailChanged) await destroyAllSessionsFor(id);
 
   await recordAudit({
     action: 'ACCOUNT_UPDATED',
@@ -315,7 +326,7 @@ export async function updateAccount(
       new_role: input.role,
       old_email: existing.email,
       new_email: check.email,
-      email_reverification_required: emailChanged,
+      email_confirmation: emailChanged ? 'administrative' : 'unchanged',
     },
     context,
   });
@@ -347,7 +358,7 @@ export async function setAccountStatus(
 
   if (status === 'ACTIVE' && !target.emailVerifiedAt) {
     throw new AppError(
-      'This account cannot be activated until its institutional email is verified. Resend the verification email instead.',
+      'This account has never been set up, so activating it would not let anybody sign in. Use Reset password instead: it issues a temporary password and activates the account.',
       422,
     );
   }
@@ -367,117 +378,83 @@ export async function setAccountStatus(
   return status;
 }
 
-/**
- * Budgets for re-sending an invitation.
- *
- * The action is already behind authentication and a policy check, so this is
- * not about an anonymous attacker. It is about the two ways a well-meaning
- * administrator causes harm by clicking: filling an invitee's inbox with
- * duplicates, and burning the mail provider's quota for everybody else. The
- * per-account budget is the one that protects the invitee; the per-actor one
- * bounds the damage across accounts.
- */
-const RESEND_LIMIT_PER_ACCOUNT = { max: 5, windowSeconds: 3600 };
-const RESEND_LIMIT_PER_ACTOR = { max: 20, windowSeconds: 3600 };
+// --- Temporary password ----------------------------------------------------
 
-/** Re-send the verification email for an account that has not confirmed. */
-export async function resendVerification(
-  actor: AuthUser,
-  id: bigint,
-  context: AuditContext,
-): Promise<{ mailDelivered: boolean; mailDetail?: string }> {
-  const target = await getAccount(id);
-
-  if (target.emailVerifiedAt) {
-    throw new AppError('That account has already verified its email address.', 422);
-  }
-
-  const perAccount = await consumeRateLimit('invite-resend', target.email, RESEND_LIMIT_PER_ACCOUNT);
-  if (perAccount.limited) {
-    throw new AppError(
-      'That invitation has been re-sent several times already. Please wait a while before trying again.',
-      429,
-      undefined,
-      'EMAIL_RATE_LIMITED',
-    );
-  }
-
-  const perActor = await consumeRateLimit('invite-resend-actor', actor.id, RESEND_LIMIT_PER_ACTOR);
-  if (perActor.limited) {
-    throw new AppError(
-      'Too many invitations have been re-sent from this account. Please wait a while before trying again.',
-      429,
-      undefined,
-      'EMAIL_RATE_LIMITED',
-    );
-  }
-
-  /*
-   * Issuing a new token invalidates the outstanding one for this user (see
-   * tokens.ts), so a re-sent invitation supersedes the previous link rather
-   * than leaving two live.
-   */
-  const { token, expiresAt } = await issueEmailVerificationToken(id, target.email);
-  const mail = await sendVerificationEmail({
-    to: target.email,
-    name: target.name,
-    token,
-    expiresAt,
-  });
-
-  await recordAudit({
-    action: 'ACCOUNT_VERIFICATION_RESENT',
-    actor: actorLabel(actor),
-    target: `${target.name} <${target.email}>`,
-    details: { mail_transport: mail.transport, mail_delivered: mail.delivered },
-    context,
-  });
-
-  return { mailDelivered: mail.delivered, mailDetail: mail.detail };
+export interface ReissuedStaffPassword {
+  id: string;
+  name: string;
+  email: string;
+  /** Plaintext, in this response only. */
+  temporaryPassword: string;
+  /** True when this reset also set up an account that had never been set up. */
+  activated: boolean;
 }
 
+const RESET_LIMIT_PER_ACCOUNT = { max: 5, windowSeconds: 3600 };
+const RESET_LIMIT_PER_ACTOR = { max: 30, windowSeconds: 3600 };
+
 /**
- * Administrator-initiated password reset.
+ * Replace a staff member's password with a fresh temporary one.
  *
- * Sends a reset link to the verified institutional address rather than
- * generating a password. The administrator never learns the new one, which
- * is the point.
+ * Generated on the server and shown to the Admin once. Every session for the
+ * account ends — a reset usually follows a forgotten or compromised password —
+ * and the holder must choose their own at the next sign-in.
+ *
+ * It is also how an account left over from the old invitation flow (address
+ * never confirmed, placeholder password) gets set up: the address is
+ * confirmed on the Admin's authority and a PENDING account becomes ACTIVE.
+ * A deliberately deactivated or suspended account is NOT reactivated by this.
  */
-export async function sendAdminPasswordReset(
+export async function resetStaffTemporaryPassword(
   actor: AuthUser,
   id: bigint,
   context: AuditContext,
-): Promise<{ mailDelivered: boolean; mailDetail?: string }> {
+): Promise<ReissuedStaffPassword> {
   const target = await getAccount(id);
 
-  if (!target.emailVerifiedAt) {
-    throw new AppError(
-      'That account has not verified its email address yet, so a reset link cannot be sent. Resend the verification email instead.',
-      422,
-    );
+  const perAccount = await consumeRateLimit('staff-temp-password', id.toString(), RESET_LIMIT_PER_ACCOUNT);
+  const perActor = await consumeRateLimit('staff-temp-password-actor', actor.id, RESET_LIMIT_PER_ACTOR);
+  if (perAccount.limited || perActor.limited) {
+    throw new AppError('Several passwords have been reset recently. Please wait a while.', 429);
   }
 
-  const { token, expiresAt } = await issuePasswordResetToken(id);
-  const mail = await sendPasswordResetEmail({
-    to: target.email,
-    name: target.name,
-    token,
-    expiresAt,
+  const temporaryPassword = generateTemporaryPassword();
+  const confirmingAddress = target.emailVerifiedAt === null;
+  const activating = target.status === 'PENDING';
+
+  await prisma.user.update({
+    where: { id },
+    data: {
+      password: await hashPassword(temporaryPassword),
+      mustChangePassword: true,
+      ...(confirmingAddress ? { emailVerifiedAt: new Date() } : {}),
+      ...(activating ? stateFields('ACTIVE') : { updatedAt: new Date() }),
+    },
   });
 
-  // Force re-authentication everywhere; an admin reset usually follows a
-  // suspected compromise.
   await destroyAllSessionsFor(id);
 
   await recordAudit({
-    action: 'ACCOUNT_PASSWORD_RESET_SENT',
+    action: 'STAFF_PASSWORD_RESET',
     actor: actorLabel(actor),
     target: `${target.name} <${target.email}>`,
-    details: { mail_transport: mail.transport, mail_delivered: mail.delivered },
+    details: {
+      must_change_password: true,
+      sessions_revoked: true,
+      from_status: target.status,
+      email_confirmation: confirmingAddress ? 'administrative' : 'already_confirmed',
+      activated: activating,
+    },
     context,
   });
 
-  return { mailDelivered: mail.delivered, mailDetail: mail.detail };
+  return {
+    id: id.toString(),
+    name: target.name,
+    email: target.email,
+    temporaryPassword,
+    activated: activating,
+  };
 }
 
 // --- Self-service ----------------------------------------------------------

@@ -396,8 +396,16 @@ export function createFakePrisma(): FakePrisma {
      * undo them.
      */
     $transaction: async (arg: unknown) => {
+      /*
+       * The array form: the operations were already started when the caller
+       * built the array, so this only waits for them. There is no rollback for
+       * it here — the services that use it (role sync) do two writes that
+       * cannot half-fail in memory.
+       */
+      if (Array.isArray(arg)) return Promise.all(arg);
+
       if (typeof arg !== 'function') {
-        throw new Error('fake-prisma: only the callback form of $transaction is implemented');
+        throw new Error('fake-prisma: $transaction needs a callback or an array');
       }
 
       const run = gate.then(async () => {

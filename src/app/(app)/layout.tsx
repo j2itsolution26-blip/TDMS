@@ -9,6 +9,8 @@ import {
   adminAccountPolicy,
   systemPolicy,
 } from '@/server/auth/policies';
+import { dashboardRoleFor } from '@/server/services/dashboard-service';
+import { ROLE_LABELS, type RoleName } from '@/types/domain';
 
 /**
  * Port of layouts/app.blade.php.
@@ -82,14 +84,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     items.push({ label: 'System Health', href: '/system-health', match: ['/system-health'], icon: 'health' });
   }
 
+  /*
+   * The same role the dashboard is chosen by, so the header and the dashboard
+   * never disagree about who you are. roles[0] was whichever row the database
+   * returned first, which for a two-role account was not necessarily the one
+   * that matters.
+   */
+  const role = dashboardRoleFor(user);
+  const roleLabel = role === 'none' ? 'No role' : ROLE_LABELS[role as RoleName];
+
   return (
-    <div className="min-h-screen">
-      <Navigation
-        items={items}
-        user={{ name: user.name, email: user.email, role: user.roles[0] ?? null }}
-      />
-      <main className="lg:pl-64">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">{children}</div>
+    <div className="min-h-screen bg-surface">
+      <Navigation items={items} user={{ name: user.name, email: user.email, roleLabel }} />
+      <main id="main-content" tabIndex={-1} className="focus:outline-none lg:pl-64">
+        <div className="mx-auto max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</div>
       </main>
     </div>
   );

@@ -24,7 +24,7 @@ export function Card({
   className?: string;
 }) {
   return (
-    <div className={cx('bg-card border border-border rounded-xl shadow-sm', padding, className)}>
+    <div className={cx('bg-card border border-border rounded-xl shadow-card', padding, className)}>
       {children}
     </div>
   );
@@ -32,32 +32,54 @@ export function Card({
 
 // --- x-badge ---------------------------------------------------------------
 
-/** The match(true) ladder from badge.blade.php, preserved exactly. */
-function badgeClasses(status: string): string {
+/**
+ * One badge vocabulary for every screen.
+ *
+ * Status is never carried by colour alone: every badge prints its label, and
+ * the leading dot is a second, shape-based cue for people who cannot tell the
+ * colours apart. Text colours are the -700 shades, which all clear WCAG AA on
+ * their -50 backgrounds.
+ */
+const BADGE_TONES: Record<string, string> = {
+  positive: 'bg-green-50 text-green-800 ring-green-600/20',
+  attention: 'bg-amber-50 text-amber-800 ring-amber-600/25',
+  negative: 'bg-red-50 text-red-700 ring-red-600/20',
+  info: 'bg-blue-50 text-blue-700 ring-blue-600/20',
+  neutral: 'bg-slate-100 text-slate-700 ring-slate-500/20',
+};
+
+const DOT: Record<string, string> = {
+  positive: 'bg-green-600',
+  attention: 'bg-amber-500',
+  negative: 'bg-red-600',
+  info: 'bg-blue-600',
+  neutral: 'bg-slate-400',
+};
+
+export function badgeTone(status: string): keyof typeof BADGE_TONES {
   const key = status.toLowerCase().replace(/[ -]/g, '_');
 
-  if (['active', 'approved', 'completed', 'verified', 'enrolled', 'graduated'].includes(key))
-    return 'bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20';
-  if (['pending', 'for_review', 'submitted', 'applicant'].includes(key))
-    return 'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20';
-  if (['rejected', 'cancelled', 'canceled', 'failed', 'returned', 'missing'].includes(key))
-    return 'bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20';
-  if (['processing', 'information', 'transferred'].includes(key))
-    return 'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600/20';
-  if (['draft', 'inactive', 'archived', 'deactivated'].includes(key))
-    return 'bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-500/20';
-  return 'bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-500/20';
+  if (['active', 'approved', 'completed', 'verified', 'enrolled', 'graduated', 'success', 'ready', 'configured', 'healthy'].includes(key))
+    return 'positive';
+  if (['pending', 'for_review', 'submitted', 'applicant', 'needs_review', 'under_review', 'overdue', 'incomplete'].includes(key))
+    return 'attention';
+  if (['rejected', 'cancelled', 'canceled', 'failed', 'returned', 'missing', 'suspended', 'expired', 'dropped', 'down'].includes(key))
+    return 'negative';
+  if (['processing', 'information', 'transferred', 'scheduled'].includes(key)) return 'info';
+  return 'neutral'; // draft, inactive, archived, deactivated, anything unknown
 }
 
 export function Badge({ status, label }: { status: string; label?: string }) {
+  const tone = badgeTone(status);
   return (
     <span
       className={cx(
-        'inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium capitalize',
-        badgeClasses(status),
+        'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset',
+        BADGE_TONES[tone],
       )}
     >
-      {label ?? status.replace(/_/g, ' ')}
+      <span className={cx('h-1.5 w-1.5 shrink-0 rounded-full', DOT[tone])} aria-hidden="true" />
+      <span className={label ? undefined : 'capitalize'}>{label ?? status.replace(/_/g, ' ')}</span>
     </span>
   );
 }
@@ -103,8 +125,8 @@ export function PageHeader({
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 className="text-2xl sm:text-[28px] font-semibold text-navy-900 leading-tight">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
+        <h1 className="text-2xl sm:text-[28px] font-semibold text-ink leading-tight">{title}</h1>
+        {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
       </div>
       {actions && <div className="flex items-center gap-3">{actions}</div>}
     </div>
@@ -124,72 +146,14 @@ export function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center text-center py-12 px-6">
-      <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mb-4">
+      <div className="w-12 h-12 rounded-full bg-primary-50 text-primary-600 flex items-center justify-center mb-4" aria-hidden="true">
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
           <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.75h16.5M3.75 9.75a2.25 2.25 0 012.25-2.25h12a2.25 2.25 0 012.25 2.25M3.75 9.75v7.5A2.25 2.25 0 006 19.5h12a2.25 2.25 0 002.25-2.25v-7.5" />
         </svg>
       </div>
       <p className="text-sm font-medium text-navy-900">{title}</p>
-      {description && <p className="mt-1 text-sm text-slate-500 max-w-sm">{description}</p>}
+      {description && <p className="mt-1 text-sm text-muted max-w-sm">{description}</p>}
       {actions && <div className="mt-4">{actions}</div>}
-    </div>
-  );
-}
-
-// --- x-stat-card -----------------------------------------------------------
-
-export function StatCard({
-  label,
-  value,
-  change,
-  trend,
-  icon,
-  iconBg = 'bg-indigo-50',
-  iconColor = 'text-indigo-600',
-}: {
-  label: string;
-  value: ReactNode;
-  change?: string | null;
-  trend?: 'up' | 'down' | null;
-  icon?: ReactNode;
-  iconBg?: string;
-  iconColor?: string;
-}) {
-  return (
-    <div className="bg-card border border-border rounded-xl shadow-sm p-5 flex items-start justify-between gap-4">
-      <div className="min-w-0">
-        <p className="text-sm text-slate-500">{label}</p>
-        <p className="mt-1.5 text-[28px] font-semibold text-navy-900 leading-none">{value}</p>
-
-        {change && (
-          <p
-            className={cx(
-              'mt-2 text-xs font-medium inline-flex items-center gap-1',
-              trend === 'up' && 'text-green-600',
-              trend === 'down' && 'text-red-600',
-              trend !== 'up' && trend !== 'down' && 'text-slate-500',
-            )}
-          >
-            {trend === 'up' && (
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
-              </svg>
-            )}
-            {trend === 'down' && (
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-              </svg>
-            )}
-            {change}
-          </p>
-        )}
-      </div>
-
-      {icon && (
-        <div className={cx('shrink-0 w-11 h-11 rounded-full flex items-center justify-center', iconBg, iconColor)}>
-          {icon}
-        </div>
-      )}
     </div>
   );
 }

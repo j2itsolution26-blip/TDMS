@@ -109,7 +109,7 @@ The copy is **destroyed** — the ciphertext emptied, not merely flagged — whe
 
 | Event | Result |
 | ----- | ------ |
-| The Admin chooses their own password (change screen or emailed reset link) | `used_at`; audited `TEMP_PASSWORD_USED`. The modal shows **No active temporary password.** |
+| The Admin chooses their own password (change screen or emailed reset link) | `used_at`; the change screen audits `ADMIN_TEMPORARY_PASSWORD_CHANGED`. The modal shows **No active temporary password.** |
 | The Super Admin resets it | The old one stops working *and* stops being revealable; the new one can be shown. |
 | The reveal window passes (`TEMP_CREDENTIAL_REVEAL_HOURS`, default 72) | Can no longer be shown; the password itself still works. |
 
@@ -224,6 +224,35 @@ diverts every page to `/change-password`, and `requireApiUser()` refuses every
 API route except `POST /api/auth/change-password`. Changing the password clears
 it.
 
+`POST /api/auth/change-password` (`replaceTemporaryPassword()` in
+`profile-service.ts`) is stricter than the profile page's password change:
+
+* **Whose password** comes from the server-side session only. There is no user
+  id in the body, and one sent anyway is ignored.
+* **State is re-read**, not trusted from the session lookup: the account must be
+  `ACTIVE` and still carry `must_change_password`. Once it is cleared there is
+  no temporary password left, so a repeat — a double click, a second tab, a
+  refresh — gets `409 TEMP_PASSWORD_ALREADY_CHANGED` and the form moves on.
+* **Atomic.** The new hash, `must_change_password = false`, and the temporary
+  credential's `used_at` (with its sealed copy emptied) are written in one
+  transaction, and the user row is updated *conditionally* on the flag still
+  being set. Two concurrent requests produce exactly one change.
+* **The temporary password cannot be kept** as the new one.
+* **Wrong guesses are throttled**: five in fifteen minutes, per account.
+* **Every session ends, and this browser gets a new one** on the same
+  response. The holder stays signed in; anybody else who signed in with the
+  temporary password — which two people knew — does not.
+* Audited `ADMIN_TEMPORARY_PASSWORD_CHANGED` (sessions ended, whether a
+  revealable copy was destroyed). Never a password or a hash.
+
+The access code is untouched by any of this: the next sign-in still asks for
+email, the new password, and a Super Admin-issued access code.
+
+Temporary passwords do **not** expire on a timer. `temporary_credentials.expires_at`
+is the window in which the Super Admin may *reveal* the password again, not how
+long the password itself works. A temporary password stops working when the
+Admin replaces it or the Super Admin resets it.
+
 ---
 
 ## Resetting a password — Admin Accounts
@@ -281,7 +310,7 @@ Admin's job. See `managesStaff()` in the same file.
 | `TEMP_PASSWORD_GENERATED` | A temporary password was issued with a new account |
 | `TEMP_PASSWORD_RESET` | A Super Admin reissued one (with codes revoked) |
 | `TEMP_PASSWORD_REVEALED` | A Super Admin showed one — every time |
-| `TEMP_PASSWORD_USED` | The Admin replaced it with their own |
+| `ADMIN_TEMPORARY_PASSWORD_CHANGED` | The Admin replaced it with their own (formerly `TEMP_PASSWORD_USED`) |
 | `ADMIN_PASSWORD_ACCEPTED` | Step 1 passed — **not** a sign-in |
 | `ADMIN_LOGIN_SUCCESS` / `ADMIN_LOGIN_FAILED` | Step 2 outcome, with the reason |
 | `ADMIN_SUSPENDED` / `ADMIN_REACTIVATED` | Status changed |

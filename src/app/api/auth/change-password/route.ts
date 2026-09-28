@@ -1,40 +1,76 @@
 import type { NextRequest } from 'next/server';
-import { ok } from '@/lib/http';
-import { withErrorHandling, parseJson } from '@/server/api-handler';
+import { ok, AppError } from '@/lib/http';
+import { withErrorHandling, parseJson, requestContext } from '@/server/api-handler';
 import { requireApiUser } from '@/server/auth/current-user';
-import { updatePasswordSchema } from '@/server/validation/schemas';
-import { updatePassword } from '@/server/services/profile-service';
+import { rotateSession } from '@/server/auth/session';
+import { changeTemporaryPasswordSchema } from '@/server/validation/schemas';
+import { replaceTemporaryPassword } from '@/server/services/profile-service';
 import { recordAudit } from '@/server/services/audit-log';
-import { requestContext } from '@/server/api-handler';
 
 /**
  * POST /api/auth/change-password — replace a temporary password.
  *
- * The ONE endpoint that accepts a caller still carrying
- * `mustChangePassword`. Every other route refuses them, so an Admin cannot
- * work through the API on a credential two people know while declining to
- * replace it.
+ * The ONE endpoint that accepts a caller still carrying `mustChangePassword`.
+ * Every other route refuses them, so an Admin cannot work through the API on a
+ * credential two people know while declining to replace it.
  *
- * The current password is still required. The caller typed it minutes ago at
- * the sign-in screen, so asking again costs almost nothing — and it means an
- * unattended browser on this screen is not a way to take over the account.
+ * Whose password changes is decided by the server-side session and nothing
+ * else. The body carries passwords only; there is no user id in it to trust.
+ *
+ * The temporary password is still required. The caller typed it minutes ago at
+ * sign-in, so asking again costs almost nothing — and it means an unattended
+ * browser on this screen is not a way to take over the account.
+ *
+ * On success every session for the account ends and this browser is issued a
+ * fresh one on the same response: the holder stays signed in, and anybody else
+ * who signed in with the temporary password — including whoever issued it —
+ * does not.
  */
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const user = await requireApiUser({ allowTemporaryPassword: true });
-  const input = await parseJson(request, updatePasswordSchema);
+  const input = await parseJson(request, changeTemporaryPasswordSchema);
+  const context = requestContext(request);
 
-  const wasTemporary = user.mustChangePassword;
+  let result;
+  try {
+    result = await replaceTemporaryPassword(BigInt(user.id), input);
+  } catch (error) {
+    if (error instanceof AppError) throw error;
 
-  await updatePassword(BigInt(user.id), input);
+    /*
+     * Unexpected: logged in full on the server — never with the request body,
+     * which holds two passwords — and answered with a sentence that says what
+     * failed rather than "Something went wrong".
+     */
+    console.error('[AUTH] temporary password change failed', {
+      userId: user.id,
+      error: error instanceof Error ? error.message : 'unknown error',
+    });
+    throw new AppError(
+      'Unable to change password. Please try again.',
+      500,
+      undefined,
+      'PASSWORD_CHANGE_FAILED',
+    );
+  }
 
-  await recordAudit({
-    action: wasTemporary ? 'TEMP_PASSWORD_USED' : 'ACCOUNT_PASSWORD_CHANGED',
-    actor: `${user.name} <${user.email}>`,
-    target: `${user.name} <${user.email}>`,
-    // Whether it happened, never what it was.
-    details: { replaced_temporary_password: wasTemporary },
-    context: requestContext(request),
+  const sessionsEnded = await rotateSession(BigInt(user.id), {
+    ipAddress: context.ip,
+    userAgent: context.userAgent,
   });
 
-  return ok({ updated: true, redirectTo: '/dashboard' });
+  await recordAudit({
+    action: 'ADMIN_TEMPORARY_PASSWORD_CHANGED',
+    actor: `${user.name} <${user.email}>`,
+    target: `${user.name} <${user.email}>`,
+    // That it happened and what it ended; never a password or a hash.
+    details: {
+      replaced_temporary_password: true,
+      temporary_credential_consumed: result.credentialConsumed,
+      sessions_ended: sessionsEnded,
+    },
+    context,
+  });
+
+  return ok({ updated: true, message: 'Password changed successfully.', redirectTo: '/dashboard' });
 });

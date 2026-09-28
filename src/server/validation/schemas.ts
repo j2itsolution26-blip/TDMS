@@ -144,6 +144,29 @@ export const updatePasswordSchema = z
     path: ['passwordConfirmation'],
   });
 
+/**
+ * Replacing a Super Admin-issued temporary password — POST
+ * /api/auth/change-password.
+ *
+ * Same rules as updatePasswordSchema, which the profile page uses, but its own
+ * schema so the wording can speak to somebody on their first sign-in: they
+ * know the field as "Temporary password", not "current password". The field
+ * NAMES stay the project's existing ones.
+ *
+ * Every requirement the new password misses is reported, individually, under
+ * the field — the same messages the live checklist is built from.
+ */
+export const changeTemporaryPasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Temporary password is required.'),
+    password: z.string().min(1, 'New password is required.').pipe(strongPassword),
+    passwordConfirmation: z.string().min(1, 'Please confirm your new password.'),
+  })
+  .refine((d) => d.password === d.passwordConfirmation, {
+    message: 'Passwords do not match.',
+    path: ['passwordConfirmation'],
+  });
+
 export const updateProfileSchema = z.object({
   name: z.string().trim().min(1, 'Please enter your name.').max(255),
   email: institutionalEmail,

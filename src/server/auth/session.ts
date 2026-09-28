@@ -137,6 +137,52 @@ export async function destroyAllSessionsFor(userId: bigint): Promise<void> {
   await prisma.session.deleteMany({ where: { userId } });
 }
 
+/**
+ * After a credential change: end EVERY session for the user, then issue this
+ * browser a brand-new one, so the person who just changed their password stays
+ * signed in and nobody else does.
+ *
+ * Why every session and not just "the others": the old token was minted under
+ * the old credential. Rotating it is the same session-fixation hygiene as a
+ * fresh sign-in, and it costs the user nothing — the new cookie rides back on
+ * the same response.
+ *
+ * The case this exists for is a temporary password, which by construction two
+ * people knew. Anyone else who signed in with it — including whoever issued it —
+ * holds a session that must not survive the change.
+ *
+ * The new session keeps the current one's expiry rather than restarting the
+ * clock, so a "remember me" sign-in is neither shortened nor extended by
+ * changing a password. Returns how many sessions were ended.
+ */
+export async function rotateSession(
+  userId: bigint,
+  options: { ipAddress?: string | null; userAgent?: string | null } = {},
+): Promise<number> {
+  const current = await resolveSession();
+  const fallbackExpiry = new Date(Date.now() + DEFAULT_LIFETIME_MINUTES * 60_000);
+  const expiresAt =
+    current && current.userId === userId ? current.expiresAt : fallbackExpiry;
+
+  const { count } = await prisma.session.deleteMany({ where: { userId } });
+
+  const token = randomBytes(TOKEN_BYTES).toString('hex');
+  await prisma.session.create({
+    data: {
+      id: digest(token),
+      userId,
+      ipAddress: options.ipAddress ?? null,
+      userAgent: options.userAgent ?? null,
+      expiresAt,
+    },
+  });
+
+  const jar = await cookies();
+  jar.set(COOKIE_NAME, token, cookieOptions(expiresAt));
+
+  return count;
+}
+
 /** Slide the expiry forward on activity, mirroring Laravel's rolling window. */
 export async function touchSession(sessionId: string, remember = false): Promise<void> {
   const minutes = remember ? REMEMBER_LIFETIME_MINUTES : DEFAULT_LIFETIME_MINUTES;

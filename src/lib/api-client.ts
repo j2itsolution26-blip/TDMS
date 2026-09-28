@@ -13,6 +13,14 @@ export interface ApiFailure {
   ok: false;
   message: string;
   errors?: Record<string, string[]>;
+  /**
+   * The server's machine-readable label for the kind of failure, when it sent
+   * one (see AppError). Lets a form react to a specific case — "already done",
+   * "signed out" — without matching on prose that may be reworded.
+   */
+  code?: string;
+  /** HTTP status; 0 when the server could not be reached at all. */
+  status: number;
 }
 
 export interface ApiSuccess<T> {
@@ -43,12 +51,14 @@ async function request<T>(
         ok: false,
         message: payload?.message ?? 'Something went wrong. Please try again.',
         errors: payload?.errors,
+        code: typeof payload?.code === 'string' ? payload.code : undefined,
+        status: response.status,
       };
     }
 
     return { ok: true, data: payload.data as T };
   } catch {
-    return { ok: false, message: 'Could not reach the server. Please try again.' };
+    return { ok: false, message: 'Could not reach the server. Please try again.', status: 0 };
   }
 }
 

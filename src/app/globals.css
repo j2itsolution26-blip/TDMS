@@ -584,13 +584,14 @@
     height: 1.1rem;
 }
 
-.tdms-submit:hover {
+/* Only an enabled button responds to the pointer; a disabled one must not beckon. */
+.tdms-submit:not([disabled]):hover {
     filter: brightness(1.08);
     transform: translateY(-1px);
     box-shadow: 0 16px 30px rgba(0, 107, 63, 0.34);
 }
 
-.tdms-submit:active {
+.tdms-submit:not([disabled]):active {
     transform: translateY(0);
 }
 
@@ -599,9 +600,27 @@
     outline-offset: 3px;
 }
 
+/*
+ * A disabled button has to LOOK disabled. This used to be 70% opacity with a
+ * "progress" cursor — which reads as a live button that is busy thinking, not
+ * one that will ignore the click. On the change-password screen that made a
+ * button disabled by an unmet condition look like it was working, and people
+ * clicked it repeatedly while nothing was sent.
+ *
+ * The progress cursor now appears only while a request really is in flight
+ * (aria-busy), and an idle disabled button is plainly greyed out.
+ */
 .tdms-submit[disabled] {
-    opacity: 0.7;
+    opacity: 0.5;
+    cursor: not-allowed;
+    filter: saturate(0.4);
+    box-shadow: none;
+}
+
+.tdms-submit[aria-busy="true"] {
+    opacity: 0.85;
     cursor: progress;
+    filter: none;
 }
 
 .panel__status {

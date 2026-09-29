@@ -28,7 +28,7 @@ import SubjectsPerProgramTable from './SubjectsPerProgramTable';
  *   quick actions
  *
  * A Coordinator may not see student records, so nothing here counts or names
- * a student. Teacher assignments are not recorded by TDMS; the note says so.
+ * a student.
  */
 
 function Check({ ok, children }: { ok: boolean; children: React.ReactNode }) {

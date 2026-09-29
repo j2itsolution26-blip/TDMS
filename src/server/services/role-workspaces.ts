@@ -54,9 +54,8 @@ import type {
  *
  * WHAT IS NOT HERE
  *
- * TDMS records no grades, attendance, competencies, assessments or teacher-to-
- * program assignments. They are listed in `notTracked`, and the page says so,
- * instead of showing zeros that look like measurements.
+ * TDMS records no competencies. It is listed in `notTracked`, and the page
+ * says so, instead of showing zeros that look like measurements.
  */
 
 const DAY = 86_400_000;
@@ -305,7 +304,7 @@ export async function directorWorkspace(user: AuthUser): Promise<DirectorWorkspa
     graduation,
     activity: [],
     quickActions: links(user, ['programs', 'students', 'applications', 'enrollments']),
-    notTracked: ['Grades', 'Attendance', 'Competencies', 'Assessments', 'Instructor assignments to programs'],
+    notTracked: ['Competencies'],
   };
 }
 
@@ -318,7 +317,7 @@ export async function coordinatorWorkspace(user: AuthUser): Promise<CoordinatorW
   const canApps = applicationPolicy.viewAny(user);
   const canEnroll = enrollmentPolicy.viewAny(user);
 
-  const [programRows, curricula, terms, activeSubjects, unmapped, apps, enroll, recentCurricula, recentSubjects, recentMappings] = await Promise.all([
+  const [programRows, curricula, terms, activeSubjects, unmapped, apps, enroll, recentCurricula, recentSubjects, recentMappings, classes] = await Promise.all([
     canCatalogue ? programs() : null,
     canCatalogue
       ? prisma.curriculum.findMany({
@@ -354,6 +353,13 @@ export async function coordinatorWorkspace(user: AuthUser): Promise<CoordinatorW
           select: { id: true, createdAt: true, curriculumId: true, subject: { select: { code: true } }, curriculum: { select: { versionLabel: true, program: { select: { code: true } } } } },
         })
       : [],
+    // Classes in the active school year, and how many have an instructor.
+    canCatalogue
+      ? Promise.all([
+          prisma.classOffering.count({ where: { schoolYear: { status: 'ACTIVE' } } }),
+          prisma.classOffering.count({ where: { schoolYear: { status: 'ACTIVE' }, instructorId: { not: null } } }),
+        ]).then(([total, assigned]) => ({ total, assigned }))
+      : null,
   ]);
 
   // Per curriculum: subjects, units, and the terms between its first and last that have nothing.
@@ -473,6 +479,9 @@ export async function coordinatorWorkspace(user: AuthUser): Promise<CoordinatorW
     const used = activeSubjects - unmapped;
     progress.push({ key: 'catalogue', label: 'Subjects in use', value: used, max: activeSubjects, detail: `${used} of ${plural(activeSubjects, 'active subject')} mapped into a curriculum` });
   }
+  if (classes && classes.total > 0) {
+    progress.push({ key: 'instructors', label: 'Instructor assignment', value: classes.assigned, max: classes.total, detail: `${classes.assigned} of ${plural(classes.total, 'class', 'classes')} this school year have a Diploma Instructor` });
+  }
   if (readiness && activeProgramRows.length > 0) {
     progress.push({ key: 'enrollment', label: 'Enrollment readiness', value: readyPrograms, max: activeProgramRows.length, detail: `${readyPrograms} of ${plural(activeProgramRows.length, 'active program')} ready to enroll into` });
   }
@@ -494,7 +503,7 @@ export async function coordinatorWorkspace(user: AuthUser): Promise<CoordinatorW
     progress: programRows ? progress : null,
     activity,
     quickActions: links(user, ['programs', 'subjects', 'applications', 'enrollments']),
-    notTracked: ['Instructor assignments', 'Grades', 'Attendance', 'Competencies', 'Assessments'],
+    notTracked: ['Competencies'],
   };
 }
 

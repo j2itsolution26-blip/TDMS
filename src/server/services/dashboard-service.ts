@@ -974,7 +974,7 @@ async function studentView(user: AuthUser): Promise<Body> {
     };
   }
 
-  const [subjects, requirements, mine, enrollments] = await Promise.all([
+  const [subjects, requirements, mine, enrollments, badgeCount, openAssessments, releasedGrades] = await Promise.all([
     prisma.curriculumSubject.findMany({
       where: { curriculumId: student.curriculumId, yearLevel: student.yearLevel },
       orderBy: [{ semester: 'asc' }, { id: 'asc' }],
@@ -995,6 +995,12 @@ async function studentView(user: AuthUser): Promise<Body> {
       take: 6,
       select: { id: true, schoolYear: true, semester: true, yearLevel: true, status: true },
     }),
+    prisma.studentBadge.count({ where: { studentId: student.id } }),
+    // Published assessments in the student's sections whose results are not yet released.
+    prisma.assessment.count({
+      where: { published: true, scoreStatus: 'DRAFT', class: { section: { students: { some: { studentId: student.id } } } } },
+    }),
+    prisma.classGrade.count({ where: { studentId: student.id, class: { gradeStatus: 'RELEASED' } } }),
   ]);
 
   const statusOf = new Map(mine.map((c) => [c.credentialRequirementId.toString(), c.status]));
@@ -1021,6 +1027,8 @@ async function studentView(user: AuthUser): Promise<Body> {
       hint: required.length === 0 ? 'None required of you' : verified === required.length ? 'All verified' : `${required.length - verified} still needed`,
       tone: required.length > 0 && verified < required.length ? 'attention' : 'positive',
     },
+    { key: 'assessments', label: 'Quizzes & Exams', value: openAssessments, icon: 'calendar', href: '/my/assessments', hint: openAssessments === 0 ? 'Nothing scheduled' : 'Scheduled or open' },
+    { key: 'badges', label: 'Badges', value: badgeCount, icon: 'active', href: '/my/badges', hint: badgeCount === 0 ? 'None yet' : 'From your instructors' },
   ];
 
   const docStatus = (status: string | undefined) => {
@@ -1066,7 +1074,13 @@ async function studentView(user: AuthUser): Promise<Body> {
       unit: 'units',
       empty: { title: 'No subjects yet', description: 'Your load per semester will appear once subjects are mapped.' },
     },
-    quickActions: [profile],
+    quickActions: [
+      { label: 'My QR Code', description: 'Show it to record attendance', href: '/my/qr', icon: 'keys' },
+      { label: 'My Attendance', description: 'Your class attendance history', href: '/my/attendance', icon: 'calendar' },
+      { label: 'Quizzes & Exams', description: 'Schedules, online tests and results', href: '/my/assessments', icon: 'documents' },
+      { label: 'My Grades', description: releasedGrades ? `${releasedGrades} released` : 'Released final grades', href: '/my/grades', icon: 'subjects' },
+      profile,
+    ],
     activity: {
       title: 'My Enrollment',
       description: current ? `Latest: ${current.schoolYear}, semester ${current.semester}` : 'Your enrollment history',
@@ -1077,10 +1091,6 @@ async function studentView(user: AuthUser): Promise<Body> {
         status: { status: e.status, label: capitalise(e.status) },
       })),
       empty: { title: 'Not enrolled in a term yet', description: 'Your enrollments will be listed here once the office records them.' },
-    },
-    notice: {
-      title: 'Assignments, quizzes, examinations, attendance and grades are not in TDMS yet',
-      body: 'TDMS does not yet record coursework, attendance or grades, so this dashboard cannot show them. When those modules are added, they will appear here.',
     },
   };
 }

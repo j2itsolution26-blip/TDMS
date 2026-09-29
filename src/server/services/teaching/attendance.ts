@@ -128,6 +128,8 @@ export async function sessionView(user: AuthUser, sessionId: bigint) {
       date: dateColumnKey(session.meetingDate),
       dateLabel: formatLocalDate(new Date(`${dateColumnKey(session.meetingDate)}T12:00:00Z`), 'UTC'),
       time: `${formatClock(session.startTime)} – ${formatClock(session.endTime)}`,
+      startTime: session.startTime,
+      endTime: session.endTime,
       lateAfterMinutes: session.lateAfterMinutes,
     },
     cls: { id: cls.id.toString(), ...classHeading(cls), archived: cls.schoolYear.status === 'ARCHIVED' },

@@ -5,21 +5,41 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Activity,
+  Award,
   Bell,
   BookOpen,
+  CalendarCheck,
+  CalendarDays,
+  CalendarRange,
   ChevronDown,
+  ClipboardList,
   CircleQuestionMark,
   ClipboardCheck,
+  FileCheck,
+  FileQuestionMark,
   FileText,
   GraduationCap,
+  Hammer,
+  HeartHandshake,
+  IdCard,
+  Laptop,
+  LayoutGrid,
+  ListChecks,
   KeyRound,
   Layers,
   LayoutDashboard,
   LogOut,
   Menu,
+  Presentation,
+  QrCode,
+  ScanLine,
   ScrollText,
   Search,
+  Sheet,
   ShieldCheck,
+  Table2,
+  TrendingUp,
+  UserCog,
   UserRound,
   UsersRound,
   X,
@@ -37,11 +57,11 @@ import type { PendingItem } from '@/types/dashboard';
  *
  * HONEST BY DESIGN
  *
- *   * The bell is not a notification feed — TDMS has no notification system.
- *     It shows the work waiting on the office (applications to review,
+ *   * The bell shows the work waiting on the office (applications to review,
  *     documents to verify…), counted from the records by the same service the
- *     dashboard's Operational Tasks read, and its red dot means exactly that:
- *     something is waiting.
+ *     dashboard's Operational Tasks read, and the user's own notifications
+ *     (attendance, released scores, reviews, requests). Its badge counts
+ *     unread notifications; a plain dot means only that work is waiting.
  *   * Search jumps to what it can honestly find: the pages this user may
  *     open, programs by name or code, and — for those who may see students —
  *     the Students list filtered by the query. Ctrl/⌘ K focuses it.
@@ -60,14 +80,22 @@ export interface NavItem {
   href: string;
   /** Route prefixes that should light this item up. */
   match: string[];
-  icon: 'dashboard' | 'programs' | 'subjects' | 'students' | 'applications' | 'enrollments' | 'staff' | 'admins' | 'keys' | 'audit' | 'health' | 'profile';
+  icon: NavIcon;
   /** The sidebar section. Sections appear in the order their first item does. */
   group: NavGroup;
 }
 
-export type NavGroup = 'main' | 'academic' | 'people' | 'records' | 'admissions' | 'programs' | 'system' | 'account';
+export type NavIcon =
+  | 'dashboard' | 'programs' | 'subjects' | 'students' | 'applications' | 'enrollments' | 'staff' | 'admins' | 'keys' | 'audit' | 'health' | 'profile'
+  | 'classes' | 'records' | 'gradebook' | 'qr' | 'attendance' | 'quiz' | 'exam' | 'checking' | 'activity' | 'task' | 'progress' | 'support'
+  | 'document' | 'tos' | 'badge' | 'calendar' | 'pds' | 'schoolYears' | 'setup' | 'reviews' | 'statusRequests' | 'instructors' | 'notifications';
 
-const ICONS: Record<NavItem['icon'] | 'profile', LucideIcon> = {
+export type NavGroup =
+  | 'main' | 'academic' | 'people' | 'records' | 'admissions' | 'programs' | 'system' | 'account'
+  | 'teaching' | 'attendance' | 'assessments' | 'activities' | 'documents' | 'engagement' | 'calendar' | 'profile'
+  | 'oversight' | 'learning';
+
+const ICONS: Record<NavIcon, LucideIcon> = {
   dashboard: LayoutDashboard,
   programs: Layers,
   subjects: BookOpen,
@@ -80,6 +108,29 @@ const ICONS: Record<NavItem['icon'] | 'profile', LucideIcon> = {
   audit: ScrollText,
   health: Activity,
   profile: UserRound,
+  classes: Presentation,
+  records: ListChecks,
+  gradebook: Sheet,
+  qr: QrCode,
+  attendance: CalendarCheck,
+  quiz: FileQuestionMark,
+  exam: ClipboardList,
+  checking: ScanLine,
+  activity: Laptop,
+  task: Hammer,
+  progress: TrendingUp,
+  support: HeartHandshake,
+  document: FileText,
+  tos: Table2,
+  badge: Award,
+  calendar: CalendarDays,
+  pds: IdCard,
+  schoolYears: CalendarRange,
+  setup: LayoutGrid,
+  reviews: FileCheck,
+  statusRequests: UserCog,
+  instructors: Presentation,
+  notifications: Bell,
 };
 
 const GROUP_LABELS: Record<NavGroup, string> = {
@@ -91,6 +142,16 @@ const GROUP_LABELS: Record<NavGroup, string> = {
   programs: 'Programs',
   system: 'System',
   account: 'Account',
+  teaching: 'Teaching',
+  attendance: 'Attendance',
+  assessments: 'Assessments',
+  activities: 'Activities',
+  documents: 'Documents',
+  engagement: 'Engagement',
+  calendar: 'Calendar',
+  profile: 'Profile',
+  oversight: 'Academic Oversight',
+  learning: 'My Learning',
 };
 
 const STROKE = 1.9;
@@ -538,11 +599,50 @@ function HelpButton({ setup }: { setup: SetupSummary | null }) {
   );
 }
 
-function PendingBell({ pending }: { pending: PendingItem[] }) {
+export interface NotificationSummary {
+  unread: number;
+  latest: { id: string; title: string; body: string | null; href: string | null; read: boolean; createdAt: string }[];
+}
+
+/**
+ * The bell: the work waiting on this user's office (counted from the records)
+ * and their own notifications (attendance, scores, reviews, requests…). The
+ * badge counts unread notifications; reading one marks it read on the server,
+ * so the count is the same on every device.
+ */
+function PendingBell({ pending, notifications }: { pending: PendingItem[]; notifications: NotificationSummary }) {
+  const router = useRouter();
   const { open, setOpen, wrap, trigger } = usePopover();
   const id = useId();
   const waiting = pending.filter((p) => p.count > 0);
   const total = waiting.reduce((sum, p) => sum + p.count, 0);
+  const [unread, setUnread] = useState(notifications.unread);
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  useEffect(() => setUnread(notifications.unread), [notifications.unread]);
+
+  async function markRead(body: { ids?: string[]; all?: boolean }) {
+    await fetch('/api/notifications', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).catch(() => null);
+  }
+
+  function openNotification(n: NotificationSummary['latest'][number]) {
+    setOpen(false);
+    if (!n.read && !readIds.has(n.id)) {
+      setReadIds((prev) => new Set(prev).add(n.id));
+      setUnread((u) => Math.max(0, u - 1));
+      void markRead({ ids: [n.id] });
+    }
+    router.push(n.href ?? '/notifications');
+  }
+
+  const label = [
+    unread > 0 ? `${unread} unread ${unread === 1 ? 'notification' : 'notifications'}` : null,
+    total > 0 ? `${total} ${total === 1 ? 'item needs' : 'items need'} attention` : null,
+  ].filter(Boolean).join(', ') || 'Notifications: nothing new';
 
   return (
     <div ref={wrap} className="relative">
@@ -552,38 +652,92 @@ function PendingBell({ pending }: { pending: PendingItem[] }) {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls={id}
-        aria-label={total > 0 ? `Needs attention: ${total} ${total === 1 ? 'item' : 'items'}` : 'Needs attention: nothing waiting'}
+        aria-label={label}
         className={ICON_BUTTON}
       >
         <Bell className="h-5 w-5" strokeWidth={STROKE} aria-hidden="true" />
-        {total > 0 && (
+        {unread > 0 ? (
+          <span aria-hidden="true" className="absolute right-1.5 top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white ring-2 ring-white tabular-nums">
+            {unread > 99 ? '99+' : unread}
+          </span>
+        ) : total > 0 ? (
           <span aria-hidden="true" className="absolute right-3 top-3 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white" />
-        )}
+        ) : null}
       </button>
       {open && (
-        <div id={id} role="region" aria-label="Needs attention" className={POPOVER}>
-          <p className="px-3 pb-1 pt-2 text-xs font-bold uppercase tracking-[0.1em] text-tdms-muted">Needs attention</p>
-          {waiting.length === 0 ? (
+        <div id={id} role="region" aria-label="Notifications" className={`${POPOVER} w-[340px]`}>
+          {waiting.length > 0 && (
+            <>
+              <p className="px-3 pb-1 pt-2 text-xs font-bold uppercase tracking-[0.1em] text-tdms-muted">Needs attention</p>
+              <ul className="mb-1 border-b border-tdms-hairline pb-1">
+                {waiting.map((p) => (
+                  <li key={p.key}>
+                    <Link
+                      href={p.href}
+                      onClick={() => setOpen(false)}
+                      className="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm hover:bg-tdms-bg focus:bg-tdms-bg focus:outline-none"
+                    >
+                      <span className="font-medium text-tdms-ink">{p.label}</span>
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800 tabular-nums">{p.count}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <div className="flex items-center justify-between px-3 pb-1 pt-2">
+            <p className="text-xs font-bold uppercase tracking-[0.1em] text-tdms-muted">Notifications</p>
+            {unread > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setUnread(0);
+                  setReadIds(new Set(notifications.latest.map((n) => n.id)));
+                  void markRead({ all: true }).then(() => router.refresh());
+                }}
+                className="rounded-md text-xs font-semibold text-tdms-text hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-tdms-text"
+              >
+                Mark all read
+              </button>
+            )}
+          </div>
+          {notifications.latest.length === 0 ? (
             <div className="px-3 pb-3 pt-1">
               <p className="text-sm font-semibold text-tdms-ink">You&apos;re all caught up</p>
-              <p className="text-xs text-tdms-muted">Nothing needs your attention right now.</p>
+              <p className="text-xs text-tdms-muted">New notifications will appear here.</p>
             </div>
           ) : (
-            <ul>
-              {waiting.map((p) => (
-                <li key={p.key}>
-                  <Link
-                    href={p.href}
-                    onClick={() => setOpen(false)}
-                    className="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm hover:bg-tdms-bg focus:bg-tdms-bg focus:outline-none"
-                  >
-                    <span className="font-medium text-tdms-ink">{p.label}</span>
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800 tabular-nums">{p.count}</span>
-                  </Link>
-                </li>
-              ))}
+            <ul className="max-h-80 overflow-y-auto">
+              {notifications.latest.map((n) => {
+                const isRead = n.read || readIds.has(n.id);
+                return (
+                  <li key={n.id}>
+                    <button
+                      type="button"
+                      onClick={() => openNotification(n)}
+                      className="flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-left hover:bg-tdms-bg focus:bg-tdms-bg focus:outline-none"
+                    >
+                      <span aria-hidden="true" className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${isRead ? 'bg-transparent' : 'bg-tdms-green'}`} />
+                      <span className="min-w-0 flex-1">
+                        <span className={`block text-sm ${isRead ? 'font-medium text-tdms-muted' : 'font-semibold text-tdms-ink'}`}>
+                          {n.title}
+                          {!isRead && <span className="sr-only"> (unread)</span>}
+                        </span>
+                        {n.body && <span className="line-clamp-2 block text-xs text-tdms-muted">{n.body}</span>}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
+          <Link
+            href="/notifications"
+            onClick={() => setOpen(false)}
+            className="mt-1 block rounded-xl border-t border-tdms-hairline px-3 py-2.5 text-center text-sm font-semibold text-tdms-text hover:bg-tdms-bg focus:bg-tdms-bg focus:outline-none"
+          >
+            View all notifications
+          </Link>
         </div>
       )}
     </div>
@@ -663,6 +817,7 @@ export default function Navigation({
   user,
   setup,
   pending,
+  notifications,
   programs,
   canSearchStudents,
   children,
@@ -671,6 +826,7 @@ export default function Navigation({
   user: { name: string; email: string; roleLabel: string };
   setup: SetupSummary | null;
   pending: PendingItem[];
+  notifications: NotificationSummary;
   programs: { id: string; code: string; name: string }[];
   canSearchStudents: boolean;
   children: ReactNode;
@@ -763,7 +919,7 @@ export default function Navigation({
             <div className="hidden sm:block">
               <HelpButton setup={setup} />
             </div>
-            <PendingBell pending={pending} />
+            <PendingBell pending={pending} notifications={notifications} />
             <UserMenu user={user} />
           </div>
         </header>

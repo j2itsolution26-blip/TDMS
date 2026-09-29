@@ -160,8 +160,8 @@ export async function getDashboardView(user: AuthUser): Promise<DashboardView> {
     case 'coordinator':
     case 'secretary':
       return { ...head, ...(await workspaceView(user, role)) };
-    case 'teacher':
-      return { ...head, ...(await teacherView(user)) };
+    // The Diploma Instructor has a dashboard of their own (instructor-dashboard.ts),
+    // rendered by the page before this view is asked for.
     case 'student':
       return { ...head, ...(await studentView(user)) };
     default:
@@ -934,91 +934,6 @@ function operationalActions(user: AuthUser): QuickAction[] {
   if (userPolicy.viewAny(user)) actions.push({ label: 'Staff', description: 'Staff accounts and roles', href: '/staff', icon: 'staff' });
   actions.push({ label: 'My Profile', description: 'Your name, email and password', href: '/profile', icon: 'profile' });
   return actions;
-}
-
-// --- Teacher -------------------------------------------------------------------------
-
-const TEACHING_NOTICE = {
-  title: 'Classes, assignments, attendance and grades are not in TDMS yet',
-  body: 'TDMS does not yet record class sections, schedules, assignments, quizzes, examinations, attendance or grades, so this dashboard does not show them. It shows the programs and subjects you teach within. When those modules are added, they will appear here.',
-};
-
-async function teacherView(user: AuthUser): Promise<Body> {
-  const canSubjects = subjectPolicy.viewAny(user);
-  const canPrograms = programPolicy.viewAny(user);
-
-  const [programs, subjects, curricula, recentSubjects, byType, active] = await Promise.all([
-    canPrograms ? programCounts() : null,
-    canSubjects ? prisma.subject.count({ where: { isActive: true } }) : null,
-    canPrograms ? prisma.curriculum.count({ where: { isActive: true } }) : null,
-    canSubjects
-      ? prisma.subject.findMany({
-          where: { isActive: true },
-          orderBy: { code: 'asc' },
-          take: 6,
-          select: { id: true, code: true, title: true, subjectType: true, defaultUnits: true },
-        })
-      : [],
-    canSubjects ? prisma.subject.groupBy({ by: ['subjectType'], where: { isActive: true }, _count: { _all: true } }) : [],
-    canPrograms
-      ? prisma.program.findMany({
-          where: { isActive: true },
-          orderBy: { code: 'asc' },
-          take: 6,
-          select: { id: true, code: true, name: true, curricula: { where: { isActive: true }, select: { versionLabel: true }, take: 1 } },
-        })
-      : [],
-  ]);
-
-  const kpis: Kpi[] = [];
-  if (programs) kpis.push({ key: 'programs', label: 'Programs', value: programs.active, icon: 'programs', href: '/programs', hint: programs.active === 0 ? 'None active yet' : 'Active programs' });
-  if (subjects !== null) kpis.push({ key: 'subjects', label: 'Subjects', value: subjects, icon: 'subjects', href: '/subjects', hint: subjects === 0 ? 'Catalogue is empty' : 'In the catalogue' });
-  if (curricula !== null) kpis.push({ key: 'curricula', label: 'Curricula', value: curricula, icon: 'curricula', href: '/programs', hint: curricula === 0 ? 'None active yet' : 'Active curricula' });
-
-  return {
-    kpis,
-    primary: canSubjects
-      ? {
-          title: 'Subject Catalogue',
-          description: 'Active subjects',
-          viewAll: { label: 'All subjects', href: '/subjects' },
-          items: recentSubjects.map((s) => ({
-            id: s.id.toString(),
-            title: s.title,
-            subtitle: `${s.code} · ${capitalise(s.subjectType)}`,
-            meta: `${s.defaultUnits.toNumber()} units`,
-          })),
-          empty: { title: 'No subjects yet', description: 'Subjects appear here once they are added to the catalogue.' },
-        }
-      : null,
-    secondary: canPrograms
-      ? {
-          title: 'Programs',
-          description: 'Active programs and their current curriculum',
-          viewAll: { label: 'All programs', href: '/programs' },
-          items: active.map((p) => ({
-            id: p.id.toString(),
-            title: p.name,
-            subtitle: p.curricula[0] ? `${p.code} · ${p.curricula[0].versionLabel}` : `${p.code} · no active curriculum`,
-            href: `/programs/${p.id}`,
-          })),
-          empty: { title: 'No active programs', description: 'Programs appear here once they are created.' },
-        }
-      : null,
-    chart: canSubjects
-      ? {
-          title: 'Subjects by Type',
-          description: 'Lecture, laboratory, practical and more',
-          kind: 'breakdown',
-          points: byType.map((r) => ({ label: capitalise(r.subjectType), value: r._count._all })).sort((a, b) => b.value - a.value),
-          unit: 'subjects',
-          empty: { title: 'No subjects yet', description: 'The mix of subject types will appear here.' },
-        }
-      : null,
-    quickActions: operationalActions(user),
-    activity: null,
-    notice: TEACHING_NOTICE,
-  };
 }
 
 // --- Student -------------------------------------------------------------------------

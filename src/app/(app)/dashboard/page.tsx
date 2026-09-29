@@ -1,5 +1,7 @@
 import { requireUser } from '@/server/auth/current-user';
-import { getDashboardView, greeting, formatToday } from '@/server/services/dashboard-service';
+import { dashboardRoleFor, getDashboardView, greeting, formatToday } from '@/server/services/dashboard-service';
+import { instructorDashboard } from '@/server/services/teaching/instructor-dashboard';
+import InstructorDashboard from '@/components/dashboard/InstructorDashboard';
 import {
   DashboardNotice,
   KpiGrid,
@@ -35,6 +37,19 @@ export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
   const user = await requireUser();
+  // The Diploma Instructor's own workspace, from one consolidated service call.
+  if (dashboardRoleFor(user) === 'teacher') {
+    const now = new Date();
+    const firstName = user.name.trim().split(/\s+/)[0] ?? user.name;
+    return (
+      <InstructorDashboard
+        data={await instructorDashboard(user, now)}
+        firstName={firstName}
+        greeting={greetingForHour(hourIn(now, institutionTimeZone()))}
+      />
+    );
+  }
+
   const view = await getDashboardView(user);
 
   const firstName = user.name.trim().split(/\s+/)[0] ?? user.name;

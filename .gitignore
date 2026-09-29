@@ -33,5 +33,7 @@ Thumbs.db
 /node_modules
 /.next
 /out
+# Local development uploads (production stores files in Vercel Blob)
+/.data
 next-env.d.ts
 tsconfig.tsbuildinfo

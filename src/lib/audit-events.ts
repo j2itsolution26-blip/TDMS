@@ -27,6 +27,7 @@ export type AuditCategory =
   | 'user_account'
   | 'security'
   | 'system'
+  | 'academic'
   | 'other';
 
 interface EventMeta {
@@ -105,6 +106,62 @@ const EVENTS: Record<string, EventMeta> = {
   SUPER_ADMIN_VERIFICATION_ATTEMPTS_EXCEEDED: { label: 'Setup verification locked', category: 'security', severity: 'warning' },
   SUPER_ADMIN_SECURITY_CODE_REJECTED: { label: 'Security code rejected', category: 'security', severity: 'warning' },
   AUDIT_LOG_EXPORTED: { label: 'Audit log exported', category: 'security', severity: 'security' },
+
+  // --- Academic (Diploma Instructor module)
+  SCHOOL_YEAR_CREATED: { label: 'School year created', category: 'academic', severity: 'activity' },
+  SCHOOL_YEAR_ACTIVATED: { label: 'School year activated', category: 'academic', severity: 'activity' },
+  SCHOOL_YEAR_ARCHIVED: { label: 'School year archived', category: 'academic', severity: 'warning' },
+  SCHOOL_YEAR_SEMESTER_CHANGED: { label: 'Current semester changed', category: 'academic', severity: 'activity' },
+  SECTION_CREATED: { label: 'Section created', category: 'academic', severity: 'activity' },
+  SECTION_RENAMED: { label: 'Section renamed', category: 'academic', severity: 'activity' },
+  SECTION_DELETED: { label: 'Section deleted', category: 'academic', severity: 'activity' },
+  SECTION_STUDENTS_ADDED: { label: 'Students added to section', category: 'academic', severity: 'activity' },
+  SECTION_STUDENT_REMOVED: { label: 'Student removed from section', category: 'academic', severity: 'activity' },
+  CLASS_CREATED: { label: 'Class created', category: 'academic', severity: 'activity' },
+  CLASS_UPDATED: { label: 'Class updated', category: 'academic', severity: 'activity' },
+  CLASS_DELETED: { label: 'Class deleted', category: 'academic', severity: 'activity' },
+  ATTENDANCE_SESSION_OPENED: { label: 'Attendance session opened', category: 'academic', severity: 'info' },
+  ATTENDANCE_SESSION_REOPENED: { label: 'Attendance session reopened', category: 'academic', severity: 'info' },
+  ATTENDANCE_SESSION_CLOSED: { label: 'Attendance session closed', category: 'academic', severity: 'info' },
+  ATTENDANCE_TIME_IN: { label: 'Attendance time-in recorded', category: 'academic', severity: 'info' },
+  ATTENDANCE_TIME_OUT: { label: 'Attendance time-out recorded', category: 'academic', severity: 'info' },
+  ATTENDANCE_MARKED: { label: 'Attendance changed manually', category: 'academic', severity: 'activity' },
+  ASSESSMENT_CREATED: { label: 'Assessment created', category: 'academic', severity: 'activity' },
+  ASSESSMENT_UPDATED: { label: 'Assessment updated', category: 'academic', severity: 'activity' },
+  ASSESSMENT_DELETED: { label: 'Assessment deleted', category: 'academic', severity: 'activity' },
+  ASSESSMENT_KEY_SAVED: { label: 'Answer key saved', category: 'academic', severity: 'activity' },
+  ASSESSMENT_SCORES_SAVED: { label: 'Scores saved', category: 'academic', severity: 'activity' },
+  ASSESSMENT_SHEET_CHECKED: { label: 'Answer sheet checked', category: 'academic', severity: 'info' },
+  ASSESSMENT_SHEET_RECHECKED: { label: 'Answer sheet re-checked', category: 'academic', severity: 'activity' },
+  ASSESSMENT_PUBLISHED: { label: 'Assessment published', category: 'academic', severity: 'activity' },
+  ASSESSMENT_UNPUBLISHED: { label: 'Assessment unpublished', category: 'academic', severity: 'activity' },
+  ASSESSMENT_FINALIZED: { label: 'Assessment results finalized', category: 'academic', severity: 'activity' },
+  ASSESSMENT_RELEASED: { label: 'Assessment results released', category: 'academic', severity: 'activity' },
+  ASSESSMENT_REOPENED: { label: 'Assessment results reopened', category: 'academic', severity: 'warning' },
+  GRADEBOOK_WEIGHTS_CHANGED: { label: 'Grade weights changed', category: 'academic', severity: 'activity' },
+  GRADEBOOK_REMARKS_SAVED: { label: 'Grade remarks saved', category: 'academic', severity: 'activity' },
+  GRADEBOOK_FINALIZED: { label: 'Grades finalized', category: 'academic', severity: 'activity' },
+  GRADEBOOK_RELEASED: { label: 'Grades released', category: 'academic', severity: 'activity' },
+  GRADEBOOK_REOPENED: { label: 'Grades reopened', category: 'academic', severity: 'warning' },
+  GRADEBOOK_EXPORTED: { label: 'Gradebook exported', category: 'academic', severity: 'info' },
+  DOCUMENT_CREATED: { label: 'Academic document created', category: 'academic', severity: 'activity' },
+  DOCUMENT_UPDATED: { label: 'Academic document updated', category: 'academic', severity: 'activity' },
+  DOCUMENT_DELETED: { label: 'Academic document deleted', category: 'academic', severity: 'activity' },
+  DOCUMENT_SUBMITTED: { label: 'Academic document submitted', category: 'academic', severity: 'activity' },
+  DOCUMENT_REVIEW_STARTED: { label: 'Document review started', category: 'academic', severity: 'info' },
+  DOCUMENT_APPROVED: { label: 'Academic document approved', category: 'academic', severity: 'activity' },
+  DOCUMENT_RETURNED: { label: 'Academic document returned', category: 'academic', severity: 'activity' },
+  STUDENT_STATUS_REQUESTED: { label: 'Student status change requested', category: 'academic', severity: 'activity' },
+  STUDENT_STATUS_CHANGED: { label: 'Student status changed', category: 'academic', severity: 'security' },
+  STUDENT_STATUS_REQUEST_REJECTED: { label: 'Student status request rejected', category: 'academic', severity: 'activity' },
+  LEARNING_SUPPORT_CREATED: { label: 'Learning support recommended', category: 'academic', severity: 'activity' },
+  LEARNING_SUPPORT_UPDATED: { label: 'Learning support updated', category: 'academic', severity: 'activity' },
+  BADGE_AWARDED: { label: 'Badge awarded', category: 'academic', severity: 'info' },
+  INSTRUCTOR_PROFILE_UPDATED: { label: 'Instructor PDS updated', category: 'academic', severity: 'activity' },
+  INSTRUCTOR_PROFILE_VIEWED: { label: 'Instructor PDS viewed', category: 'academic', severity: 'security' },
+  CALENDAR_EVENT_CREATED: { label: 'Calendar event created', category: 'academic', severity: 'activity' },
+  CALENDAR_EVENT_UPDATED: { label: 'Calendar event updated', category: 'academic', severity: 'activity' },
+  CALENDAR_EVENT_DELETED: { label: 'Calendar event deleted', category: 'academic', severity: 'activity' },
 };
 
 export const AUDIT_SEVERITIES: { value: AuditSeverity; label: string; description: string }[] = [
@@ -122,6 +179,7 @@ export const AUDIT_CATEGORY_LABELS: Record<AuditCategory, string> = {
   user_account: 'User Account',
   security: 'Security',
   system: 'System',
+  academic: 'Academic',
   other: 'Other',
 };
 

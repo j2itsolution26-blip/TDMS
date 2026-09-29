@@ -54,6 +54,52 @@ export function startOfLocalDay(date: Date, addDays = 0, tz = institutionTimeZon
   return new Date(guess - offset);
 }
 
+/**
+ * A wall-clock time on a local day ("2026-09-30", "09:00") as a UTC instant —
+ * how an Instructor's "September 30, 9:00 AM" becomes the moment a quiz opens.
+ */
+export function localDateTime(key: string, time: string, tz = institutionTimeZone()): Date | null {
+  const start = dayKeyToStart(key, tz);
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time);
+  if (!start || !match) return null;
+  return new Date(start.getTime() + (Number(match[1]) * 60 + Number(match[2])) * 60_000);
+}
+
+/** "8:04 AM" in the institution's zone. */
+export function formatLocalClock(date: Date, tz = institutionTimeZone()): string {
+  return new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' }).format(date);
+}
+
+/** "September 28, 2026" in the institution's zone. */
+export function formatLocalDate(date: Date, tz = institutionTimeZone()): string {
+  return new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'long', day: 'numeric', year: 'numeric' }).format(date);
+}
+
+/**
+ * A Postgres DATE column comes back as UTC midnight of that date. "2026-09-28"
+ * from such a value, without any zone shifting it to the day before.
+ */
+export function dateColumnKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+/** The Date to write into a DATE column for a day key. */
+export function dateColumnValue(key: string): Date {
+  return new Date(`${key}T00:00:00.000Z`);
+}
+
+/** Minutes since local midnight, e.g. 8:04 AM → 484. */
+export function localMinutes(date: Date, tz = institutionTimeZone()): number {
+  const { h, min } = parts(date, tz);
+  return h * 60 + min;
+}
+
+/** Day of the week in the institution's zone, 0 = Sunday. */
+export function localWeekday(date: Date, tz = institutionTimeZone()): number {
+  const { y, m, d } = parts(date, tz);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
 /** A day key ("2026-09-28") as the UTC instant its local midnight falls on. */
 export function dayKeyToStart(key: string, tz = institutionTimeZone()): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);

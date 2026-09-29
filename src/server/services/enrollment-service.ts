@@ -198,11 +198,21 @@ export async function createEnrollment(input: z.infer<typeof enrollmentSchema>) 
     });
   }
 
+  // Linked to the school year as a record when one exists; an archived year
+  // is read-only, so nobody can be enrolled into it after the fact.
+  const year = await prisma.schoolYear.findUnique({ where: { label: input.schoolYear }, select: { id: true, status: true } });
+  if (year?.status === 'ARCHIVED') {
+    throw new AppError(`School year ${input.schoolYear} is archived.`, 422, {
+      schoolYear: ['This school year is archived and cannot take new enrollments.'],
+    });
+  }
+
   return prisma.enrollment.create({
     data: {
       studentId: input.studentId,
       curriculumId: input.curriculumId,
       schoolYear: input.schoolYear,
+      schoolYearId: year?.id ?? null,
       semester: input.semester,
       yearLevel: input.yearLevel,
       status: 'pending',

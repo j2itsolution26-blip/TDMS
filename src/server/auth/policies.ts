@@ -337,3 +337,52 @@ export const systemPolicy = {
   viewAuditLogs: (u: AuthUser) => isSuperAdmin(u),
   viewSystemHealth: (u: AuthUser) => isSuperAdmin(u),
 };
+
+// --- Diploma Instructor module ---------------------------------------------
+
+/**
+ * Who does what in the teaching workflow.
+ *
+ * A role gate only. Every Instructor action ALSO proves the class is theirs
+ * (src/server/services/teaching/access.ts) and that its school year is not
+ * archived — being a Diploma Instructor opens the module, owning the class
+ * opens the class.
+ *
+ * The Super Admin is deliberately absent from every operational decision
+ * here, matching can(): they oversee the system, they do not teach, grade,
+ * review lesson plans or decide status requests. Viewing goes through
+ * inRoles() as everywhere else.
+ */
+export const teachingPolicy = {
+  /** The Instructor's own workspace: classes, attendance, assessments, grades, documents. */
+  teach: (u: AuthUser) => hasRole(u, 'teacher'),
+
+  /** Sections, rosters, class offerings, schedules and instructor assignment. */
+  manageClasses: (u: AuthUser) => can(u, 'schedule.manage'),
+
+  /** Create, activate and archive school years. */
+  manageSchoolYears: (u: AuthUser) => hasAnyRole(u, ['admin', 'director']),
+  viewSchoolYears: (u: AuthUser) => inRoles(u, ['admin', 'director', 'coordinator']),
+
+  /** Lesson plans, TOS and PT documentation submitted by Instructors. */
+  viewAcademicDocuments: (u: AuthUser) => inRoles(u, ['director', 'coordinator']),
+  reviewAcademicDocuments: (u: AuthUser) => hasAnyRole(u, ['director', 'coordinator']),
+
+  /** Instructor recommendations to change a student's status. */
+  viewStatusRequests: (u: AuthUser) => inRoles(u, ['director', 'coordinator', 'secretary']),
+  decideStatusRequests: (u: AuthUser) => hasAnyRole(u, ['director', 'coordinator', 'secretary']),
+
+  /** Learning Support Recommendations and their interventions. */
+  monitorLearningSupport: (u: AuthUser) => inRoles(u, ['director', 'coordinator']),
+
+  /** Instructor Personal Data Sheets. Every view is audited. */
+  viewInstructorProfiles: (u: AuthUser) => hasRole(u, 'director'),
+
+  /** The official school calendar. Everybody signed in may read it. */
+  manageCalendar: (u: AuthUser) => hasAnyRole(u, ['admin', 'director', 'coordinator']),
+};
+
+/** A student's own attendance QR, assessments, released scores and badges. */
+export const studentPortalPolicy = {
+  use: (u: AuthUser) => hasRole(u, 'student'),
+};

@@ -10,7 +10,7 @@ import { z } from 'zod';
  */
 
 export const SUBJECT_TYPES = ['lecture', 'laboratory', 'practical', 'capstone', 'ojt'] as const;
-export const STUDENT_STATUSES = ['applicant', 'active', 'transferred', 'archived', 'graduated'] as const;
+export const STUDENT_STATUSES = ['applicant', 'active', 'transferred', 'archived', 'graduated', 'dropped', 'inactive'] as const;
 export const APPLICATION_STATUSES = ['submitted', 'under_review', 'approved', 'returned'] as const;
 export const CREDENTIAL_STATUSES = ['missing', 'submitted', 'under_review', 'verified', 'rejected', 'expired'] as const;
 /**
@@ -179,6 +179,8 @@ export const STUDENT_STATUS_LABELS: Record<StudentStatus, string> = {
   transferred: 'Transferred',
   archived: 'Archived',
   graduated: 'Graduated',
+  dropped: 'Dropped',
+  inactive: 'Inactive',
 };
 
 export const APPLICATION_STATUS_LABELS: Record<ApplicationStatus, string> = {

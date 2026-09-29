@@ -116,10 +116,27 @@ stale in the build cache.
 | `SUPER_ADMIN_CODE_MAX_RESENDS` | no   | Default 3 codes per registration                            |
 | `SUPER_ADMIN_CODE_RESEND_COOLDOWN_SECONDS` | no | Default 60                                       |
 | `SUPER_ADMIN_COMPLETION_WINDOW_MINUTES` | no | Default 30 after verification                         |
+| `BLOB_READ_WRITE_TOKEN`    | yes*     | *For lesson plan / TOS / PT uploads. Set by Vercel when a Blob store is connected. Server-only |
+| `BLOB_ACCESS`              | no       | `private` (default) or `public`, matching how the Blob store was created |
+| `FILE_STORAGE`             | no       | `local` keeps uploads in `.data/uploads` — **self-hosted servers with a persistent disk only**; ignored on Vercel |
+| `APP_TIMEZONE`             | no       | Default `Asia/Manila`. Class schedules, attendance and quiz windows are read in it |
 
 Nothing secret is exposed to the browser: no variable is prefixed
 `NEXT_PUBLIC_`, and `DATABASE_URL` is only ever read inside `server-only`
 modules.
+
+### File uploads
+
+Diploma Instructors upload lesson plans, Tables of Specifications and
+Performance Task documentation (PDF, Word, Excel, PowerPoint or images, up to
+4 MB, checked by content as well as extension). On Vercel they are stored in
+**Vercel Blob**: connect a Blob store to the project (Storage → Blob) and
+Vercel sets `BLOB_READ_WRITE_TOKEN`. Files are private; they are only served
+through `/api/documents/[id]/file`, which checks who is asking.
+
+Until a store is connected, uploads are refused with "File storage is not
+configured" and a document cannot be submitted for review — nothing is
+accepted and then lost. The rest of the Instructor module works without it.
 
 ### If only the Laravel DB_* variables are set
 

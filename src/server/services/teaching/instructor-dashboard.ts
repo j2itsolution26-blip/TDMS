@@ -121,13 +121,19 @@ export async function instructorDashboard(user: AuthUser, now = new Date()) {
     )
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
+  const rosterOfClass = new Map(classes.map((c) => [c.id.toString(), roster.get(c.sectionId.toString()) ?? 0]));
   const todayRecords = todaySessions.flatMap((s) => s.records);
   const attendanceToday = {
     present: todayRecords.filter((r) => r.status === 'PRESENT').length,
     late: todayRecords.filter((r) => r.status === 'LATE').length,
     absent: todayRecords.filter((r) => r.status === 'ABSENT').length,
     excused: todayRecords.filter((r) => r.status === 'EXCUSED').length,
-    expected: todayClasses.reduce((s, c) => s + c.students, 0),
+    // Every meeting held today (scheduled or extra) expects its class roster, and
+    // so does each scheduled meeting whose attendance has not been opened yet —
+    // the same meetings the counts above come from.
+    expected:
+      todaySessions.reduce((s, t) => s + (rosterOfClass.get(t.classId.toString()) ?? 0), 0) +
+      todayClasses.filter((c) => !c.attendance).reduce((s, c) => s + c.students, 0),
   };
 
   // Work waiting on the Instructor.

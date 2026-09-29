@@ -17,7 +17,12 @@ import { UPLOAD_MAX_BYTES, UPLOAD_TYPES } from '@/lib/teaching';
  * created as public, and even then the URL is never handed out.
  *
  * Development without a token: a local folder (.data/uploads), so the
- * workflow can be exercised without cloud credentials. Refused in production.
+ * workflow can be exercised without cloud credentials.
+ *
+ * A self-hosted production server with a persistent disk may opt in to that
+ * folder with FILE_STORAGE=local. Never on Vercel: its filesystem is discarded
+ * between requests, so files would silently disappear. Without either setting,
+ * production refuses uploads with a clear message rather than losing them.
  */
 
 const LOCAL_ROOT = path.join(process.cwd(), '.data', 'uploads');
@@ -25,6 +30,7 @@ const LOCAL_ROOT = path.join(process.cwd(), '.data', 'uploads');
 function driver(): 'blob' | 'local' {
   if (process.env.BLOB_READ_WRITE_TOKEN) return 'blob';
   if (process.env.NODE_ENV !== 'production') return 'local';
+  if (process.env.FILE_STORAGE === 'local' && !process.env.VERCEL) return 'local';
   throw new AppError(
     'File storage is not configured, so files cannot be uploaded yet. Please contact the administrator.',
     503,

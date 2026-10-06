@@ -18,7 +18,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
  * holder must replace at first sign-in. No invitation email is involved.
  *
  * The response carries the temporary password once, `no-store`; only its
- * bcrypt hash is kept.
+ * password hash is kept.
  */
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const user = await requireApiUser();

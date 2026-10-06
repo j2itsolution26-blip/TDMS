@@ -93,8 +93,8 @@ Temporary password   ••••••••••••••••   [ Show ]
 
 ### How, without storing passwords
 
-The login check is unchanged: `users.password` is a bcrypt hash and nothing
-reverses it. A hash cannot answer "show it again", so when a temporary password
+The login check is unchanged: `users.password` is a one-way hash (Argon2id)
+and nothing reverses it. A hash cannot answer "show it again", so when a temporary password
 is issued (at creation or reset) the server **also** keeps an encrypted copy in
 `temporary_credentials`:
 
@@ -275,7 +275,7 @@ It is `NULL` while the account is still on the password it was issued. A
 password set *by* a Super Admin (create, reset) does not touch it. Nothing makes
 an authentication decision from it — `must_change_password` does that.
 
-There is one password store: `users.password`, a bcrypt hash. Sign-in verifies
+There is one password store: `users.password`, an Argon2id hash. Sign-in verifies
 against it and nothing else; the sealed copy in `temporary_credentials` is only
 ever opened for the Super Admin's *Reveal*, never to authenticate. So once the
 permanent password is written, the temporary one cannot work.

@@ -142,7 +142,7 @@ describe('the complete flow', () => {
     // The password is stored only as a hash, and the code is not stored at all.
     const row = pendingRow()!;
     expect(row.passwordHash).not.toContain(DETAILS.password);
-    expect(row.passwordHash.startsWith('$2')).toBe(true);
+    expect(row.passwordHash.startsWith('$argon2id$')).toBe(true);
     expect(dump(row)).not.toContain(lastCode());
 
     // Step 2 — verify. Still creates nothing.

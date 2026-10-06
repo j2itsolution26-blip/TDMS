@@ -7,7 +7,7 @@ import { login } from '@/server/services/auth-service';
 /**
  * POST /api/auth/login
  *
- * Replaces the Livewire `login()` action. Validation, lookup, bcrypt
+ * Replaces the Livewire `login()` action. Validation, lookup, password
  * verification, status check, session creation and cookie issuing all
  * happen server-side; the client receives only which step it is on and where
  * to go next.

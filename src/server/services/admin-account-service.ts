@@ -291,7 +291,7 @@ export interface CreatedAdmin {
   email: string;
   /**
    * Plaintext, in the response to the request that created it. The login
-   * checks a bcrypt hash; a sealed copy is kept for reveal only while it
+   * checks a password hash; a sealed copy is kept for reveal only while it
    * remains temporary (see credential-vault.ts).
    */
   temporaryPassword: string;

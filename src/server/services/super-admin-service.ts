@@ -659,7 +659,7 @@ export async function completeRegistration(context: AuditContext): Promise<Creat
           data: {
             name: row.fullName,
             email: row.email,
-            // Already a bcrypt hash, written at registration. Never re-hashed.
+            // Already a password hash, written at registration. Never re-hashed.
             password: row.passwordHash,
             // The code that reached this address is the proof.
             emailVerifiedAt: row.verifiedAt,

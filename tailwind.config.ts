@@ -63,6 +63,8 @@ export default {
         ],
         /** The signed-in workspace (shell and dashboard). */
         jakarta: ['"Plus Jakarta Sans"', '"Segoe UI"', ...defaultTheme.fontFamily.sans],
+        /** The sign-in page's "Skills for a Better Tomorrow" tagline only. */
+        script: ['"Great Vibes"', '"Segoe Script"', 'cursive'],
       },
       colors: {
         primary,
@@ -93,6 +95,28 @@ export default {
         },
 
         brand: { blue: '#2563EB' },
+
+        /**
+         * The sign-in screens (src/components/login). Blue is the enterprise
+         * colour; gold belongs to the Hospitality Technology accent only.
+         *   blue #0067C5 on white ............ 5.6:1
+         *   navy #0F172A on white ............ 17.9:1
+         *   slate #475569 on white / bg ...... 7.6 / 7.1:1
+         */
+        tvet: {
+          blue: '#0067C5',
+          'blue-hover': '#0058A8',
+          'blue-active': '#004C91',
+          sky: '#1A73E8',
+          navy: '#0F172A',
+          deep: '#0A2A66',
+          deeper: '#071D4A',
+          slate: '#475569',
+          bg: '#F5F7FA',
+          border: '#E2E8F0',
+          gold: '#D4A72C',
+          brown: '#5A3A12',
+        },
 
         /**
          * The workspace palette (shell and Admin dashboard). Contrast, measured:

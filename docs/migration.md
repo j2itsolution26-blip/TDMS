@@ -143,12 +143,12 @@ institutional domain exactly - the same rule as
    `MAIL_HOST`/`MAIL_PORT`, or Resend over HTTP, with no development fallback
    — see [deployment.md](deployment.md#email-delivery). Configure one and
    `/forgot-password` works end to end.
-2. **File storage.** The schema has `student_credentials.file_path`, but
-   the Laravel application never implemented upload, download or preview —
-   there is no `Storage::` call anywhere in the removed code and no
-   filesystem disk beyond the default. Verification works on the record,
-   not on a document. Wiring object storage (Vercel Blob or Supabase
-   Storage) is net-new work, not a migration task.
+2. ~~**File storage.**~~ Done. Lesson plans, TOS and performance-task files
+   go to **Vercel Blob** (`src/server/storage.ts`), private by default and
+   served only through the authorized download route; a local folder is used
+   in development. Vercel Blob was chosen over Supabase Storage because the
+   app already deploys to Vercel and needs no second provider or service-role
+   key. Uploads are checked for extension, size and file signature.
 3. **Drop the dead Laravel tables.** `jobs`, `job_batches`, `failed_jobs`,
    `cache_locks`, `sessions` and `migrations` are inert. They are modelled
    so Prisma will not drop them behind your back; removing them is a
@@ -158,6 +158,15 @@ institutional domain exactly - the same rule as
    delivered: invitations, resets and the Super Admin setup code all fail
    rather than appearing to work. Either configure it, or use
    `npm run admin:create` to provision the first administrator out-of-band.
+
+## Security hardening after migration
+
+- **Passwords: Argon2id.** Legacy bcrypt hashes still verify and are rewritten
+  as Argon2id on the owner's next sign-in. See
+  [authentication.md](authentication.md#password-hashing).
+- **CSRF: origin check.** `src/middleware.ts` rejects any non-GET `/api`
+  request whose `Origin` (or, failing that, `Sec-Fetch-Site`) is another
+  site, on top of the `SameSite=Lax` session cookie.
 
 ## Security note
 

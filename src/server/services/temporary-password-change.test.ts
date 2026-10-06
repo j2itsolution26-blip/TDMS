@@ -63,7 +63,10 @@ const { POST } = await import('@/app/api/auth/change-password/route');
 const { createSession, SESSION_COOKIE_NAME } = await import('@/server/auth/session');
 const { replaceTemporaryPassword, updatePassword } = await import('./profile-service');
 const { POST: VERIFY } = await import('@/app/api/auth/change-password/verify/route');
+// Legacy rows are seeded as bcrypt (what Laravel wrote); new hashes are
+// Argon2id, so every check goes through the same verifier the app uses.
 const bcrypt = (await import('bcryptjs')).default;
+const { verifyPassword } = await import('@/server/auth/password');
 
 const { prisma, store, reset } = await fake;
 
@@ -161,9 +164,9 @@ describe('TEST 1 & 7 — a correct change', () => {
     expect(json.data.redirectTo).toBe('/dashboard');
 
     const row = userRow(admin.id);
-    expect(await bcrypt.compare(NEW, row.password)).toBe(true);
+    expect(await verifyPassword(NEW, row.password)).toBe(true);
     // The old temporary password no longer works.
-    expect(await bcrypt.compare(TEMP, row.password)).toBe(false);
+    expect(await verifyPassword(TEMP, row.password)).toBe(false);
     expect(row.mustChangePassword).toBe(false);
 
     const credential = credentialOf(admin.id);
@@ -283,7 +286,7 @@ describe('the session after a change', () => {
 
     expect(again.status).toBe(409);
     expect(again.json.code).toBe('TEMP_PASSWORD_ALREADY_CHANGED');
-    expect(await bcrypt.compare(NEW, userRow(admin.id).password)).toBe(true);
+    expect(await verifyPassword(NEW, userRow(admin.id).password)).toBe(true);
   });
 });
 
@@ -302,7 +305,7 @@ describe('TEST 2 — the wrong temporary password', () => {
     expect(json.errors.currentPassword).toEqual(['Incorrect temporary password.']);
 
     const row = userRow(admin.id);
-    expect(await bcrypt.compare(TEMP, row.password)).toBe(true);
+    expect(await verifyPassword(TEMP, row.password)).toBe(true);
     expect(row.mustChangePassword).toBe(true);
     expect(credentialOf(admin.id).usedAt).toBeNull();
   });
@@ -343,7 +346,7 @@ describe('TEST 3 — a new password that misses the rules', () => {
       expect(status).toBe(422);
       expect(json.errors.password.length).toBeGreaterThan(0);
       expect(userRow(admin.id).mustChangePassword).toBe(true);
-      expect(await bcrypt.compare(TEMP, userRow(admin.id).password)).toBe(true);
+      expect(await verifyPassword(TEMP, userRow(admin.id).password)).toBe(true);
     });
   }
 
@@ -423,7 +426,7 @@ describe('account state', () => {
 
     const { status } = await post(valid);
     expect(status).toBe(401);
-    expect(await bcrypt.compare(TEMP, userRow(admin.id).password)).toBe(true);
+    expect(await verifyPassword(TEMP, userRow(admin.id).password)).toBe(true);
   });
 
   it('is re-checked inside the operation, in case the session check raced a suspension', async () => {
@@ -432,7 +435,7 @@ describe('account state', () => {
     await expect(replaceTemporaryPassword(admin.id, { currentPassword: TEMP, password: NEW })).rejects.toThrow(
       'Your account is suspended. Please contact the system administrator.',
     );
-    expect(await bcrypt.compare(TEMP, userRow(admin.id).password)).toBe(true);
+    expect(await verifyPassword(TEMP, userRow(admin.id).password)).toBe(true);
   });
 });
 
@@ -449,7 +452,7 @@ describe('what a real browser does', () => {
     // One succeeds. The other finds nothing left to change.
     expect(statuses[0]).toBe(200);
     expect(statuses[1]).toBeGreaterThanOrEqual(400);
-    expect(await bcrypt.compare(NEW, userRow(admin.id).password)).toBe(true);
+    expect(await verifyPassword(NEW, userRow(admin.id).password)).toBe(true);
     expect(store.auditLogs.filter((e) => e.action === 'ADMIN_TEMP_PASSWORD_CHANGED')).toHaveLength(1);
   });
 
@@ -461,9 +464,9 @@ describe('what a real browser does', () => {
     const { status } = await post({ ...valid, userId: victim.id.toString(), id: victim.id.toString() });
 
     expect(status).toBe(200);
-    expect(await bcrypt.compare(NEW, userRow(admin.id).password)).toBe(true);
+    expect(await verifyPassword(NEW, userRow(admin.id).password)).toBe(true);
     // The other account is exactly as it was.
-    expect(await bcrypt.compare(TEMP, userRow(victim.id).password)).toBe(true);
+    expect(await verifyPassword(TEMP, userRow(victim.id).password)).toBe(true);
     expect(userRow(victim.id).mustChangePassword).toBe(true);
   });
 
@@ -502,8 +505,8 @@ describe('a Super Admin reset landing mid-change', () => {
     spy.mockRestore();
 
     const row = userRow(admin.id);
-    expect(await bcrypt.compare(freshTemp, row.password)).toBe(true);
-    expect(await bcrypt.compare(NEW, row.password)).toBe(false);
+    expect(await verifyPassword(freshTemp, row.password)).toBe(true);
+    expect(await verifyPassword(NEW, row.password)).toBe(false);
     expect(row.mustChangePassword).toBe(true);
     expect(credentialOf(admin.id).usedAt).toBeNull();
   });

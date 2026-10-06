@@ -13,7 +13,7 @@ export const metadata = { title: 'Verify your email · TDMS' };
 
 export default function VerifyEmailPage() {
   return (
-    <AuthBrandedLayout>
+    <AuthBrandedLayout heading="Verify your email address">
       <Suspense fallback={null}>
         <VerifyEmailPanel />
       </Suspense>

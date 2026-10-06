@@ -13,7 +13,7 @@ export const metadata = { title: 'Forgot Password · TDMS' };
 
 export default function ForgotPasswordPage() {
   return (
-    <AuthBrandedLayout>
+    <AuthBrandedLayout heading="Reset your password">
       <ForgotPasswordForm domain={domainRestrictionEnabled() ? allowedDomain() : null} />
     </AuthBrandedLayout>
   );

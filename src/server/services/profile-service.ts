@@ -171,7 +171,7 @@ export async function replaceTemporaryPassword(
     throw new AppError(TEMPORARY_PASSWORD_MESSAGES.throttled, 429, undefined, 'TEMP_PASSWORD_THROTTLED');
   }
 
-  // The existing bcrypt comparison — never a plaintext comparison.
+  // The stored-hash comparison — never a plaintext comparison.
   if (!(await verifyPassword(input.currentPassword, user.password))) {
     await consumeRateLimit('temp-password-wrong', userId.toString(), WRONG_TEMPORARY_PASSWORD_LIMIT);
     throw new AppError(
@@ -184,7 +184,7 @@ export async function replaceTemporaryPassword(
 
   /*
    * A password two people knew must not survive by being chosen again. The
-   * comparison is against the stored hash, so this costs one bcrypt round and
+   * comparison is against the stored hash, so this costs one hash verification and
    * stores nothing new.
    */
   if (await verifyPassword(input.password, user.password)) {
@@ -196,7 +196,7 @@ export async function replaceTemporaryPassword(
     );
   }
 
-  // Hashed before the transaction: bcrypt is slow and a transaction should not be.
+  // Hashed before the transaction: Argon2id is slow and a transaction should not be.
   const newHash = await hashPassword(input.password);
   const now = new Date();
 

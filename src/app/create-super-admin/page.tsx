@@ -31,7 +31,7 @@ export default async function CreateSuperAdminPage() {
   const policy = describeDomainPolicy();
 
   return (
-    <AuthBrandedLayout>
+    <AuthBrandedLayout heading="Set up the first administrator account">
       <CreateSuperAdminForm
         domainRestricted={policy.enabled}
         allowedDomain={policy.allowedDomain}

@@ -14,7 +14,7 @@
 
 export const PASSWORD_MIN_LENGTH = 12;
 
-/** Upper bound, so a multi-megabyte string cannot be fed to bcrypt. */
+/** Upper bound, so a multi-megabyte string cannot be fed to the password hasher. */
 export const PASSWORD_MAX_LENGTH = 200;
 
 export interface PasswordRequirement {

@@ -49,9 +49,51 @@ function isPublic(pathname: string): boolean {
   return false;
 }
 
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/**
+ * CSRF defence for the API: a state-changing request must come from this
+ * site. The session cookie is already SameSite=Lax, which stops a cross-site
+ * form POST from carrying it in current browsers; this is the server-side
+ * check that does not depend on the browser getting that right, and it also
+ * covers the pre-auth endpoints (login, setup), which have no cookie to lose.
+ *
+ * Every legitimate caller is this app's own same-origin fetch(), which always
+ * sends Origin on a POST/PUT/PATCH/DELETE. A request with no Origin at all is
+ * judged by Sec-Fetch-Site instead, and allowed when neither header is
+ * present (curl, server-to-server) — those carry no ambient browser cookies,
+ * so there is nothing to forge.
+ */
+export function isCrossSiteWrite(request: NextRequest): boolean {
+  if (SAFE_METHODS.has(request.method)) return false;
+
+  const origin = request.headers.get('origin');
+  if (origin) {
+    let originHost: string;
+    try {
+      originHost = new URL(origin).host;
+    } catch {
+      return true; // "null" or garbage: an opaque origin is never us
+    }
+    const allowed = [request.headers.get('x-forwarded-host'), request.headers.get('host')]
+      .flatMap((h) => (h ? h.split(',').map((v) => v.trim()) : []))
+      .filter(Boolean);
+    return !allowed.includes(originHost);
+  }
+
+  return request.headers.get('sec-fetch-site') === 'cross-site';
+}
+
 export function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const hasSessionCookie = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
+
+  if (pathname.startsWith('/api/') && isCrossSiteWrite(request)) {
+    return NextResponse.json(
+      { success: false, message: 'This request was blocked because it came from another site.' },
+      { status: 403 },
+    );
+  }
 
   /*
    * NOTE: middleware deliberately does NOT redirect cookie-holders away

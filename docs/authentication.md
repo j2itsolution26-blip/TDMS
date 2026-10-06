@@ -2,10 +2,10 @@
 
 ## Summary
 
-Sign-in accepts **either a username or an email address**, verifies a
-bcrypt hash, checks the account is active, then creates a server-side
-session and sets an HTTP-only cookie. Every existing password keeps
-working: the hashes were written by PHP and are read unchanged.
+Sign-in accepts **either a username or an email address**, verifies the
+password hash (Argon2id, or a legacy bcrypt hash from Laravel), checks the
+account is active, then creates a server-side session and sets an HTTP-only
+cookie. Every existing password keeps working without a reset.
 
 There is no hard-coded credential, no demo shortcut and no bypass. Demo
 accounts authenticate through the identical code path as anyone else.
@@ -26,16 +26,22 @@ resolved to a column before lookup.
 
 ## Password hashing
 
-Laravel wrote every hash with `password_hash(PASSWORD_BCRYPT)` at cost 12,
-which produces the `$2y$` prefix. `bcryptjs` implements the same corrected
-Blowfish variant and accepts `$2y$` directly, so:
+New passwords are hashed with **Argon2id** (`@node-rs/argon2`) at the OWASP
+baseline: 19 MiB memory, 2 iterations, 1 lane. All of it lives in
+`src/server/auth/password.ts`.
 
-- no account needed a password reset;
-- no rehash-on-login shim was required;
-- `BCRYPT_ROUNDS` stays at 12 so new hashes match the old cost.
+Laravel wrote every existing hash with `password_hash(PASSWORD_BCRYPT)` at
+cost 12 (`$2y$`). `verifyPassword()` recognises the prefix and checks those
+with `bcryptjs`, so:
 
-`needsRehash()` upgrades a hash opportunistically if the cost is ever
-raised.
+- no account needs a password reset;
+- `needsRehash()` reports every bcrypt hash as stale, and a successful sign-in
+  rewrites it as Argon2id — the only moment the plaintext is available;
+- once no `$2` hash remains in `users.password`, bcrypt can be removed from
+  the password path.
+
+`BCRYPT_ROUNDS` no longer affects passwords; it is the cost for the
+short-lived one-time codes (Admin access codes, email verification codes).
 
 ## Identifier resolution
 
@@ -59,8 +65,8 @@ A bad identifier and a bad password produce the **same** response:
 
 Two further details matter:
 
-1. A bcrypt comparison runs even when no user matched, against a throwaway
-   hash of the same cost. Skipping it would let an attacker tell "no such
+1. A password comparison runs even when no user matched, against a throwaway
+   Argon2id hash at the production parameters. Skipping it would let an attacker tell "no such
    account" from "wrong password" by timing alone.
 2. The "Your account is inactive" message is only returned **after** the
    password is verified. Returning it earlier would turn it into an oracle
@@ -198,7 +204,7 @@ that finally creates the account so it cannot be raced.
 flow is three steps and the order is the point:
 
 1. `POST /api/auth/super-admin/start` — validates the details and writes a row
-   to `pending_admin_registrations`, with the password already bcrypt-hashed.
+   to `pending_admin_registrations`, with the password already hashed (Argon2id).
    No `users` row, no role, no session. A six-digit code is generated with
    `randomInt` from the CSPRNG, hashed, and emailed. If the mail cannot be
    sent, the pending row is deleted again: an unsendable code must not leave a

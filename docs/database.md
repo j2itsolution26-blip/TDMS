@@ -116,7 +116,7 @@ proven: the setup form writes here, the emailed code is checked against here,
 and only a correct code turns the row into an account — inside one transaction
 that deletes the row as it goes.
 
-It holds a bcrypt password hash, a bcrypt hash of the six-digit code (bcrypt
+It holds an Argon2id password hash, a bcrypt hash of the six-digit code (bcrypt
 rather than SHA-256 because the code has too little entropy for a fast digest
 to protect), the SHA-256 of the browser's opaque setup-cookie handle, and the
 attempt and resend counters. It grants nothing: a row here cannot sign in,

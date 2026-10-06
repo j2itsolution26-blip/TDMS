@@ -3,459 +3,119 @@
 @tailwind utilities;
 
 /*
- * TDMS auth screen styling.
+ * TDMS sign-in screens — shared form controls.
  *
- * Copied verbatim from resources/css/auth.css so the login page renders
- * pixel-for-pixel as it did under Laravel. Not a single selector, colour,
- * radius or breakpoint was altered by the migration.
+ * The page itself (background, hero, program cards, the card) is Tailwind in
+ * src/components/login/. What remains here are the controls the seven
+ * sign-in screens share — fields, alerts, the submit button, the setup and
+ * verification widgets — scoped under .tdms-auth so nothing reaches the
+ * signed-in workspace, which takes its look from tailwind.config.ts.
+ *
+ * Contrast, computed (WCAG AA: 4.5:1 text, 3:1 UI components):
+ *   primary #0067C5 on white ................. 5.6:1  (button fill, links)
+ *   text #0F172A on white .................... 17.9:1
+ *   muted #475569 on white / field bg ........ 7.6 / 7.1:1
+ *   subtle #64748B on white .................. 4.8:1
+ *   field border #8D99AE on field bg ......... 3.0:1
  */
-/*
- * Scoped styles for the TDMS branded login page only.
- * Not imported by app.css, so no other page is affected.
- */
-
-:root {
-    --tdms-green: #006B3F;
-    --tdms-green-dark: #003D2A;
-    --tdms-bg-deep: #002F22;
-    --tdms-lime: #8BCF20;
-    --tdms-gold: #D4AF37;
-    --tdms-white: #FFFFFF;
-    --tdms-gray-light: #F5F7F6;
-    --tdms-ink: #10201A;
-}
 
 .tdms-auth {
-    min-height: 100vh;
+    --auth-primary: #0067C5;
+    --auth-primary-hover: #0058A8;
+    --auth-primary-active: #004C91;
+    --auth-primary-ring: rgba(0, 103, 197, 0.22);
+    --auth-primary-tint: #EFF6FF;
+    --auth-navy: #0F172A;
+    --auth-text: #0F172A;
+    --auth-label: #1E293B;
+    --auth-muted: #475569;
+    --auth-subtle: #64748B;
+    --auth-bg: #F5F7FA;
+    --auth-surface: #FFFFFF;
+    --auth-field: #F5F7FA;
+    --auth-border: #E2E8F0;
+    --auth-input-border: #8D99AE;
+    --auth-danger: #B42318;
+    --auth-radius: 8px;
+    --auth-ease: cubic-bezier(0.2, 0, 0, 1);
+
+    font-family: "Segoe UI Variable", "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+.panel__status {
     display: flex;
     flex-direction: column;
-    background: var(--tdms-bg-deep);
-    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
-    color: var(--tdms-white);
+    gap: 8px;
+    margin-bottom: 24px;
 }
 
-.tdms-auth__main {
-    flex: 1;
+/* ---------- Alerts ---------- */
+
+.auth-alert {
     display: flex;
-    align-items: stretch;
-    min-height: 0;
-}
-
-/* ---------- Hero (left) ---------- */
-
-.tdms-auth__hero {
-    position: relative;
-    flex: 1 1 68%;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    gap: 2rem;
-    padding: clamp(1.75rem, 4vw, 3.5rem);
-    overflow: hidden;
-    background:
-        var(--tdms-campus-image, none),
-        linear-gradient(140deg, var(--tdms-green-dark), var(--tdms-bg-deep));
-    background-size: cover;
-    background-position: center;
-}
-
-/* Broad, light wash so the building stays legible across the whole hero */
-.tdms-auth__hero::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background: linear-gradient(120deg, rgba(0, 47, 34, 0.78) 0%, rgba(0, 47, 34, 0.5) 38%, rgba(0, 61, 42, 0.32) 65%, rgba(0, 47, 34, 0.55) 100%);
-}
-
-/* Focused scrim behind the copy block only, so text stays readable
-   without flattening the whole photograph into solid green */
-.hero__copy::before {
-    content: "";
-    position: absolute;
-    inset: -1.5rem -2rem;
-    z-index: -1;
-    background: radial-gradient(60% 90% at 30% 30%, rgba(0, 41, 30, 0.72), rgba(0, 41, 30, 0) 75%);
-}
-
-.tdms-auth__hero::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    opacity: 0.035;
-    z-index: 1;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'%3E%3Cg fill='none' stroke='%23FFFFFF' stroke-width='1.4'%3E%3Ccircle cx='110' cy='110' r='70'/%3E%3Ccircle cx='110' cy='110' r='40'/%3E%3Cpath d='M110 18v20M110 182v20M18 110h20M182 110h20M46 46l14 14M160 160l14 14M46 174l14-14M160 60l14-14'/%3E%3C/g%3E%3C/svg%3E");
-    background-repeat: repeat;
-    background-size: 220px 220px;
-}
-
-.hero__copy {
-    position: relative;
-    z-index: 1;
-    max-width: 34rem;
-}
-
-.hero__eyebrow {
-    font-size: clamp(1.1rem, 2vw, 1.4rem);
-    font-weight: 500;
-    color: var(--tdms-white);
-    margin: 0;
-    text-shadow: 0 2px 12px rgba(0, 20, 14, 0.55);
-}
-
-.hero__title {
-    font-family: 'Inter', ui-sans-serif, sans-serif;
-    font-weight: 800;
-    font-size: clamp(3.25rem, 8vw, 5.75rem);
-    line-height: 1;
-    letter-spacing: -0.02em;
-    color: var(--tdms-lime);
-    margin: 0.1em 0 0.25em;
-    text-wrap: balance;
-    text-shadow: 0 4px 24px rgba(0, 20, 14, 0.6);
-}
-
-.hero__subtitle {
-    font-weight: 600;
-    font-size: clamp(0.95rem, 1.6vw, 1.15rem);
-    letter-spacing: 0.04em;
-    color: var(--tdms-white);
-    margin: 0 0 1rem;
-    text-shadow: 0 2px 12px rgba(0, 20, 14, 0.55);
-}
-
-.hero__divider {
-    width: 64px;
-    height: 4px;
-    border-radius: 999px;
-    background: var(--tdms-gold);
-    margin: 0 0 1.1rem;
-}
-
-.hero__description {
-    font-size: 0.98rem;
-    line-height: 1.6;
-    color: rgba(255, 255, 255, 0.92);
-    max-width: 34ch;
-    margin: 0 0 1.6rem;
-    text-shadow: 0 2px 10px rgba(0, 20, 14, 0.6);
-}
-
-.hero__badges {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1.75rem;
-}
-
-.hero__badge {
-    display: flex;
-    flex-direction: column;
     align-items: flex-start;
-    gap: 0.5rem;
-    max-width: 11rem;
+    gap: 12px;
+    padding: 12px 16px;
+    border: 1px solid;
+    border-radius: var(--auth-radius);
+    font-size: 0.875rem;
+    line-height: 1.5;
+    animation: auth-fade-in 0.2s ease both;
 }
 
-.hero__badge-icon {
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: 999px;
-    border: 1.5px solid var(--tdms-lime);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--tdms-lime);
+.auth-alert__icon {
+    width: 20px;
+    height: 20px;
     flex-shrink: 0;
+    margin-top: 1px;
 }
 
-.hero__badge-icon svg {
-    width: 1.15rem;
-    height: 1.15rem;
-}
-
-.hero__badge-text {
-    font-size: 0.8rem;
-    line-height: 1.35;
-    color: rgba(255, 255, 255, 0.82);
-}
-
-/* ---------- Program cards ---------- */
-
-.hero__cards {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 1.1rem;
-    width: 100%;
-    max-width: 34rem;
-    margin-left: auto;
-}
-
-.program-card {
-    display: flex;
-    align-items: stretch;
-    gap: 0;
-    height: clamp(6.5rem, 11vw, 8.5rem);
-    border-radius: 16px;
-    overflow: hidden;
-    border: 1px solid rgba(139, 207, 32, 0.5);
-    background: linear-gradient(180deg, rgba(0, 61, 42, 0.92), rgba(0, 47, 34, 0.96));
-    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.4);
-    transition: transform 0.2s ease, border-color 0.2s ease;
-    text-decoration: none;
-    opacity: 0;
-    animation: tdms-rise 0.6s ease forwards;
-}
-
-.program-card:nth-child(2) {
-    animation-delay: 0.12s;
-}
-
-.program-card:hover {
-    transform: translateY(-3px);
-    border-color: var(--tdms-gold);
-}
-
-.program-card__body {
-    flex: 0 0 42%;
-    padding: 0.9rem 1.1rem;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 0.6rem;
-    min-width: 0;
-}
-
-.program-card__icon {
-    width: 2.1rem;
-    height: 2.1rem;
-    border-radius: 999px;
-    border: 1.5px solid var(--tdms-lime);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--tdms-lime);
-    flex-shrink: 0;
-}
-
-.program-card__icon svg {
-    width: 1.05rem;
-    height: 1.05rem;
-}
-
-.program-card__title {
-    font-weight: 700;
-    font-size: clamp(0.92rem, 1.4vw, 1.05rem);
-    color: var(--tdms-white);
-    line-height: 1.2;
-    margin: 0;
-}
-
-.program-card__media {
-    position: relative;
-    flex: 1 1 58%;
-    min-width: 7rem;
-    background: linear-gradient(160deg, var(--tdms-green), var(--tdms-green-dark));
-    overflow: hidden;
-}
-
-.program-card__media img {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-.program-card__media--hospitality img {
-    object-position: 62% 12%;
-}
-
-.program-card__media--it img {
-    object-position: center;
-}
-
-.program-card__media::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, rgba(0, 47, 34, 0.55) 0%, rgba(0, 47, 34, 0) 22%);
-}
-
-/* ---------- Login panel (right) ---------- */
-
-.tdms-auth__panel {
-    flex: 0 0 35%;
-    max-width: 30rem;
-    min-width: 21rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: clamp(1.5rem, 3vw, 2.5rem);
-    background: var(--tdms-bg-deep);
-}
-
-.panel__card {
-    width: 100%;
-    max-width: 26rem;
-    background: var(--tdms-white);
-    color: var(--tdms-ink);
-    border-radius: 24px;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
-    padding: clamp(1.75rem, 3vw, 2.5rem);
-    opacity: 0;
-    animation: tdms-rise 0.5s ease forwards;
-}
-
-.panel__logo-wrap {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 1rem;
-}
-
-.panel__logo {
-    width: 6.5rem;
-    height: 6.5rem;
-    object-fit: contain;
-}
-
-.panel__logo-fallback {
-    width: 5.5rem;
-    height: 5.5rem;
-    border-radius: 999px;
-    background: radial-gradient(circle at 35% 30%, var(--tdms-green), var(--tdms-green-dark));
-    border: 2px solid var(--tdms-lime);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--tdms-lime);
-}
-
-.panel__logo-fallback svg {
-    width: 2.5rem;
-    height: 2.5rem;
-}
-
-.panel__eyebrow {
-    text-align: center;
-    font-size: 0.95rem;
-    color: #4B5A53;
-    margin: 0;
-}
-
-.panel__title {
-    text-align: center;
-    font-weight: 800;
-    font-size: clamp(2rem, 4vw, 2.6rem);
-    letter-spacing: -0.01em;
-    color: var(--tdms-green-dark);
-    margin: 0.05em 0 0.15em;
-}
-
-.panel__subtitle {
-    text-align: center;
+.auth-alert__title {
     font-weight: 600;
-    font-size: 0.72rem;
-    letter-spacing: 0.08em;
-    color: #4B5A53;
-    margin: 0 0 1rem;
 }
 
-.panel__divider {
-    width: 56px;
-    height: 3px;
-    border-radius: 999px;
-    background: var(--tdms-gold);
-    margin: 0 auto 1.4rem;
+.auth-alert--error {
+    background: #FEF3F2;
+    border-color: #FDA29B;
+    color: #7A271A;
 }
 
-.panel__heading {
-    text-align: center;
-    font-weight: 700;
-    font-size: 1.2rem;
-    color: var(--tdms-green-dark);
-    margin: 0 0 0.25rem;
+.auth-alert--error .auth-alert__icon {
+    color: var(--auth-danger);
 }
 
-.panel__subheading {
-    text-align: center;
-    font-size: 0.85rem;
-    color: #6B7A73;
-    margin: 0 0 1.5rem;
+.auth-alert--warning {
+    background: #FFFAEB;
+    border-color: #FEC84B;
+    color: #7A2E0E;
+}
+
+.auth-alert--warning .auth-alert__icon {
+    color: #B54708;
+}
+
+.auth-alert--info {
+    background: var(--auth-primary-tint);
+    border-color: #BFDBFE;
+    color: #1E3A8A;
+}
+
+.auth-alert--info .auth-alert__icon {
+    color: var(--auth-primary);
 }
 
 /* ---------- Form ---------- */
 
 .tdms-field {
-    margin-bottom: 1rem;
+    margin-bottom: 20px;
 }
 
 .tdms-field label {
     display: block;
-    font-size: 0.8rem;
+    margin-bottom: 8px;
+    font-size: 0.875rem;
     font-weight: 600;
-    color: var(--tdms-green-dark);
-    margin-bottom: 0.4rem;
-}
-
-/* ---------- Live password requirement checklist ---------- */
-
-.tdms-password-requirements {
-    list-style: none;
-    margin: 0.6rem 0 0;
-    padding: 0;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.3rem 0.75rem;
-}
-
-.tdms-password-requirements li {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.78rem;
-    color: #6B7A73;
-    transition: color 0.15s ease;
-}
-
-.tdms-password-requirements li.is-met {
-    color: var(--tdms-green-dark);
-}
-
-.tdms-req-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.05rem;
-    height: 1.05rem;
-    flex-shrink: 0;
-    border-radius: 999px;
-    font-size: 0.68rem;
-    line-height: 1;
-    color: #9AA6A0;
-    border: 1.5px solid #C3CDC8;
-    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
-}
-
-.is-met .tdms-req-icon {
-    color: var(--tdms-white);
-    border-color: var(--tdms-green);
-    background: var(--tdms-green);
-}
-
-.tdms-password-match {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.78rem;
-    color: #6B7A73;
-    margin: 0.5rem 0 0;
-    transition: color 0.15s ease;
-}
-
-.tdms-password-match.is-met {
-    color: var(--tdms-green-dark);
+    color: var(--auth-label);
 }
 
 .tdms-input-wrap {
@@ -466,284 +126,435 @@
 
 .tdms-input-wrap svg.tdms-input-icon {
     position: absolute;
-    left: 1rem;
-    width: 1.1rem;
-    height: 1.1rem;
-    color: #8A968F;
+    left: 18px;
+    width: 20px;
+    height: 20px;
+    color: var(--auth-subtle);
     pointer-events: none;
 }
 
 .tdms-input-wrap input {
     width: 100%;
     height: 54px;
-    padding: 0 1rem 0 2.75rem;
-    border-radius: 14px;
-    border: 1.5px solid #DCE3DF;
-    background: var(--tdms-gray-light);
-    font-size: 0.95rem;
-    color: var(--tdms-ink);
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    padding: 0 16px 0 54px;
+    border-radius: var(--auth-radius);
+    border: 1px solid var(--auth-input-border);
+    background: var(--auth-field);
+    font-size: 1rem;
+    color: var(--auth-text);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.tdms-input-wrap input.has-trailing {
+    padding-right: 56px;
 }
 
 .tdms-input-wrap input::placeholder {
-    color: #93A19B;
+    color: var(--auth-subtle);
+    opacity: 1;
+}
+
+.tdms-input-wrap input:hover {
+    border-color: #64748B;
 }
 
 .tdms-input-wrap input:focus {
     outline: none;
-    border-color: var(--tdms-green);
-    box-shadow: 0 0 0 4px rgba(0, 107, 63, 0.16);
-    background: var(--tdms-white);
+    background: var(--auth-surface);
+    border-color: var(--auth-primary);
+    box-shadow: 0 0 0 3px var(--auth-primary-ring);
+}
+
+.tdms-input-wrap input[aria-invalid="true"] {
+    border-color: var(--auth-danger);
+}
+
+.tdms-input-wrap input[aria-invalid="true"]:focus {
+    box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.18);
 }
 
 .tdms-toggle-visibility {
     position: absolute;
-    right: 0.9rem;
+    right: 9px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2rem;
-    height: 2rem;
-    color: #8A968F;
-    border-radius: 999px;
-    background: transparent;
+    width: 38px;
+    height: 38px;
     border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--auth-subtle);
     cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .tdms-toggle-visibility:hover {
-    color: var(--tdms-green);
+    background: #E2E8F0;
+    color: var(--auth-text);
 }
 
-.tdms-toggle-visibility:focus-visible,
-.tdms-input-wrap input:focus-visible {
-    outline: 2px solid var(--tdms-green);
-    outline-offset: 2px;
+.tdms-toggle-visibility:focus-visible {
+    outline: 2px solid var(--auth-primary);
+    outline-offset: 0;
 }
 
 .tdms-toggle-visibility svg {
-    width: 1.1rem;
-    height: 1.1rem;
+    width: 20px;
+    height: 20px;
 }
 
 .tdms-row-between {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    margin: -0.25rem 0 1.3rem;
-    font-size: 0.82rem;
+    gap: 8px 16px;
+    margin: -2px 0 28px;
+    font-size: 0.9375rem;
 }
 
 .tdms-remember {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    color: #4B5A53;
+    gap: 8px;
+    color: var(--auth-muted);
+    cursor: pointer;
 }
 
 .tdms-remember input[type="checkbox"] {
-    width: 1rem;
-    height: 1rem;
+    width: 18px;
+    height: 18px;
     border-radius: 4px;
-    border: 1.5px solid #C3CDC8;
-    accent-color: var(--tdms-green);
+    border: 1px solid var(--auth-input-border);
+    color: var(--auth-primary);
+    cursor: pointer;
+}
+
+.tdms-remember input[type="checkbox"]:focus {
+    box-shadow: none;
+}
+
+.tdms-remember input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--auth-primary);
+    outline-offset: 2px;
 }
 
 .tdms-forgot {
-    color: var(--tdms-green);
     font-weight: 600;
+    color: var(--auth-primary);
     text-decoration: none;
+    border-radius: 4px;
 }
 
 .tdms-forgot:hover {
+    color: var(--auth-primary-hover);
     text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.tdms-forgot:focus-visible,
+.tdms-resend__button:focus-visible,
+.tdms-bootstrap-link:focus-visible {
+    outline: 2px solid var(--auth-primary);
+    outline-offset: 2px;
 }
 
 .tdms-submit {
     width: 100%;
+    height: 54px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.55rem;
-    height: 54px;
-    border-radius: 14px;
+    gap: 8px;
     border: none;
-    background: linear-gradient(135deg, var(--tdms-green), var(--tdms-green-dark));
-    color: var(--tdms-white);
-    font-weight: 700;
-    font-size: 0.92rem;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
+    border-radius: var(--auth-radius);
+    background: var(--auth-primary);
+    color: #FFFFFF;
+    font-size: 1.0625rem;
+    font-weight: 600;
     cursor: pointer;
-    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
-    box-shadow: 0 12px 24px rgba(0, 107, 63, 0.28);
+    box-shadow: 0 6px 16px -6px rgba(0, 103, 197, 0.55);
+    transition: background-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 
 .tdms-submit svg {
-    width: 1.1rem;
-    height: 1.1rem;
+    width: 18px;
+    height: 18px;
+    transition: transform 0.15s var(--auth-ease);
 }
 
 /* Only an enabled button responds to the pointer; a disabled one must not beckon. */
 .tdms-submit:not([disabled]):hover {
-    filter: brightness(1.08);
-    transform: translateY(-1px);
-    box-shadow: 0 16px 30px rgba(0, 107, 63, 0.34);
+    background: var(--auth-primary-hover);
+    box-shadow: 0 4px 12px -2px rgba(0, 103, 197, 0.4);
+}
+
+.tdms-submit:not([disabled]):hover svg {
+    transform: translateX(2px);
 }
 
 .tdms-submit:not([disabled]):active {
-    transform: translateY(0);
+    background: var(--auth-primary-active);
+    transform: translateY(1px);
 }
 
 .tdms-submit:focus-visible {
-    outline: 2px solid var(--tdms-gold);
+    outline: 2px solid var(--auth-primary);
     outline-offset: 3px;
 }
 
 /*
- * A disabled button has to LOOK disabled. This used to be 70% opacity with a
- * "progress" cursor — which reads as a live button that is busy thinking, not
- * one that will ignore the click. On the change-password screen that made a
- * button disabled by an unmet condition look like it was working, and people
- * clicked it repeatedly while nothing was sent.
- *
- * The progress cursor now appears only while a request really is in flight
- * (aria-busy), and an idle disabled button is plainly greyed out.
+ * A disabled button has to LOOK disabled — plainly greyed out, not "busy".
+ * The progress cursor appears only while a request really is in flight
+ * (aria-busy), so a button disabled by an unmet condition never looks like
+ * it is working.
  */
 .tdms-submit[disabled] {
-    opacity: 0.5;
+    background: #94A3B8;
     cursor: not-allowed;
-    filter: saturate(0.4);
     box-shadow: none;
 }
 
 .tdms-submit[aria-busy="true"] {
+    background: var(--auth-primary);
     opacity: 0.85;
     cursor: progress;
-    filter: none;
 }
 
-.panel__status {
-    margin-bottom: 1rem;
+.tdms-spinner {
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    border-top-color: #FFFFFF;
+    animation: auth-spin 0.7s linear infinite;
 }
 
-/* ---------- Bootstrap Super Admin Link ---------- */
+/* ---------- Other sign-in providers ---------- */
+
+.tdms-or-divider {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 0 0 18px;
+    font-size: 0.9375rem;
+    color: var(--auth-subtle);
+}
+
+.tdms-or-divider::before,
+.tdms-or-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--auth-border);
+}
+
+.tdms-or-divider span {
+    white-space: nowrap;
+}
+
+.tdms-google-hint {
+    margin-top: 8px;
+    text-align: center;
+    font-size: 0.8125rem;
+    color: var(--auth-subtle);
+}
+
+/* ---------- Bootstrap Super Admin link ---------- */
 
 .tdms-bootstrap-wrap {
-    margin-top: 1.5rem;
+    margin-top: 24px;
     text-align: center;
 }
 
 .tdms-bootstrap-divider {
-    position: relative;
-    text-align: center;
-    margin-bottom: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
 }
 
-.tdms-bootstrap-divider::before {
+.tdms-bootstrap-divider::before,
+.tdms-bootstrap-divider::after {
     content: "";
-    position: absolute;
-    top: 50%;
-    left: 0;
-    right: 0;
+    flex: 1;
     height: 1px;
-    background: #E5EBE8;
-    z-index: 0;
+    background: var(--auth-border);
 }
 
 .tdms-bootstrap-divider span {
-    position: relative;
-    z-index: 1;
-    background: var(--tdms-white);
-    padding: 0 0.75rem;
-    font-size: 0.72rem;
+    font-size: 0.75rem;
     font-weight: 600;
-    text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #8A968F;
+    text-transform: uppercase;
+    color: var(--auth-subtle);
 }
 
 .tdms-bootstrap-label {
-    font-size: 0.8rem;
-    color: #6B7A73;
-    margin: 0 0 0.35rem;
+    margin: 0 0 8px;
+    font-size: 0.8125rem;
+    color: var(--auth-muted);
 }
 
 .tdms-bootstrap-link {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    font-size: 0.85rem;
+    gap: 8px;
+    padding: 8px 14px;
+    border: 1px dashed rgba(0, 103, 197, 0.45);
+    border-radius: var(--auth-radius);
+    background: var(--auth-primary-tint);
+    font-size: 0.875rem;
     font-weight: 600;
-    color: var(--tdms-green);
+    color: var(--auth-primary);
     text-decoration: none;
-    padding: 0.4rem 0.85rem;
-    border-radius: 8px;
-    background: rgba(0, 107, 63, 0.07);
-    border: 1px dashed rgba(0, 107, 63, 0.3);
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .tdms-bootstrap-link:hover {
-    background: rgba(0, 107, 63, 0.12);
-    border-color: var(--tdms-green);
-    color: var(--tdms-green-dark);
+    background: #DBEAFE;
+    border-color: var(--auth-primary);
+    color: var(--auth-primary-hover);
 }
 
 .tdms-bootstrap-link svg {
-    width: 0.95rem;
-    height: 0.95rem;
+    width: 16px;
+    height: 16px;
+}
+
+/* ---------- Live password requirement checklist ---------- */
+
+.tdms-password-requirements {
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 12px;
+}
+
+.tdms-password-requirements li {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8125rem;
+    color: var(--auth-subtle);
+    transition: color 0.15s ease;
+}
+
+.tdms-password-requirements li.is-met {
+    color: var(--auth-text);
+}
+
+.tdms-req-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    border-radius: 999px;
+    border: 1.5px solid #CBD5E1;
+    font-size: 0.65rem;
+    line-height: 1;
+    color: #94A3B8;
+    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.is-met .tdms-req-icon {
+    color: #FFFFFF;
+    border-color: var(--auth-primary);
+    background: var(--auth-primary);
+}
+
+.tdms-requirements-heading {
+    margin: 12px 0 0;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--auth-subtle);
+}
+
+.tdms-password-match {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 8px 0 0;
+    font-size: 0.8125rem;
+    color: var(--auth-subtle);
+    transition: color 0.15s ease;
+}
+
+.tdms-password-match.is-met {
+    color: var(--auth-text);
+}
+
+.tdms-password-match.is-mismatch {
+    color: var(--auth-danger);
+}
+
+.tdms-password-match.is-mismatch .tdms-req-icon {
+    color: #FFFFFF;
+    border-color: var(--auth-danger);
+    background: var(--auth-danger);
+}
+
+.tdms-submit-hint {
+    margin: 8px 0 0;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    text-align: center;
+    color: var(--auth-subtle);
 }
 
 /* ---------- Two-step setup: progress indicator ---------- */
 /*
  * Reads as "① Account Details ② Verify Email" with a rule between the two, so
- * the operator can always see which of the two steps they are on. Numbers
- * rather than icons: the count is the information.
+ * the operator can always see which step they are on.
  */
 
 .tdms-steps {
     list-style: none;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    margin: 0 0 1.25rem;
+    gap: 8px;
+    margin: 0 0 24px;
     padding: 0;
 }
 
 .tdms-steps li {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: #8D9A94;
     flex: 1;
     min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--auth-subtle);
 }
 
-/* The connector between the two steps. */
 .tdms-steps li + li::before {
     content: "";
     flex: 1;
-    height: 1.5px;
-    background: #DCE3E0;
-    margin-right: 0.25rem;
+    height: 1px;
+    margin-right: 4px;
+    background: var(--auth-border);
 }
 
 .tdms-steps__marker {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.5rem;
-    height: 1.5rem;
+    width: 24px;
+    height: 24px;
     flex-shrink: 0;
     border-radius: 999px;
-    border: 1.5px solid #DCE3E0;
-    background: var(--tdms-white);
-    font-size: 0.72rem;
+    border: 1.5px solid #CBD5E1;
+    background: var(--auth-surface);
+    font-size: 0.75rem;
     line-height: 1;
-    color: #8D9A94;
 }
 
 .tdms-steps__label {
@@ -753,111 +564,77 @@
 }
 
 .tdms-steps li.is-current {
-    color: var(--tdms-green-dark);
+    color: var(--auth-text);
 }
 
 .tdms-steps li.is-current .tdms-steps__marker {
-    border-color: var(--tdms-green);
-    background: linear-gradient(135deg, var(--tdms-green), var(--tdms-green-dark));
-    color: var(--tdms-white);
-    box-shadow: 0 2px 8px rgba(0, 107, 63, 0.25);
+    border-color: var(--auth-primary);
+    background: var(--auth-primary);
+    color: #FFFFFF;
 }
 
 .tdms-steps li.is-done {
-    color: var(--tdms-green);
+    color: var(--auth-primary);
 }
 
 .tdms-steps li.is-done .tdms-steps__marker {
-    border-color: var(--tdms-green);
-    color: var(--tdms-green);
-}
-
-/* ---------- Password checklist heading + submit hint ---------- */
-
-.tdms-requirements-heading {
-    margin: 0.7rem 0 0;
-    font-size: 0.72rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: #6B7A73;
-}
-
-.tdms-password-match.is-mismatch {
-    color: #B42318;
-}
-
-.tdms-password-match.is-mismatch .tdms-req-icon {
-    color: var(--tdms-white);
-    border-color: #B42318;
-    background: #B42318;
-}
-
-.tdms-submit-hint {
-    margin: 0.55rem 0 0;
-    font-size: 0.75rem;
-    color: #6B7A73;
-    line-height: 1.45;
-    text-align: center;
+    border-color: var(--auth-primary);
+    color: var(--auth-primary);
 }
 
 /* ---------- Verification step ---------- */
 
 .tdms-verify-title {
-    margin: 0 0 0.25rem;
-    font-size: 1.05rem;
+    margin: 0 0 4px;
+    font-size: 1.0625rem;
     font-weight: 700;
-    color: var(--tdms-green-dark);
+    color: var(--auth-text);
 }
 
 .tdms-verify-lead {
-    margin: 0 0 1.1rem;
-    font-size: 0.82rem;
-    color: #4B5A53;
+    margin: 0 0 20px;
+    font-size: 0.875rem;
     line-height: 1.5;
+    color: var(--auth-muted);
 }
 
 .tdms-verify-email {
     display: block;
-    margin-top: 0.15rem;
+    margin-top: 2px;
     font-weight: 700;
-    color: var(--tdms-green-dark);
+    color: var(--auth-text);
     /* Long institutional addresses must not push the panel sideways. */
     overflow-wrap: anywhere;
 }
 
 /*
- * Six separate boxes rather than one field: it makes the expected length
- * obvious before anything is typed, and gives each digit a visible landing
- * place as the focus moves along.
+ * Six separate boxes rather than one field: the expected length is obvious
+ * before anything is typed, and each digit has a visible landing place.
  */
 .tdms-code-inputs {
     display: grid;
     grid-template-columns: repeat(6, 1fr);
-    gap: 0.4rem;
+    gap: 8px;
 }
 
 .tdms-code-inputs input {
     width: 100%;
-    padding: 0.7rem 0;
+    padding: 12px 0;
     text-align: center;
-    font-size: 1.15rem;
+    font-size: 1.25rem;
     font-weight: 700;
-    /* Tabular figures keep the boxes from twitching as digits change. */
     font-variant-numeric: tabular-nums;
-    letter-spacing: 0;
-    color: var(--tdms-ink);
-    background: var(--tdms-gray-light);
-    border: 1.5px solid #D7DFDB;
-    border-radius: 10px;
-    transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+    color: var(--auth-text);
+    background: var(--auth-surface);
+    border: 1px solid var(--auth-input-border);
+    border-radius: var(--auth-radius);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .tdms-code-inputs input:focus {
     outline: none;
-    border-color: var(--tdms-green);
-    background: var(--tdms-white);
-    box-shadow: 0 0 0 3px rgba(0, 107, 63, 0.12);
+    border-color: var(--auth-primary);
+    box-shadow: 0 0 0 3px var(--auth-primary-ring);
 }
 
 .tdms-code-inputs input:disabled {
@@ -867,44 +644,44 @@
 /* ---------- Resend + countdown ---------- */
 
 .tdms-resend {
-    margin-top: 1rem;
+    margin-top: 16px;
     text-align: center;
 }
 
 .tdms-resend__prompt {
     margin: 0;
-    font-size: 0.78rem;
-    color: #6B7A73;
+    font-size: 0.8125rem;
+    color: var(--auth-subtle);
 }
 
 .tdms-resend__button {
-    margin-top: 0.35rem;
-    background: none;
-    border: none;
+    margin-top: 6px;
     padding: 0;
-    font-size: 0.82rem;
-    font-weight: 700;
-    color: var(--tdms-green);
-    cursor: pointer;
+    border: none;
+    background: none;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--auth-primary);
     text-decoration: underline;
     text-underline-offset: 3px;
+    cursor: pointer;
 }
 
 .tdms-resend__button:hover:not([disabled]) {
-    color: var(--tdms-green-dark);
+    color: var(--auth-primary-hover);
 }
 
 .tdms-resend__button[disabled] {
-    color: #9AA6A0;
-    cursor: not-allowed;
+    color: #94A3B8;
     text-decoration: none;
+    cursor: not-allowed;
 }
 
 .tdms-resend__timer {
-    margin: 0.4rem 0 0;
-    font-size: 0.75rem;
-    color: #6B7A73;
+    margin: 6px 0 0;
+    font-size: 0.8125rem;
     font-variant-numeric: tabular-nums;
+    color: var(--auth-subtle);
 }
 
 /* ---------- Verified confirmation ---------- */
@@ -912,39 +689,39 @@
 .tdms-verified {
     display: flex;
     align-items: flex-start;
-    gap: 0.7rem;
-    padding: 0.9rem 1rem;
-    margin-bottom: 1rem;
-    border-radius: 12px;
-    border: 1px solid rgba(0, 107, 63, 0.25);
-    background: linear-gradient(135deg, rgba(0, 107, 63, 0.08), rgba(139, 207, 32, 0.1));
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 14px 16px;
+    border: 1px solid #ABEFC6;
+    border-radius: var(--auth-radius);
+    background: #ECFDF3;
 }
 
 .tdms-verified__mark {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.6rem;
-    height: 1.6rem;
+    width: 24px;
+    height: 24px;
     flex-shrink: 0;
     border-radius: 999px;
-    background: var(--tdms-green);
-    color: var(--tdms-white);
-    font-size: 0.85rem;
+    background: #067647;
+    color: #FFFFFF;
+    font-size: 0.8125rem;
     line-height: 1;
 }
 
 .tdms-verified__title {
     margin: 0;
-    font-size: 0.9rem;
+    font-size: 0.9375rem;
     font-weight: 700;
-    color: var(--tdms-green-dark);
+    color: #054F31;
 }
 
 .tdms-verified__body {
-    margin: 0.15rem 0 0;
-    font-size: 0.8rem;
-    color: #4B5A53;
+    margin: 2px 0 0;
+    font-size: 0.8125rem;
+    color: var(--auth-muted);
 }
 
 /* ---------- Mail configuration error (administrator facing) ---------- */
@@ -954,14 +731,14 @@
  */
 
 .tdms-config-error {
-    border: 1px solid #F3B7B0;
+    margin-bottom: 20px;
+    padding: 14px 16px;
+    border: 1px solid #FDA29B;
+    border-radius: var(--auth-radius);
     background: #FEF3F2;
-    border-radius: 12px;
-    padding: 0.85rem 1rem;
-    margin-bottom: 1.1rem;
-    font-size: 0.78rem;
-    color: #7A271A;
+    font-size: 0.8125rem;
     line-height: 1.5;
+    color: #7A271A;
 }
 
 .tdms-config-error p {
@@ -970,284 +747,114 @@
 
 .tdms-config-error__title {
     font-weight: 700;
-    margin-bottom: 0.2rem !important;
+    margin-bottom: 4px !important;
 }
 
 .tdms-config-error__note {
-    margin-top: 0.4rem !important;
+    margin-top: 6px !important;
     color: #9A3412;
 }
 
-/* ---------- Setup Notice Banner ---------- */
+/*
+ * The command shown when email is unconfigured and setup must fall back to
+ * provisioning from the server — readable and copyable in a narrow panel.
+ */
+.tdms-config-error__command {
+    margin: 8px 0;
+    padding: 10px 12px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.06);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+/* ---------- Setup notice banner ---------- */
 
 .tdms-setup-notice {
-    background: linear-gradient(135deg, rgba(0, 107, 63, 0.08), rgba(139, 207, 32, 0.08));
-    border: 1px solid rgba(0, 107, 63, 0.2);
-    border-radius: 12px;
-    padding: 0.85rem 1rem;
-    margin-bottom: 1.25rem;
+    margin-bottom: 20px;
+    padding: 14px 16px;
+    border: 1px solid #BFDBFE;
+    border-radius: var(--auth-radius);
+    background: var(--auth-primary-tint);
 }
 
 .tdms-setup-notice__badge {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 6px;
+    margin-bottom: 4px;
     font-size: 0.75rem;
     font-weight: 700;
-    text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: var(--tdms-green-dark);
-    margin-bottom: 0.25rem;
+    text-transform: uppercase;
+    color: #1E3A8A;
 }
 
 .tdms-setup-notice__badge svg {
-    width: 0.85rem;
-    height: 0.85rem;
-    color: var(--tdms-green);
+    width: 14px;
+    height: 14px;
+    color: var(--auth-primary);
 }
 
 .tdms-setup-notice__text {
-    font-size: 0.8rem;
-    color: #4B5A53;
-    line-height: 1.4;
     margin: 0;
-}
-
-/* ---------- Trust row ---------- */
-
-.panel__trust {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 1.5rem;
-    margin-top: 1.5rem;
-    padding-top: 1.25rem;
-    border-top: 1px solid #E7ECE9;
-}
-
-.panel__trust-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.76rem;
-    font-weight: 600;
-    color: #4B5A53;
-}
-
-.panel__trust-item svg {
-    width: 0.95rem;
-    height: 0.95rem;
-    color: var(--tdms-green);
-}
-
-/* ---------- Footer ---------- */
-
-.tdms-auth__footer {
-    background: var(--tdms-green-dark);
-    color: rgba(255, 255, 255, 0.82);
-    font-size: 0.78rem;
-    padding: 0.9rem clamp(1.5rem, 4vw, 3.5rem);
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem 1.5rem;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.tdms-auth__footer-left,
-.tdms-auth__footer-right {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-}
-
-.tdms-auth__footer-right {
-    color: var(--tdms-lime);
-    font-weight: 600;
-}
-
-.tdms-auth__footer svg {
-    width: 0.9rem;
-    height: 0.9rem;
-    flex-shrink: 0;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: var(--auth-muted);
 }
 
 /* ---------- Motion ---------- */
 
-@keyframes tdms-rise {
+@keyframes auth-fade-up {
     from {
         opacity: 0;
-        transform: translateY(14px);
+        transform: translateY(8px);
     }
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: none;
+    }
+}
+
+@keyframes auth-fade-in {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes auth-spin {
+    to {
+        transform: rotate(360deg);
     }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .program-card,
-    .panel__card {
-        animation: none;
-        opacity: 1;
+    .tdms-auth *,
+    .tdms-auth *::before,
+    .tdms-auth *::after {
+        animation-duration: 0.01ms !important;
+        animation-delay: 0s !important;
+        transition-duration: 0.01ms !important;
     }
-    .program-card:hover {
+    /* The spinner still has to read as "working": slow it, don't freeze it. */
+    .tdms-auth .tdms-spinner {
+        animation-duration: 1.6s !important;
+    }
+    .tdms-submit:not([disabled]):active,
+    .tdms-submit:not([disabled]):hover svg {
         transform: none;
     }
-    .tdms-submit:hover {
-        transform: none;
-    }
 }
 
-/* ---------- Responsive ---------- */
-
-@media (max-width: 1024px) {
-    .tdms-auth__main {
-        flex-direction: column;
+@media (max-width: 600px) {
+    .tdms-password-requirements {
+        grid-template-columns: 1fr;
     }
-    .tdms-auth__hero {
-        flex: none;
-    }
-    .tdms-auth__panel {
-        flex: none;
-        max-width: none;
-    }
-    .hero__cards {
-        max-width: none;
-        flex-direction: row;
-        margin-left: 0;
-    }
-    .program-card {
-        flex: 1;
-    }
-}
-
-@media (max-width: 720px) {
-    .tdms-auth__main {
-        flex-direction: column;
-    }
-    .tdms-auth__hero {
-        padding: 1.5rem;
-        gap: 1.5rem;
-    }
-    .hero__badges {
-        display: none;
-    }
-    .hero__cards {
-        flex-direction: column;
-    }
-    .program-card__media {
-        min-width: 5rem;
-    }
-    .tdms-auth__panel {
-        padding: 1.25rem;
-    }
-    .tdms-auth__footer {
-        justify-content: center;
-        text-align: center;
-    }
-}
-
-/*
- * Google sign-in, added to the existing auth panel.
- *
- * Shaped to match .tdms-submit — same height, radius and width — so the two
- * read as siblings. Google's brand guidance for the button is a white
- * surface with a neutral border and the unmodified four-colour mark, so it
- * deliberately does not take the TDMS green.
- */
-.tdms-google-btn {
-    width: 100%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.65rem;
-    height: 54px;
-    border-radius: 14px;
-    border: 1px solid #DADCE0;
-    background: var(--tdms-white);
-    color: #1F1F1F;
-    font-weight: 600;
-    font-size: 0.95rem;
-    text-decoration: none;
-    cursor: pointer;
-    transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
-    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.16);
-}
-
-.tdms-google-btn:hover {
-    background: #F7F8F8;
-    box-shadow: 0 2px 6px rgba(60, 64, 67, 0.22);
-}
-
-.tdms-google-btn:active {
-    transform: translateY(1px);
-}
-
-.tdms-google-btn:focus-visible {
-    outline: 3px solid rgba(66, 133, 244, 0.45);
-    outline-offset: 2px;
-}
-
-.tdms-google-btn svg {
-    width: 20px;
-    height: 20px;
-    flex-shrink: 0;
-}
-
-/* "or sign in with your TDMS password" rule between the two methods. */
-.tdms-or-divider {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin: 1.25rem 0 1rem;
-    color: #6B7280;
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-}
-
-.tdms-or-divider::before,
-.tdms-or-divider::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: #E5E7EB;
-}
-
-.tdms-or-divider span {
-    white-space: nowrap;
-}
-
-@media (max-width: 420px) {
-    .tdms-or-divider {
-        font-size: 0.68rem;
-        letter-spacing: 0.04em;
-    }
-}
-
-/* Caption under the Google button; wording depends on the domain policy. */
-.tdms-google-hint {
-    margin-top: 0.6rem;
-    text-align: center;
-    font-size: 0.8rem;
-    color: #6B7280;
-}
-
-/*
- * The command shown when email is unconfigured and setup must fall back to
- * provisioning from the server. Monospaced and wrapping, because it has to
- * be readable and copyable inside a narrow auth panel.
- */
-.tdms-config-error__command {
-    margin: 0.5rem 0;
-    padding: 0.6rem 0.7rem;
-    border-radius: 8px;
-    background: rgba(0, 0, 0, 0.06);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.72rem;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-break: break-word;
-    overflow-wrap: anywhere;
 }

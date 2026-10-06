@@ -30,7 +30,7 @@ import type { AuthUser, AccountStatus } from '@/types/domain';
  *
  * No email is involved in creating an account or resetting its password, so
  * onboarding does not depend on mail delivery. Only the temporary password's
- * bcrypt hash is stored. The Admin knows it until the holder changes it, which
+ * password hash is stored. The Admin knows it until the holder changes it, which
  * the holder is forced to do at first sign-in.
  */
 
@@ -191,7 +191,7 @@ export interface CreatedStaff {
   name: string;
   email: string;
   role: string;
-  /** Plaintext, in this response only. The account stores a bcrypt hash. */
+  /** Plaintext, in this response only. The account stores an Argon2id hash. */
   temporaryPassword: string;
 }
 

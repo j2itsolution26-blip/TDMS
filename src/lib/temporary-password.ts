@@ -39,7 +39,7 @@ import {
  *      full alphabet, and the result is shuffled so the classes do not sit in
  *      a predictable position.
  *
- * It is shown once to the Super Admin, stored only as a bcrypt hash, and
+ * It is shown once to the Super Admin, stored only as an Argon2id hash, and
  * never written to a log, an audit record or an email by this application.
  * The account is marked `mustChangePassword`, so it stops being a credential
  * the first time it is used.

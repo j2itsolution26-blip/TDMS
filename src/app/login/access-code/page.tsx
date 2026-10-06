@@ -22,7 +22,7 @@ export default async function AdminAccessCodePage() {
   if (user) redirect(user.mustChangePassword ? '/change-password' : '/dashboard');
 
   return (
-    <AuthBrandedLayout>
+    <AuthBrandedLayout heading="Enter your administrator access code">
       <AdminAccessCodeForm />
     </AuthBrandedLayout>
   );

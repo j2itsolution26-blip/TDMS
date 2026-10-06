@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import AuthBrandedLayout from '@/components/AuthBrandedLayout';
-import LoginForm from '@/components/LoginForm';
+import LoginForm from '@/components/login/LoginForm';
 import { isBootstrapAllowed } from '@/server/services/super-admin-service';
 import { getCurrentUser } from '@/server/auth/current-user';
 import { googleConfigured } from '@/server/auth/google/oauth';
@@ -61,7 +61,11 @@ export default async function LoginPage() {
         <LoginForm
           canBootstrap={canBootstrap}
           systemUnavailable={systemUnavailable}
-          googleEnabled={googleConfigured()}
+          providers={{
+            // No Microsoft (Entra ID) sign-in exists yet; its button renders disabled.
+            microsoft: null,
+            google: googleConfigured() ? '/api/auth/google' : null,
+          }}
           domainNotice={domainRestrictionEnabled() ? domainRejectionMessage() : null}
           allowedDomain={domainRestrictionEnabled() ? allowedDomain() : null}
         />

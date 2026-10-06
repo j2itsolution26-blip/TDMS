@@ -7,7 +7,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
  *
  * WHY THIS EXISTS, AND WHY IT IS NOT A HASH
  *
- * The login check uses the bcrypt hash on `users.password`, as it always has.
+ * The login check uses the password hash on `users.password`, as it always has.
  * A hash cannot be reversed, so it cannot answer "show me the temporary
  * password again". Meeting that requirement without storing plaintext means
  * reversible encryption, under a key the database does not hold:

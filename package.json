@@ -27,6 +27,7 @@
     "test:instructor": "node scripts/e2e/diploma-instructor.mjs"
   },
   "dependencies": {
+    "@node-rs/argon2": "^2.2.1",
     "@prisma/client": "^6.1.0",
     "@vercel/blob": "^2.8.0",
     "bcryptjs": "^3.0.2",

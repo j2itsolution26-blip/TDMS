@@ -278,7 +278,7 @@ describe('creating an Admin', () => {
     const created = await createAdmin();
     expect(created.temporaryPassword).toBe(TEMP_PASSWORD);
     expectNotStored(TEMP_PASSWORD);
-    expect(String(rowFor(JAMES.email).password).startsWith('$2')).toBe(true);
+    expect(String(rowFor(JAMES.email).password).startsWith('$argon2id$')).toBe(true);
   });
 
   it('records the creation without the password', async () => {

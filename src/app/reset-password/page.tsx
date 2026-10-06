@@ -8,7 +8,7 @@ export const metadata = { title: 'Set your password · TDMS' };
 
 export default function ResetPasswordPage() {
   return (
-    <AuthBrandedLayout>
+    <AuthBrandedLayout heading="Choose a new password">
       <Suspense fallback={null}>
         <ResetPasswordForm />
       </Suspense>

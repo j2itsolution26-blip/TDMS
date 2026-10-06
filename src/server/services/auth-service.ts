@@ -142,9 +142,9 @@ export async function login(input: LoginInput, context: LoginContext): Promise<L
   });
 
   /*
-   * Always run a bcrypt comparison, even when no user matched, against a
-   * real hash of the same cost. Skipping it would let an attacker tell
-   * "no such account" from "wrong password" by timing alone.
+   * Always run a password comparison, even when no user matched, against a
+   * real Argon2id hash at the current parameters. Skipping it would let an
+   * attacker tell "no such account" from "wrong password" by timing alone.
    */
   const passwordValid = await verifyPassword(input.password, user?.password ?? DUMMY_HASH);
 
@@ -182,7 +182,8 @@ export async function login(input: LoginInput, context: LoginContext): Promise<L
     throw new AppError(DOMAIN_REJECTION_MESSAGE, 403);
   }
 
-  // Opportunistic upgrade if the stored hash predates the current cost.
+  // Opportunistic upgrade: a legacy bcrypt hash (or weaker Argon2id) is
+  // rewritten as Argon2id now that the plaintext has been proved correct.
   if (needsRehash(user.password)) {
     await prisma.user
       .update({ where: { id: user.id }, data: { password: await hashPassword(input.password) } })
@@ -281,11 +282,12 @@ export async function logout(): Promise<void> {
 }
 
 /**
- * A real bcrypt hash at production cost, used only to equalise timing on the
+ * A real Argon2id hash at production parameters, used only to equalise timing on the
  * "no such user" path. It is not a credential: no password is known that
  * produces it, and it is never written anywhere.
  */
-const DUMMY_HASH = '$2b$12$6p0lwdiEfXY6J3XH0FMYuebojRn6x/FQwr7ud0jKiWqjIOLNquerS';
+const DUMMY_HASH = 
+  '$argon2id$v=19$m=19456,t=2,p=1$jXQarCxOjk1huC4HFy3muQ$qwdK6frmJWprcQbrfav/aFKakC1MIIFcYXXgfop3Lmg';
 
 /**
  * Development-only trace. Booleans and a status string only — no identifier

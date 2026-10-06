@@ -44,7 +44,7 @@ import { ADMIN_ROLE } from './admin-account-service';
  * ORDER OF CHECKS, AND WHY
  *
  *   1. the handle resolves to a live, unconsumed challenge
- *   2. rate limits, before any bcrypt work is done
+ *   2. rate limits, before any password hashing is done
  *   3. the account is STILL an active Admin — re-read, not trusted from
  *      step 1, because a Super Admin may have suspended them in between
  *   4. a live code exists

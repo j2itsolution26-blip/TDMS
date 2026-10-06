@@ -35,7 +35,7 @@
  */
 import { createInterface } from 'node:readline';
 import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
+import { hash as argon2Hash } from '@node-rs/argon2';
 import { resolveDatabaseUrl } from '../src/lib/database-url';
 import { checkInstitutionalEmail } from '../src/lib/institutional-email';
 
@@ -159,12 +159,13 @@ async function main() {
     }
   }
 
-  const rounds = Number(process.env.BCRYPT_ROUNDS ?? 12);
   const user = await prisma.user.create({
     data: {
       name,
       email: check.email,
-      password: await bcrypt.hash(password, rounds),
+      // Same Argon2id parameters as src/server/auth/password.ts, which is
+      // server-only and cannot be imported from a script.
+      password: await argon2Hash(password, { memoryCost: 19456, timeCost: 2, parallelism: 1 }),
       // Provisioning out-of-band is itself the proof of mailbox control.
       emailVerifiedAt: new Date(),
       status: 'ACTIVE',

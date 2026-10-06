@@ -17,7 +17,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
  * POST /api/admins — create an administrator account.
  *
  * The response carries the temporary password in plaintext exactly once, so it
- * can be handed over; only its bcrypt hash is stored. No access code is issued
+ * can be handed over; only its password hash is stored. No access code is issued
  * here — that is done from the dashboard's Admin Access Codes, as its own step.
  */
 export const POST = withErrorHandling(async (request: NextRequest) => {

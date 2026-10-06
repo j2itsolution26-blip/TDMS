@@ -28,7 +28,7 @@ export default async function ChangePasswordPage() {
   if (!user.mustChangePassword) redirect('/dashboard');
 
   return (
-    <AuthBrandedLayout>
+    <AuthBrandedLayout heading="Set a new password to continue">
       <ChangeTemporaryPasswordForm name={user.name} email={user.email} />
     </AuthBrandedLayout>
   );

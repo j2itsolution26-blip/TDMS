@@ -7,8 +7,7 @@ import {
   enrollmentSchema,
   curriculumSubjectSchema,
   inviteAccountSchema,
-  superAdminRegistrationSchema,
-  verificationCodeSchema,
+  initialSetupSchema,
   idSchema,
   fieldErrors,
 } from './schemas';
@@ -158,27 +157,28 @@ describe('fieldErrors', () => {
 });
 
 /**
- * Super Admin registration, step 1.
+ * First-run setup.
  *
- * Every one of these is refused before a verification code is sent, so none of
- * them can reach the point where an account could be created.
+ * Every one of these is refused before the setup key is even looked at, so
+ * none of them can reach the point where an account could be created.
  */
-describe('superAdminRegistrationSchema', () => {
+describe('initialSetupSchema', () => {
   const valid = {
     name: 'James C. Tan',
     email: 'jctan@asiancollege.edu.ph',
     password: 'Institution#2026',
     passwordConfirmation: 'Institution#2026',
+    setupKey: 'a-setup-key-from-the-server-env',
   };
 
   it('accepts a complete, valid registration', () => {
-    const parsed = superAdminRegistrationSchema.parse(valid);
+    const parsed = initialSetupSchema.parse(valid);
     expect(parsed.email).toBe('jctan@asiancollege.edu.ph');
     expect(parsed.name).toBe('James C. Tan');
   });
 
   it('normalises the address and trims the name', () => {
-    const parsed = superAdminRegistrationSchema.parse({
+    const parsed = initialSetupSchema.parse({
       ...valid,
       name: '  James C. Tan  ',
       email: '  JCTan@AsianCollege.EDU.ph ',
@@ -201,13 +201,13 @@ describe('superAdminRegistrationSchema', () => {
     ];
 
     for (const email of rejected) {
-      const result = superAdminRegistrationSchema.safeParse({ ...valid, email });
+      const result = initialSetupSchema.safeParse({ ...valid, email });
       expect(result.success, email).toBe(false);
     }
   });
 
   it('tells a registering user which address to use, in those words', () => {
-    const result = superAdminRegistrationSchema.safeParse({ ...valid, email: 'jctan@gmail.com' });
+    const result = initialSetupSchema.safeParse({ ...valid, email: 'jctan@gmail.com' });
     expect(result.success).toBe(false);
     if (result.success) return;
     expect(fieldErrors(result.error).email).toContain(
@@ -217,12 +217,21 @@ describe('superAdminRegistrationSchema', () => {
 
   it('rejects a malformed address even on the right domain', () => {
     for (const email of ['@asiancollege.edu.ph', '.jctan@asiancollege.edu.ph', 'jc tan@asiancollege.edu.ph']) {
-      expect(superAdminRegistrationSchema.safeParse({ ...valid, email }).success, email).toBe(false);
+      expect(initialSetupSchema.safeParse({ ...valid, email }).success, email).toBe(false);
     }
   });
 
   it('requires a name', () => {
-    expect(superAdminRegistrationSchema.safeParse({ ...valid, name: '   ' }).success).toBe(false);
+    expect(initialSetupSchema.safeParse({ ...valid, name: '   ' }).success).toBe(false);
+  });
+
+  it('requires a setup key', () => {
+    for (const setupKey of ['', '   ']) {
+      const result = initialSetupSchema.safeParse({ ...valid, setupKey });
+      expect(result.success, JSON.stringify(setupKey)).toBe(false);
+      if (result.success) continue;
+      expect(fieldErrors(result.error).setupKey).toContain('Please enter the setup key.');
+    }
   });
 
   it('applies the full password policy', () => {
@@ -236,7 +245,7 @@ describe('superAdminRegistrationSchema', () => {
     ];
 
     for (const password of weak) {
-      const result = superAdminRegistrationSchema.safeParse({
+      const result = initialSetupSchema.safeParse({
         ...valid,
         password,
         passwordConfirmation: password,
@@ -246,7 +255,7 @@ describe('superAdminRegistrationSchema', () => {
   });
 
   it('reports every password failure at once, on the password field', () => {
-    const result = superAdminRegistrationSchema.safeParse({
+    const result = initialSetupSchema.safeParse({
       ...valid,
       password: 'short',
       passwordConfirmation: 'short',
@@ -257,31 +266,13 @@ describe('superAdminRegistrationSchema', () => {
   });
 
   it('rejects a mismatched confirmation, against the confirmation field', () => {
-    const result = superAdminRegistrationSchema.safeParse({
+    const result = initialSetupSchema.safeParse({
       ...valid,
       passwordConfirmation: 'Institution#2027',
     });
     expect(result.success).toBe(false);
     if (result.success) return;
     expect(fieldErrors(result.error).passwordConfirmation).toContain('Passwords do not match.');
-  });
-});
-
-describe('verificationCodeSchema', () => {
-  it('accepts six digits, including a leading zero', () => {
-    expect(verificationCodeSchema.parse({ code: '123456' }).code).toBe('123456');
-    expect(verificationCodeSchema.parse({ code: '000123' }).code).toBe('000123');
-  });
-
-  it('tolerates the spacing a mail client may introduce on a paste', () => {
-    expect(verificationCodeSchema.parse({ code: '123 456' }).code).toBe('123456');
-    expect(verificationCodeSchema.parse({ code: '123-456' }).code).toBe('123456');
-  });
-
-  it('refuses anything that is not six digits', () => {
-    for (const code of ['12345', '1234567', 'abcdef', '12345a', '', '  ']) {
-      expect(verificationCodeSchema.safeParse({ code }).success, code).toBe(false);
-    }
   });
 });
 
@@ -297,12 +288,13 @@ describe('verificationCodeSchema', () => {
  *
  * Well-formedness is NOT part of the switch. It is always enforced.
  */
-describe('superAdminRegistrationSchema with the domain restriction disabled', () => {
+describe('initialSetupSchema with the domain restriction disabled', () => {
   const valid = {
     name: 'James C. Tan',
     email: 'jctan@asiancollege.edu.ph',
     password: 'Institution#2026',
     passwordConfirmation: 'Institution#2026',
+    setupKey: 'a-setup-key-from-the-server-env',
   };
 
   beforeEach(() => {
@@ -316,13 +308,13 @@ describe('superAdminRegistrationSchema with the domain restriction disabled', ()
       'tester+setup@example.dev',
       'first.admin@asiancollege.edu.ph',
     ]) {
-      const result = superAdminRegistrationSchema.safeParse({ ...valid, email });
+      const result = initialSetupSchema.safeParse({ ...valid, email });
       expect(result.success, email).toBe(true);
     }
   });
 
   it('still normalises the address it stores', () => {
-    const parsed = superAdminRegistrationSchema.parse({
+    const parsed = initialSetupSchema.parse({
       ...valid,
       email: '  Developer@Gmail.COM ',
     });
@@ -331,14 +323,14 @@ describe('superAdminRegistrationSchema with the domain restriction disabled', ()
 
   it('still rejects an address that is not an address', () => {
     for (const email of ['not-an-email', 'a@b', '@gmail.com', 'two@at@gmail.com', 'sp ace@gmail.com', '']) {
-      const result = superAdminRegistrationSchema.safeParse({ ...valid, email });
+      const result = initialSetupSchema.safeParse({ ...valid, email });
       expect(result.success, email).toBe(false);
     }
   });
 
   it('still applies every password rule — only the domain is relaxed', () => {
     expect(
-      superAdminRegistrationSchema.safeParse({
+      initialSetupSchema.safeParse({
         ...valid,
         email: 'developer@gmail.com',
         password: 'weak',
@@ -351,8 +343,8 @@ describe('superAdminRegistrationSchema with the domain restriction disabled', ()
     process.env.GOOGLE_DOMAIN_RESTRICTION_ENABLED = 'true';
 
     expect(
-      superAdminRegistrationSchema.safeParse({ ...valid, email: 'developer@gmail.com' }).success,
+      initialSetupSchema.safeParse({ ...valid, email: 'developer@gmail.com' }).success,
     ).toBe(false);
-    expect(superAdminRegistrationSchema.safeParse(valid).success).toBe(true);
+    expect(initialSetupSchema.safeParse(valid).success).toBe(true);
   });
 });

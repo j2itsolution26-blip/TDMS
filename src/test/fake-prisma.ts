@@ -37,6 +37,7 @@ interface Store {
   adminAccessCodes: Row[];
   adminLoginChallenges: Row[];
   temporaryCredentials: Row[];
+  installations: Row[];
 }
 
 function emptyStore(): Store {
@@ -51,6 +52,7 @@ function emptyStore(): Store {
     adminAccessCodes: [],
     adminLoginChallenges: [],
     temporaryCredentials: [],
+    installations: [],
   };
 }
 
@@ -375,6 +377,30 @@ export function createFakePrisma(): FakePrisma {
       revokedReason: null,
       createdAt: new Date(),
     })),
+    /*
+     * The one table whose primary key the code relies on: a second insert of
+     * id 1 is how a losing first-run setup is refused, so the fake fails it
+     * exactly as PostgreSQL would — a P2002 — rather than appending a twin.
+     */
+    systemInstallation: (() => {
+      const base = model('installations');
+      return {
+        ...base,
+        create: async (args: { data: Row }) => {
+          const id = args.data.id ?? 1;
+          if (store.installations.some((row) => row.id === id)) {
+            const { Prisma } = await import('@prisma/client');
+            throw new Prisma.PrismaClientKnownRequestError(
+              'Unique constraint failed on the fields: (`id`)',
+              { code: 'P2002', clientVersion: 'fake' },
+            );
+          }
+          const row: Row = { ...args.data, id };
+          store.installations.push(row);
+          return clone(row);
+        },
+      };
+    })(),
     adminLoginChallenge: model('adminLoginChallenges', () => ({
       remember: false,
       consumedAt: null,

@@ -165,6 +165,26 @@ model PasswordResetRequest {
   @@map("password_reset_requests")
 }
 
+/// Whether this installation has been through first-run setup.
+///
+/// At most one row (id is pinned to 1 by a CHECK constraint in the
+/// migration). Its absence means UNINITIALIZED; its presence means
+/// INITIALIZED. First-run setup inserts it in the same transaction that
+/// creates the first Super Admin, so the primary key is what stops two
+/// concurrent setups from both succeeding — the second insert fails.
+///
+/// Only `npm run db:fresh` removes it. Deleting users alone does not reopen
+/// /setup.
+model SystemInstallation {
+  id            Int      @id @default(1) @db.SmallInt
+  initializedAt DateTime @map("initialized_at") @db.Timestamp(0)
+  /// "setup" (the /setup page), "cli" (npm run admin:create) or
+  /// "pre-existing" (backfilled for a database that already had accounts).
+  method        String   @db.VarChar(32)
+
+  @@map("system_installation")
+}
+
 /// A Super Admin registration that has been filled in but NOT yet verified.
 ///
 /// This table is the reason no `users` row exists before the institutional

@@ -34,7 +34,7 @@ src/
     (app)/               Signed-in area; its layout enforces auth
     api/                 Route handlers — the JSON API
     login/               Branded sign-in screen
-    create-super-admin/  One-time bootstrap
+    setup/               First-run setup (first Super Admin)
     globals.css          Tailwind + the original auth stylesheet
   components/
     screens/             One client component per ported page

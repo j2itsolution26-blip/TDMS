@@ -37,3 +37,6 @@ Thumbs.db
 /.data
 next-env.d.ts
 tsconfig.tsbuildinfo
+
+# db:fresh backups (contain password hashes and personal data)
+/backups/

@@ -3,23 +3,19 @@
  *
  * WHY THIS EXISTS
  *
- * The web bootstrap at /create-super-admin emails a six-digit code and creates
- * nothing until it comes back, which is right: it proves the person holds an
- * institutional mailbox before any account exists. But it presupposes a
- * working mail provider, and a brand-new installation may not have one yet —
- * leaving nobody able to sign in and configure the thing that would send the
- * mail.
- *
- * This command breaks that circle without weakening anything. It is not a
- * backdoor:
+ * First-run setup normally happens in the browser, at /setup, with the
+ * server's SETUP_KEY. This is the same step from a shell, for an operator who
+ * would rather not set a key or open a browser. It is not a backdoor:
  *
  *   * it requires shell access AND the database credentials, which is a
  *     strictly higher bar than any web flow;
  *   * it invents no password — the operator types one, and it must satisfy
  *     the same strength rules as every other password in the system;
  *   * it enforces the same institutional-domain rule;
- *   * it refuses to run if an administrator already exists, so it cannot be
- *     used to quietly add a second one;
+ *   * it refuses to run once the system is initialized (any user exists, or
+ *     first-run setup has completed), so it cannot quietly add a second
+ *     administrator, and it marks the system initialized in the same
+ *     transaction that creates the account;
  *   * it writes an audit record naming itself.
  *
  * Marking the email verified is justified because provisioning out-of-band
@@ -84,6 +80,26 @@ async function promptHidden(question: string): Promise<string> {
   });
 }
 
+async function initialized(): Promise<boolean> {
+  const [installation, users] = await Promise.all([
+    prisma.systemInstallation.findUnique({ where: { id: 1 }, select: { id: true } }),
+    prisma.user.count(),
+  ]);
+  return installation !== null || users > 0;
+}
+
+function refuseInitialized(): never {
+  console.error(
+    [
+      '',
+      'TDMS has already been initialized, so this command will not create another administrator.',
+      'Sign in and add colleagues from the Admin Accounts and Staff screens instead.',
+      '',
+    ].join('\n'),
+  );
+  process.exit(1);
+}
+
 async function main() {
   const name = arg('name')?.trim();
   const rawEmail = arg('email')?.trim();
@@ -118,30 +134,7 @@ async function main() {
     process.exit(1);
   }
 
-  const existing = await prisma.modelHasRole.findFirst({
-    where: { roleId: role.id, modelType: USER_MODEL_TYPE },
-    select: { modelId: true },
-  });
-  if (existing) {
-    console.error(
-      [
-        '',
-        'An administrator already exists, so this command will not create another.',
-        'Sign in and invite colleagues from the Staff screen instead.',
-        '',
-      ].join('\n'),
-    );
-    process.exit(1);
-  }
-
-  const clash = await prisma.user.findUnique({
-    where: { email: check.email },
-    select: { id: true },
-  });
-  if (clash) {
-    console.error(`\nAn account already exists for ${check.email}.\n`);
-    process.exit(1);
-  }
+  if (await initialized()) refuseInitialized();
 
   const password = process.env.ADMIN_PASSWORD ?? (await promptHidden('Choose a password: '));
 
@@ -159,25 +152,44 @@ async function main() {
     }
   }
 
-  const user = await prisma.user.create({
-    data: {
-      name,
-      email: check.email,
-      // Same Argon2id parameters as src/server/auth/password.ts, which is
-      // server-only and cannot be imported from a script.
-      password: await argon2Hash(password, { memoryCost: 19456, timeCost: 2, parallelism: 1 }),
-      // Provisioning out-of-band is itself the proof of mailbox control.
-      emailVerifiedAt: new Date(),
-      status: 'ACTIVE',
-      isActive: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-  });
+  // Same Argon2id parameters as src/server/auth/password.ts, which is
+  // server-only and cannot be imported from a script.
+  const passwordHash = await argon2Hash(password, { memoryCost: 19456, timeCost: 2, parallelism: 1 });
+  const now = new Date();
 
-  await prisma.modelHasRole.create({
-    data: { roleId: role.id, modelType: USER_MODEL_TYPE, modelId: user.id },
-  });
+  // Same shape as first-run setup at /setup: the installation row's primary
+  // key is what stops this racing a browser setup into two administrators.
+  const user = await prisma
+    .$transaction(async (tx) => {
+      if ((await tx.user.count()) > 0) refuseInitialized();
+      await tx.systemInstallation.create({ data: { id: 1, initializedAt: now, method: 'cli' } });
+
+      const created = await tx.user.create({
+        data: {
+          name,
+          email: check.email,
+          password: passwordHash,
+          mustChangePassword: false,
+          passwordChangedAt: now,
+          // Provisioning out-of-band is itself the proof of mailbox control.
+          emailVerifiedAt: now,
+          status: 'ACTIVE',
+          isActive: true,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+
+      await tx.modelHasRole.create({
+        data: { roleId: role.id, modelType: USER_MODEL_TYPE, modelId: created.id },
+      });
+
+      return created;
+    })
+    .catch((error) => {
+      if ((error as { code?: string }).code === 'P2002') refuseInitialized();
+      throw error;
+    });
 
   await prisma.auditLog.create({
     data: {

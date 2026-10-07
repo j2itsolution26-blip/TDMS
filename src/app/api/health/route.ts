@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { databaseUrlSource } from '@/lib/database-url';
+import { setupKeyProblem } from '@/server/auth/setup-key';
 import {
   appUrl,
   activeTransport,
@@ -93,6 +94,8 @@ export async function GET() {
   let database: 'ok' | 'unreachable' = 'unreachable';
   let errorCode: string | null = null;
   let latencyMs: number | null = null;
+  // Whether first-run setup has happened. Not secret: /login says it too.
+  let installation: 'initialized' | 'uninitialized' | 'unknown' = 'unknown';
 
   const startedAt = Date.now();
   try {
@@ -106,6 +109,9 @@ export async function GET() {
     await prisma.$queryRaw`SELECT 1`;
     database = 'ok';
     latencyMs = Date.now() - startedAt;
+
+    const { isSystemInitialized } = await import('@/server/services/setup-service');
+    installation = (await isSystemInitialized()) ? 'initialized' : 'uninitialized';
   } catch (error) {
     errorCode = prismaErrorCode(error);
     // Full detail goes to the server log only.
@@ -122,6 +128,9 @@ export async function GET() {
       ...(errorCode ? { errorCode } : {}),
       env,
       databaseUrlSource: source,
+      installation,
+      // Presence only. Matters only while the installation is uninitialized.
+      setupKeyConfigured: setupKeyProblem() === null,
       /*
        * Surfaced because a wrong value here breaks every verification and
        * reset link silently: the mail sends, the link just points somewhere

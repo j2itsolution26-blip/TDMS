@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { checkInstitutionalEmail, isInstitutionalEmail } from './institutional-email';
 import {
-  superAdminRegistrationSchema,
+  initialSetupSchema,
   inviteAccountSchema,
   forgotPasswordSchema,
   updateProfileSchema,
@@ -46,6 +46,7 @@ const DEVELOPMENT_ADDRESSES = [
 ];
 
 const STRONG_PASSWORD = 'Institution#2026x';
+const SETUP_KEY = 'a-setup-key-from-the-server-env';
 
 describe('the core validator accepts any well-formed address', () => {
   for (const email of DEVELOPMENT_ADDRESSES) {
@@ -59,22 +60,24 @@ describe('the core validator accepts any well-formed address', () => {
 describe('first administrator setup', () => {
   for (const email of DEVELOPMENT_ADDRESSES) {
     it(`accepts ${email}`, () => {
-      const result = superAdminRegistrationSchema.safeParse({
+      const result = initialSetupSchema.safeParse({
         name: 'Dev Tester',
         email,
         password: STRONG_PASSWORD,
         passwordConfirmation: STRONG_PASSWORD,
+        setupKey: SETUP_KEY,
       });
       expect(result.success).toBe(true);
     });
   }
 
   it('still enforces the password policy', () => {
-    const result = superAdminRegistrationSchema.safeParse({
+    const result = initialSetupSchema.safeParse({
       name: 'Dev Tester',
       email: 'developer@gmail.com',
       password: 'weak',
       passwordConfirmation: 'weak',
+      setupKey: SETUP_KEY,
     });
     expect(result.success).toBe(false);
   });
@@ -147,11 +150,12 @@ describe('the restriction still works when switched back on', () => {
     expect(inviteAccountSchema.safeParse({ name: 'N', email, role: 'secretary' }).success).toBe(false);
     expect(updateProfileSchema.safeParse({ name: 'N', email }).success).toBe(false);
     expect(
-      superAdminRegistrationSchema.safeParse({
+      initialSetupSchema.safeParse({
         name: 'N',
         email,
         password: STRONG_PASSWORD,
         passwordConfirmation: STRONG_PASSWORD,
+        setupKey: SETUP_KEY,
       }).success,
     ).toBe(false);
   });

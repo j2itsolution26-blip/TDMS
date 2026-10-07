@@ -31,16 +31,20 @@ const PUBLIC_PATHS = [
   // the URL is the credential; it is single-use and expiring.
   '/reset-password',
   '/verify-email',
+  '/setup',
+  // Retired; kept public only so old links reach its redirect to /setup.
   '/create-super-admin',
 ];
 
 const PUBLIC_API_PREFIXES = ['/api/auth/'];
 
 /**
- * Exact public API paths. /api/health has to be reachable without a session,
- * because it is needed precisely when nobody can sign in.
+ * Exact public API paths. /api/health and /api/setup have to be reachable
+ * without a session, because they are needed precisely when nobody can sign
+ * in. /api/setup guards itself: it refuses once the system is initialized and
+ * without the server's SETUP_KEY.
  */
-const PUBLIC_API_PATHS = ['/api/health'];
+const PUBLIC_API_PATHS = ['/api/health', '/api/setup'];
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return true;

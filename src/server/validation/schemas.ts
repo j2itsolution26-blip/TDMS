@@ -173,19 +173,15 @@ export const updateProfileSchema = z.object({
 });
 
 /**
- * Super Admin bootstrap, step 1: the registration details.
+ * First-run setup — POST /api/setup.
  *
- * Identical rules to every other account in the system, with one difference
- * that is presentation only: the domain refusal is worded for somebody who is
- * registering rather than signing in. The check itself is the shared one, so
- * the domain restriction is honoured exactly as it is everywhere else —
- * enforced when GOOGLE_DOMAIN_RESTRICTION_ENABLED is on, and the lookalike
- * domains it rejects (see institutional-email.ts) are rejected here too.
- * Well-formedness is always required, restriction or not.
+ * Same rules as every other account: the shared domain check (enforced when
+ * GOOGLE_DOMAIN_RESTRICTION_ENABLED is on, with its lookalike-domain
+ * refusals), and the shared password policy the live checklist is built from.
+ * The domain refusal is worded for someone setting up, not signing in.
  *
- * Passing this schema creates nothing. It is the gate in front of sending a
- * verification code, and the account is created only after that code comes
- * back — see src/server/services/super-admin-service.ts.
+ * `setupKey` is only checked for presence here. Whether it is right is the
+ * server's business, in constant time — see src/server/services/setup-service.ts.
  */
 const registrationEmail = z
   .string()
@@ -206,32 +202,18 @@ const registrationEmail = z
   })
   .transform((v) => checkInstitutionalEmail(v).email);
 
-export const superAdminRegistrationSchema = z
+export const initialSetupSchema = z
   .object({
     name: z.string().trim().min(1, 'Please enter your name.').max(255),
     email: registrationEmail,
     password: strongPassword,
     passwordConfirmation: z.string(),
+    setupKey: z.string().trim().min(1, 'Please enter the setup key.').max(500),
   })
   .refine((d) => d.password === d.passwordConfirmation, {
     message: 'Passwords do not match.',
     path: ['passwordConfirmation'],
   });
-
-/**
- * Super Admin bootstrap, step 2: the emailed code.
- *
- * Six digits, nothing else. Spaces and dashes are stripped first so a pasted
- * "123 456" is not rejected for a formatting choice the sender made.
- */
-export const verificationCodeSchema = z.object({
-  code: z
-    .string()
-    .transform((v) => v.replace(/[\s-]/g, ''))
-    .refine((v) => /^[0-9]{6}$/.test(v), {
-      message: 'Enter the 6-digit code from your email.',
-    }),
-});
 
 // --- Programs & curricula --------------------------------------------------
 

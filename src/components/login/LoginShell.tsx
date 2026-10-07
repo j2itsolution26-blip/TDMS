@@ -17,7 +17,7 @@ import {
 /**
  * The shell shared by every sign-in screen: /login, /login/access-code,
  * /forgot-password, /reset-password, /verify-email, /change-password and
- * /create-super-admin.
+ * /setup.
  *
  * Desktop: the hero on the left; the white card on the right, straddling the
  * deep-blue panel; a gutter beyond it for the watermark. Below lg everything

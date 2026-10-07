@@ -186,65 +186,56 @@ the same budget Laravel used. Counters live in the existing `cache` table
 rather than in memory, because serverless functions share no memory and an
 in-process `Map` would reset on every cold start and throttle nothing.
 
-The Super Admin setup flow uses the same storage through
-`consumeRateLimit()`, with its own budgets: 6 codes per email address and 10
-per IP in an hour, and 20 verification attempts per IP in 15 minutes. Those
-sit on top of the per-registration caps described below, and are what stop the
-flow being restarted to get around them.
+First-run setup uses the same storage through `consumeRateLimit()`: 10
+attempts per IP in 15 minutes, counted before the setup key is checked, so
+wrong guesses spend the budget.
 
 ## First-time setup
 
-A fresh installation has roles and permissions but no users. The only way to
-obtain the first Super Admin through the web is `/create-super-admin`, which
-is reachable only while no Super Admin exists — the page redirects and every
-endpoint behind it refuses independently, re-checked inside the transaction
-that finally creates the account so it cannot be raced.
+A fresh installation has roles and permissions but no users, and is
+**uninitialized**: no `system_installation` row and no `users` rows. In that
+state `/login` says "TDMS has not been initialized yet." and links to `/setup`.
 
-**No account exists before the institutional address has been verified.** The
-flow is three steps and the order is the point:
+`/setup` creates the first Super Admin from four fields — name, email, password
+and confirmation — plus the **setup key**. The key is `SETUP_KEY` from the
+server environment (at least 16 characters). Being the first visitor to
+`/setup` proves nothing on a public deployment; knowing a value that exists
+only in the server environment proves you operate the server. Without it
+configured, `/setup` stays locked and says which variable to set.
 
-1. `POST /api/auth/super-admin/start` — validates the details and writes a row
-   to `pending_admin_registrations`, with the password already hashed (Argon2id).
-   No `users` row, no role, no session. A six-digit code is generated with
-   `randomInt` from the CSPRNG, hashed, and emailed. If the mail cannot be
-   sent, the pending row is deleted again: an unsendable code must not leave a
-   half-finished registration holding the address.
-2. `POST /api/auth/super-admin/verify` — checks the code. Success sets
-   `verified_at` and empties `verification_code_hash`, so the code is strictly
-   single use. It creates nothing and issues no session.
-3. `POST /api/auth/super-admin` — creates the account, assigns the role, marks
-   the email verified and issues the first session, in that order. It takes no
-   request body: everything comes from the pending row, so nothing about the
-   account can be changed between verification and creation. It refuses unless
-   `verified_at` is set.
+`POST /api/setup` (`src/server/services/setup-service.ts`) refuses, in order:
+once the system is initialized (409); when no usable `SETUP_KEY` is configured
+(503); after 10 attempts per IP in 15 minutes (429); a wrong key (403,
+compared in constant time, audited as `INITIAL_SETUP_KEY_REJECTED`). Then it
+hashes the password with Argon2id and runs one transaction that re-counts
+users, inserts the `system_installation` row and creates the user and the
+`super_admin` assignment. The row's primary key is pinned to 1 by a CHECK
+constraint, so of two concurrent setups one commits and the other fails on the
+key — creating nothing — and gets "TDMS has already been initialized."
 
-Why the code is hashed with bcrypt rather than SHA-256, when link tokens use
-SHA-256: a link token carries 256 bits of entropy and there is nothing to
-brute force, but a six-digit code has under 20 bits, and a million SHA-256
-candidates can be swept in well under a second from a database dump. bcrypt's
-cost and per-row salt make that sweep cost weeks, for one row.
+The password chosen there is the account's real password: `must_change_password`
+is false and no temporary credential exists. No session is issued; the browser
+goes to `/login?setup=complete` and the new Super Admin signs in normally.
+Once initialized, `/setup` shows "TDMS has already been initialized." and
+redirects to `/login`. Deleting users alone does not reopen it — only
+`npm run db:fresh` removes the installation row.
 
-Guessing, not cracking, is the real threat at that entropy, so the attempt cap
-is what actually protects the code: five wrong guesses and the code is burnt
-outright — its hash is emptied, and even the right digits stop working until a
-new code is requested. Resends are capped at three per registration with a
-60-second cooldown, and the code expires after 10 minutes.
+`npm run admin:create` is the same step from a shell, without the key: shell
+plus database access is a higher bar than the key. It follows the same rules
+and claims the same row.
 
-The browser is tied to its pending registration by an HttpOnly cookie holding
-a 32-byte random handle, stored only as its SHA-256. That is what lets a
-refresh mid-verification resume instead of stranding the operator, and it means
-verification attempts cannot be aimed at a pending registration the browser
-does not hold. The code itself never reaches the browser, an API response, a
-log line or an error message.
+`/create-super-admin` and `/api/auth/super-admin/*` (the earlier
+email-verified bootstrap) are retired; the page redirects to `/setup`.
 
-Claiming the pending row is a conditional delete **inside** the creating
-transaction, so two concurrent requests cannot both create an account: the
-second deletes nothing, fails its count check and rolls back.
+### Resetting to a fresh installation
 
-`npm run admin:create` remains for the case where no mail provider is
-configured yet — it requires shell access and the database credentials, which
-is a strictly higher bar than any web flow. See
-[accounts.md](accounts.md).
+`npm run db:fresh` empties every table except configuration and the academic
+catalogue (roles, permissions and grants, credential requirements, programs,
+curricula, subjects, school years). It reads the foreign keys from PostgreSQL
+to delete children first, refuses if a kept table references an emptied one,
+and runs in one transaction. Without `--apply` it is a dry run; with it, it
+also requires `CONFIRM_DB_FRESH=<database name>` and a non-production
+`NODE_ENV`, and writes the deleted rows to `backups/` first.
 
 ## Roles and permissions
 

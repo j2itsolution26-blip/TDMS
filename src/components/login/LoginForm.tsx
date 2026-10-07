@@ -67,13 +67,14 @@ const GENERIC_ERROR = 'Username or password is incorrect.';
 const ERROR_ID = 'login-error';
 
 export default function LoginForm({
-  canBootstrap,
+  uninitialized,
   systemUnavailable = false,
   providers = { microsoft: null, google: null },
   domainNotice = null,
   allowedDomain = null,
 }: {
-  canBootstrap: boolean;
+  /** True on a new installation: no account exists until /setup is completed. */
+  uninitialized: boolean;
   /** True when the server could not reach the database while rendering. */
   systemUnavailable?: boolean;
   /** The OAuth start route for each provider, or null where not configured. */
@@ -103,6 +104,8 @@ export default function LoginForm({
   const messages = errorMessages(domainNotice);
   const callbackMessage = errorCode ? (messages[errorCode] ?? messages.google_failed) : null;
   const callbackIsInfo = errorCode ? INFORMATIONAL.has(errorCode) : false;
+  // Set by /setup on success. Says nothing the visitor did not just do.
+  const setupComplete = !uninitialized && searchParams.get('setup') === 'complete';
   const [submitting, setSubmitting] = useState(false);
   const [isPending, startTransition] = useTransition();
 
@@ -194,8 +197,18 @@ export default function LoginForm({
 
   return (
     <div className="login-form">
-      {(systemUnavailable || callbackMessage) && (
+      {(systemUnavailable || callbackMessage || uninitialized || setupComplete) && (
         <div className="panel__status">
+          {uninitialized && (
+            <AuthError tone="info" title="TDMS has not been initialized yet.">
+              No accounts exist yet. Set up the first System Administrator to start using TDMS.
+            </AuthError>
+          )}
+          {setupComplete && (
+            <AuthError tone="info" title="Setup complete">
+              Sign in with the Super Admin account you just created.
+            </AuthError>
+          )}
           {systemUnavailable && (
             <AuthError tone="warning" title="Service temporarily unavailable">
               Please try again shortly, or contact an administrator if this persists.
@@ -290,15 +303,15 @@ export default function LoginForm({
 
       <SocialProviders providers={providers} allowedDomain={allowedDomain} />
 
-      {canBootstrap && (
+      {uninitialized && (
         <div className="tdms-bootstrap-wrap">
           <div className="tdms-bootstrap-divider">
             <span>System Initialization</span>
           </div>
-          <p className="tdms-bootstrap-label">Don&apos;t have a system administrator yet?</p>
-          <Link href="/create-super-admin" className="tdms-bootstrap-link">
+          <p className="tdms-bootstrap-label">TDMS has not been initialized yet.</p>
+          <Link href="/setup" className="tdms-bootstrap-link">
             <UserPlusIcon />
-            <span>Create Super Admin</span>
+            <span>Set Up TDMS</span>
           </Link>
         </div>
       )}

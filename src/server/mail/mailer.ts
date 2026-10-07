@@ -4,7 +4,7 @@ import nodemailer, { type Transporter } from 'nodemailer';
 /**
  * Outbound email. The only place in the application that talks to a mail
  * provider; everything else goes through the message helpers in messages.ts
- * (`sendVerificationEmail`, `sendSuperAdminCodeEmail`, …), so the provider
+ * (`sendVerificationEmail`, `sendPasswordResetEmail`, …), so the provider
  * stays replaceable and no component ever holds a credential.
  *
  * Transports:

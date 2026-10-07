@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import AuthBrandedLayout from '@/components/AuthBrandedLayout';
 import LoginForm from '@/components/login/LoginForm';
-import { isBootstrapAllowed } from '@/server/services/super-admin-service';
+import { isSystemInitialized } from '@/server/services/setup-service';
 import { getCurrentUser } from '@/server/auth/current-user';
 import { googleConfigured } from '@/server/auth/google/oauth';
 import {
@@ -29,26 +29,26 @@ export default async function LoginPage() {
   if (user) redirect(user.mustChangePassword ? '/change-password' : '/dashboard');
 
   /*
-   * Whether to offer "Create Super Admin" is a cosmetic detail, and it is
-   * the only reason this page touches the database at all. If that probe
-   * fails, the sign-in form itself is still perfectly renderable — so the
-   * failure is logged and the page degrades, rather than the whole screen
-   * becoming an opaque "Something went wrong" with a digest.
+   * Whether this is a brand-new installation is the only reason this page
+   * touches the database at all. If that probe fails, the sign-in form itself
+   * is still perfectly renderable — so the failure is logged and the page
+   * degrades, rather than the whole screen becoming an opaque "Something went
+   * wrong" with a digest.
    *
    * This is not swallowing the error: it is logged in full server-side, the
    * visitor is told plainly that the system is unavailable, and an actual
    * sign-in attempt still fails loudly with its own message. /api/health
    * reports the cause.
    */
-  let canBootstrap = false;
+  let uninitialized = false;
   let systemUnavailable = false;
 
   try {
-    canBootstrap = await isBootstrapAllowed();
+    uninitialized = !(await isSystemInitialized());
   } catch (error) {
     systemUnavailable = true;
     console.error(
-      '[TDMS] /login could not reach the database for the Super Admin bootstrap probe.',
+      '[TDMS] /login could not reach the database for the first-run check.',
       'Check that DATABASE_URL is set for this environment. See /api/health.',
       error,
     );
@@ -59,7 +59,7 @@ export default async function LoginPage() {
       {/* useSearchParams needs a Suspense boundary during prerender. */}
       <Suspense fallback={null}>
         <LoginForm
-          canBootstrap={canBootstrap}
+          uninitialized={uninitialized}
           systemUnavailable={systemUnavailable}
           providers={{
             // No Microsoft (Entra ID) sign-in exists yet; its button renders disabled.

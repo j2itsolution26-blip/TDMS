@@ -208,7 +208,6 @@ export const initialSetupSchema = z
     email: registrationEmail,
     password: strongPassword,
     passwordConfirmation: z.string(),
-    setupKey: z.string().trim().min(1, 'Please enter the setup key.').max(500),
   })
   .refine((d) => d.password === d.passwordConfirmation, {
     message: 'Passwords do not match.',

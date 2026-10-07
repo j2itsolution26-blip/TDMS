@@ -17,17 +17,14 @@ import { PASSWORD_MIN_LENGTH, PASSWORD_REQUIREMENTS, evaluatePassword } from '@/
  * trip for mistakes that can be seen while typing.
  */
 
-type Errors = Partial<Record<'name' | 'email' | 'password' | 'passwordConfirmation' | 'setupKey', string[]>>;
+type Errors = Partial<Record<'name' | 'email' | 'password' | 'passwordConfirmation', string[]>>;
 
 const CONNECTION_ERROR = "We couldn't connect to the server. Please try again.";
 
 export default function SetupForm({
-  keyProblem,
   domainRestricted,
   allowedDomain,
 }: {
-  /** Why setup cannot be completed on this server, or null. Never a secret. */
-  keyProblem: string | null;
   domainRestricted: boolean;
   allowedDomain: string;
 }) {
@@ -38,7 +35,6 @@ export default function SetupForm({
     email: '',
     password: '',
     passwordConfirmation: '',
-    setupKey: '',
   });
   const [errors, setErrors] = useState<Errors>({});
   const [message, setMessage] = useState<string | null>(null);
@@ -50,13 +46,12 @@ export default function SetupForm({
   const complete =
     form.name.trim() !== '' &&
     form.email.trim() !== '' &&
-    form.setupKey.trim() !== '' &&
     passwordComplete &&
     passwordsMatch;
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (busy || !complete || keyProblem) return;
+    if (busy || !complete) return;
     setBusy(true);
     setErrors({});
     setMessage(null);
@@ -84,12 +79,10 @@ export default function SetupForm({
         }
         setErrors(payload.errors ?? {});
         setMessage(payload.errors ? null : (payload.message ?? CONNECTION_ERROR));
-        // The key is the one field worth retyping rather than correcting.
-        if (payload.errors?.setupKey) setForm((f) => ({ ...f, setupKey: '' }));
         return;
       }
 
-      setForm({ name: '', email: '', password: '', passwordConfirmation: '', setupKey: '' });
+      setForm({ name: '', email: '', password: '', passwordConfirmation: '' });
       router.replace(payload.data?.redirectTo ?? '/login?setup=complete');
       router.refresh();
     } catch {
@@ -108,14 +101,7 @@ export default function SetupForm({
           </AuthError>
         </div>
 
-        {keyProblem && (
-          <div className="tdms-config-error" role="alert">
-            <p className="tdms-config-error__title">Setup key not configured</p>
-            <p>{keyProblem}</p>
-          </div>
-        )}
-
-        <button type="button" className="tdms-submit" onClick={() => setStarted(true)} disabled={Boolean(keyProblem)}>
+        <button type="button" className="tdms-submit" onClick={() => setStarted(true)}>
           <span>Start System Setup</span>
           <ArrowRightIcon />
         </button>
@@ -234,24 +220,9 @@ export default function SetupForm({
         <FieldError messages={errors.passwordConfirmation} />
       </div>
 
-      <div className="tdms-field">
-        <label htmlFor="setup_key">Setup Key</label>
-        <PasswordInput
-          id="setup_key"
-          autoComplete="new-password"
-          placeholder="The SETUP_KEY from the server environment"
-          value={form.setupKey}
-          onChange={(setupKey) => setForm({ ...form, setupKey })}
-          invalid={Boolean(errors.setupKey)}
-          describedBy="setup-key-hint"
-        />
-        <p className="mt-1 text-xs text-slate-500" id="setup-key-hint">
-          Proves you operate this server. Whoever installed TDMS set it as SETUP_KEY.
-        </p>
-        <FieldError messages={errors.setupKey} />
-      </div>
 
-      <button type="submit" className="tdms-submit" disabled={busy || !complete || Boolean(keyProblem)}>
+
+      <button type="submit" className="tdms-submit" disabled={busy || !complete}>
         {busy ? (
           <>
             <span className="tdms-spinner" aria-hidden="true" />

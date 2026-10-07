@@ -4,8 +4,6 @@ import { prisma } from '@/lib/prisma';
 import { AppError } from '@/lib/http';
 import { hashPassword } from '@/server/auth/password';
 import { USER_MODEL_TYPE, GUARD } from '@/server/auth/rbac';
-import { consumeRateLimit } from '@/server/auth/rate-limit';
-import { setupKeyProblem, setupKeyMatches } from '@/server/auth/setup-key';
 import { recordAudit, type AuditContext } from './audit-log';
 
 /**
@@ -16,13 +14,6 @@ import { recordAudit, type AuditContext } from './audit-log';
  * one an operator filled by hand). Either is enough to close /setup for good;
  * only `npm run db:fresh` reopens it.
  *
- * WHO MAY DO IT. Being first is not proof of anything — on a public
- * deployment, the first visitor to /setup could be anyone. So completing
- * setup also requires SETUP_KEY, a value that exists only in the server's
- * environment. Whoever can set an environment variable on the server is the
- * operator; whoever cannot, cannot claim the system. See
- * src/server/auth/setup-key.ts.
- *
  * WHAT MAKES IT SINGLE-USE. The checks before the transaction are for a good
  * message; the transaction is the guarantee. It re-checks for users and then
  * inserts the installation row, whose primary key is pinned to 1. Two
@@ -32,8 +23,6 @@ import { recordAudit, type AuditContext } from './audit-log';
 
 export const SUPER_ADMIN_ROLE = 'super_admin';
 
-/** Key guesses per IP. Generous for a person, useless for a brute force. */
-const SETUP_ATTEMPTS_PER_IP = { max: 10, windowSeconds: 900 };
 
 export const ALREADY_INITIALIZED = 'TDMS has already been initialized.';
 
@@ -52,7 +41,6 @@ export interface InitialSetupInput {
   email: string;
   /** Already checked against the password policy by the schema. */
   password: string;
-  setupKey: string;
 }
 
 export async function completeInitialSetup(
@@ -60,30 +48,6 @@ export async function completeInitialSetup(
   context: AuditContext,
 ): Promise<{ email: string }> {
   if (await isSystemInitialized()) throw new AppError(ALREADY_INITIALIZED, 409);
-
-  const problem = setupKeyProblem();
-  if (problem) throw new AppError(problem, 503, undefined, 'SETUP_KEY_NOT_CONFIGURED');
-
-  // Counted before the key is checked, so wrong guesses use up the budget.
-  const budget = await consumeRateLimit('setup', context.ip ?? 'unknown', SETUP_ATTEMPTS_PER_IP);
-  if (budget.limited) {
-    throw new AppError(
-      `Too many setup attempts. Please try again in ${budget.retryAfterSeconds} seconds.`,
-      429,
-    );
-  }
-
-  if (!setupKeyMatches(input.setupKey)) {
-    await recordAudit({
-      action: 'INITIAL_SETUP_KEY_REJECTED',
-      actor: 'SYSTEM_SETUP',
-      target: 'First-run setup',
-      context,
-    });
-    throw new AppError('That setup key is not correct.', 403, {
-      setupKey: ['That setup key is not correct.'],
-    });
-  }
 
   // Hashed before the transaction: Argon2id is deliberately slow, and the
   // transaction should hold its locks for as short a time as possible.
@@ -114,8 +78,7 @@ export async function completeInitialSetup(
           // The password was chosen here, by its owner. Not a temporary one.
           mustChangePassword: false,
           passwordChangedAt: now,
-          // Provisioned by whoever holds the server's SETUP_KEY — the same
-          // reasoning as `npm run admin:create`.
+          // The password was chosen here, by its owner. Not a temporary one.
           emailVerifiedAt: now,
           status: 'ACTIVE',
           isActive: true,

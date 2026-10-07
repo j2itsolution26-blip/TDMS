@@ -41,8 +41,7 @@ const PUBLIC_API_PREFIXES = ['/api/auth/'];
 /**
  * Exact public API paths. /api/health and /api/setup have to be reachable
  * without a session, because they are needed precisely when nobody can sign
- * in. /api/setup guards itself: it refuses once the system is initialized and
- * without the server's SETUP_KEY.
+ * in. /api/setup guards itself: it refuses once the system is initialized.
  */
 const PUBLIC_API_PATHS = ['/api/health', '/api/setup'];
 

@@ -62,6 +62,8 @@ function errorMessages(domainNotice: string | null): Record<string, string> {
 const INFORMATIONAL = new Set(['account_created_pending', 'account_pending', 'cancelled']);
 
 const CONNECTION_ERROR = "We couldn't connect to the server. Please try again.";
+// Only for a 503: the server answered, but its database did not.
+const SERVICE_UNAVAILABLE = 'Service temporarily unavailable. Please try again shortly.';
 const GENERIC_ERROR = 'Username or password is incorrect.';
 
 const ERROR_ID = 'login-error';
@@ -143,7 +145,7 @@ export default function LoginForm({
        * unknown username and a wrong password).
        */
       if (!payload || response.status >= 500) {
-        fail(CONNECTION_ERROR);
+        fail(response.status === 503 ? SERVICE_UNAVAILABLE : CONNECTION_ERROR);
         return;
       }
 

@@ -13,5 +13,9 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "files": []
+  "files": [],
+  "references": [
+    { "path": "./client" },
+    { "path": "./server" }
+  ]
 }

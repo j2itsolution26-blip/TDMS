@@ -18,11 +18,11 @@ allowed in. Those are separate decisions, made in that order.
 
 ```
 /login  -> "Continue with Google"
-  GET /api/auth/google
+  GET /api/v1/auth/google
     mint state + nonce + PKCE verifier -> HttpOnly cookies (10 min)
     302 -> accounts.google.com
   Google authenticates the person (we never see a password)
-  GET /api/auth/google/callback?code=...&state=...
+  GET /api/v1/auth/google/callback?code=...&state=...
     compare state with the cookie          (CSRF)
     exchange code + PKCE verifier          (server-side, with the secret)
     verify the ID token signature via Google's JWKS
@@ -133,7 +133,7 @@ instead of `PENDING`, so a developer can walk the whole flow without a second
 person to activate them.
 
 It is a setting rather than a hard-coded shortcut precisely so it is visible,
-greppable and off unless asked for, and `/api/health` reports it.
+greppable and off unless asked for, and `/api/v1/health` reports it.
 
 Note what it deliberately does **not** do: it grants no role. Activation and
 authorization are different, and a variable that handed out roles would be a
@@ -253,7 +253,7 @@ GOOGLE_REDIRECT_URI=https://tdms-swart.vercel.app/api/auth/google/callback
 ```
 
 All three are required together; if any is missing, Google sign-in is treated
-as unconfigured, the button is not rendered, and `/api/auth/google` redirects
+as unconfigured, the button is not rendered, and `/api/v1/auth/google` redirects
 back with `google_unavailable`. Nothing crashes and no half-configured flow
 is ever offered.
 
@@ -267,7 +267,7 @@ localhost.
 Check what a deployment is actually using:
 
 ```bash
-curl -s https://<deployment>/api/health | jq
+curl -s https://<deployment>/api/v1/health | jq
 ```
 
 ## Credential sign-in is still present

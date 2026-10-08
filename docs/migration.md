@@ -6,9 +6,9 @@ What was done, what changed, and what is deliberately still open.
 
 | Laravel                                   | Node.js replacement                                         |
 | ----------------------------------------- | ----------------------------------------------------------- |
-| `routes/web.php`, `routes/auth.php`       | Next.js file-system routes under `src/app/`                  |
-| Livewire Volt component class             | server component (`page.tsx`) + client component (`screens/`) |
-| Livewire component method                 | `POST`/`PUT`/`PATCH`/`DELETE` route handler                  |
+| `routes/web.php`, `routes/auth.php`       | React Router routes (`client/src/App.tsx`) + Fastify routes (`server/src/routes/`) |
+| Livewire Volt component class             | page loader (`server/src/controllers/pages/`) + React screen (`client/src/components/screens/`) |
+| Livewire component method                 | `POST`/`PUT`/`PATCH`/`DELETE` controller under `/api/v1/v1`     |
 | Blade template                            | React JSX, same classes and copy                             |
 | Blade component (`x-card`, `x-badge`, …)  | `src/components/ui.tsx`                                      |
 | Alpine.js (`x-data`, `x-show`)            | React `useState` / `useEffect`                               |
@@ -164,7 +164,7 @@ institutional domain exactly - the same rule as
 - **Passwords: Argon2id.** Legacy bcrypt hashes still verify and are rewritten
   as Argon2id on the owner's next sign-in. See
   [authentication.md](authentication.md#password-hashing).
-- **CSRF: origin check.** `src/middleware.ts` rejects any non-GET `/api`
+- **CSRF: origin check.** `server/src/middleware/request-guard.ts` rejects any non-GET `/api/v1/v1`
   request whose `Origin` (or, failing that, `Sec-Fetch-Site`) is another
   site, on top of the `SameSite=Lax` session cookie.
 

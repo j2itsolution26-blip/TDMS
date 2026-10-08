@@ -32,7 +32,7 @@ and it is ACTIVE from the start.
 | Who has it     | The system owner | One Admin, for one sign-in |
 | Lifetime       | Until the owner changes it | 10 minutes by default, one use |
 | Asked for when | Never, by any routine action | Every Admin sign-in |
-| Code           | `src/server/auth/super-admin-code.ts` | `src/server/auth/admin-access-code.ts` |
+| Code           | `server/src/auth/super-admin-code.ts` | `server/src/auth/admin-access-code.ts` |
 
 They are never treated as the same code. The static code is never accepted at
 an Admin sign-in, and an access code is never accepted in its place.
@@ -49,7 +49,7 @@ exposed, for root-level operations that need it.
 
 It is never hard-coded, never `NEXT_PUBLIC_`, never stored in the database,
 never returned by an API, never rendered, never logged, never put in an audit
-record. `/api/health` and the dashboard report `configured: true/false` and
+record. `/api/v1/health` and the dashboard report `configured: true/false` and
 nothing else.
 
 **On Vercel:** Settings → Environment Variables → Add `SUPER_ADMIN_STATIC_CODE`
@@ -101,7 +101,7 @@ is issued (at creation or reset) the server **also** keeps an encrypted copy in
 - **AES-256-GCM** under `TEMP_CREDENTIAL_KEY`, a key held only in the server
   environment — never in the database. A database dump alone yields no password.
 - Bound to that user's id: a sealed row copied onto another account will not open.
-- Revealed only by `POST /api/admins/:id/temporary-password/reveal`: Super Admin
+- Revealed only by `POST /api/v1/admins/:id/temporary-password/reveal`: Super Admin
   session required, `no-store`, never in a URL, rate limited, and audited as
   `TEMP_PASSWORD_REVEALED` (the fact, never the value).
 
@@ -208,7 +208,7 @@ in `admin_login_challenges`, named by an opaque HttpOnly cookie
 (`tdms_admin_login`) whose SHA-256 is all that is stored. It grants nothing but
 the right to submit a code. Issuing a session early and marking it
 "unverified" was rejected because it recreates the redirect loop described at
-the top of `src/middleware.ts`.
+in [authentication.md](authentication.md#the-login---dashboard-handoff).
 
 The account is re-checked at step 2, not trusted from step 1: an Admin who is
 **suspended** in between is refused even with the correct password and code.
@@ -221,10 +221,10 @@ records `ADMIN_ACCESS_CODE_REQUESTED`.
 
 `must_change_password` is enforced server-side in two places: `requireUser()`
 diverts every page to `/change-password`, and `requireApiUser()` refuses every
-API route except `POST /api/auth/change-password`. Changing the password clears
+API route except `POST /api/v1/auth/change-password`. Changing the password clears
 it.
 
-`POST /api/auth/change-password` (`replaceTemporaryPassword()` in
+`POST /api/v1/auth/change-password` (`replaceTemporaryPassword()` in
 `profile-service.ts`) is stricter than the profile page's password change:
 
 * **Whose password** comes from the server-side session only. There is no user
@@ -251,7 +251,7 @@ it.
 * Audited `ADMIN_TEMP_PASSWORD_CHANGED` (sessions ended, whether a
   revealable copy was destroyed). Never a password or a hash.
 
-**The live check.** `POST /api/auth/change-password/verify` powers
+**The live check.** `POST /api/v1/auth/change-password/verify` powers
 "Temporary password verified." on the setup screen. Same gate, user from the
 session, changes nothing, answers a boolean, and has its own budget (20 per 15
 minutes) so an honest typo does not eat the submit budget. The screen only asks
@@ -319,7 +319,7 @@ code when they need one. Nobody can suspend their own account.
 
 ## Who may do what
 
-`adminAccountPolicy` in `src/server/auth/policies.ts`: every operation on Admin
+`adminAccountPolicy` in `server/src/auth/policies.ts`: every operation on Admin
 Accounts and Admin Access Codes is **Super Admin only**, checked with
 `isSuperAdmin` directly. It is deliberately not `can(user, 'accounts.manage')`,
 which the `admin` role holds — issuing your own second factor is not a second
@@ -390,7 +390,7 @@ requested.
 
 ## Testing
 
-`npm test` runs the in-memory suite, including `src/server/services/admin-accounts.test.ts`.
+`npm test` runs the in-memory suite, including `server/src/services/admin-accounts.test.ts`.
 
 `npm run test:admins` walks all 20 acceptance criteria against a running server
 and real database. It needs `SUPER_ADMIN_EMAIL` and `SUPER_ADMIN_PASSWORD`,
@@ -400,15 +400,15 @@ creates two throwaway Admins, and deletes them when it finishes.
 
 | File | What is in it |
 | ---- | ------------- |
-| `src/server/auth/admin-access-code.ts` | Generation, hashing, expiry options, the four statuses |
-| `src/server/auth/super-admin-code.ts` | The static code: constant-time check, no default |
-| `src/server/auth/credential-vault.ts` | Sealing temporary passwords for reveal |
-| `src/components/AdminCredentialsModal.tsx` | The Credentials / Access Code modal |
-| `src/server/auth/admin-login-challenge.ts` | The HttpOnly half-finished-sign-in cookie |
-| `src/server/services/admin-account-service.ts` | Accounts, codes, revocation, the dashboard numbers |
-| `src/server/services/admin-login-service.ts` | The Admin's side of the sign-in |
-| `src/components/screens/AdminAccountsScreen.tsx` | Admin Accounts |
-| `src/components/screens/AdminAccessCodesScreen.tsx` | Admin Access Codes |
-| `src/app/(app)/dashboard/page.tsx` | The Admin Access card |
-| `src/components/AdminAccessCodeForm.tsx` | Administrator Access Verification |
-| `src/components/ChangeTemporaryPasswordForm.tsx` | Create New Password |
+| `server/src/auth/admin-access-code.ts` | Generation, hashing, expiry options, the four statuses |
+| `server/src/auth/super-admin-code.ts` | The static code: constant-time check, no default |
+| `server/src/auth/credential-vault.ts` | Sealing temporary passwords for reveal |
+| `client/src/components/AdminCredentialsModal.tsx` | The Credentials / Access Code modal |
+| `server/src/auth/admin-login-challenge.ts` | The HttpOnly half-finished-sign-in cookie |
+| `server/src/services/admin-account-service.ts` | Accounts, codes, revocation, the dashboard numbers |
+| `server/src/services/admin-login-service.ts` | The Admin's side of the sign-in |
+| `client/src/components/screens/AdminAccountsScreen.tsx` | Admin Accounts |
+| `client/src/components/screens/AdminAccessCodesScreen.tsx` | Admin Access Codes |
+| `server/src/controllers/pages/app/dashboard.ts` | The dashboard loader (Admin Access card data) |
+| `client/src/components/AdminAccessCodeForm.tsx` | Administrator Access Verification |
+| `client/src/components/ChangeTemporaryPasswordForm.tsx` | Create New Password |

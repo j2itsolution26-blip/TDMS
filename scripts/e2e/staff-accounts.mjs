@@ -11,6 +11,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { fetchPage, isPagePath } from './lib/pages.mjs';
 
 const BASE = process.env.TDMS_BASE ?? 'http://localhost:3000';
 const prisma = new PrismaClient();
@@ -48,6 +49,12 @@ function jar() {
 }
 
 async function call(cookies, method, path, body) {
+  if (method === 'GET' && isPagePath(path)) {
+    const page = await fetchPage(BASE, path, cookies.header() ? { cookie: cookies.header() } : {});
+    let payload = null;
+    try { payload = JSON.parse(page.text.split(String.fromCharCode(10))[0]); } catch {}
+    return { status: page.status, payload, text: page.text, location: page.location };
+  }
   const res = await fetch(`${BASE}${path}`, {
     method,
     redirect: 'manual',
@@ -65,7 +72,7 @@ async function call(cookies, method, path, body) {
 }
 
 const login = (c, email, password) =>
-  call(c, 'POST', '/api/auth/login', { identifier: email, password, remember: false });
+  call(c, 'POST', '/api/v1/auth/login', { identifier: email, password, remember: false });
 
 try {
   // A throwaway Admin with a known password and a known live access code.
@@ -85,15 +92,16 @@ try {
   console.log('\nAdmin signs in');
   const admin = jar();
   await login(admin, ADMIN.email, ADMIN.password);
-  await call(admin, 'POST', '/api/auth/admin-access-code', { code: ADMIN.code });
+  await call(admin, 'POST', '/api/v1/auth/admin-access-code', { code: ADMIN.code });
   check('Admin is signed in', admin.has('tdms_session'));
 
   console.log('\nAdd Staff');
   const staffPage = await call(admin, 'GET', '/staff');
-  check('Staff page offers "Add Staff"', staffPage.text.includes('Add Staff'));
+  // The screen shows "Add Staff" exactly when its loader grants canCreate.
+  check('Staff page offers "Add Staff"', staffPage.status === 200 && staffPage.text.includes('"canCreate":true'), staffPage.status);
   check('no "Invite Staff" or "Resend invite" left', !/Invite Staff|Resend invite/.test(staffPage.text));
 
-  const add = await call(admin, 'POST', '/api/staff', {
+  const add = await call(admin, 'POST', '/api/v1/staff', {
     name: 'E2E Teacher', email: TEACHER_EMAIL, role: 'teacher',
     temporaryPassword: TEMP, temporaryPasswordConfirmation: TEMP,
   });
@@ -102,7 +110,7 @@ try {
   const teacherId = add.payload?.data?.id;
   if (teacherId) created.push(BigInt(teacherId));
 
-  const invitedAdmin = await call(admin, 'POST', '/api/staff', {
+  const invitedAdmin = await call(admin, 'POST', '/api/v1/staff', {
     name: 'X', email: `x-${stamp}@example.test`, role: 'admin',
     temporaryPassword: TEMP, temporaryPasswordConfirmation: TEMP,
   });
@@ -117,7 +125,7 @@ try {
   const divert = await call(teacher, 'GET', '/dashboard');
   check('dashboard diverts to /change-password', (divert.location ?? '').includes('/change-password'), `${divert.status} ${divert.location}`);
 
-  const changed = await call(teacher, 'POST', '/api/auth/change-password', {
+  const changed = await call(teacher, 'POST', '/api/v1/auth/change-password', {
     currentPassword: TEMP, password: OWN, passwordConfirmation: OWN,
   });
   check('SET PASSWORD succeeds', changed.status === 200, changed.payload?.message);
@@ -128,7 +136,7 @@ try {
   check('new password works', (await login(jar(), TEACHER_EMAIL, OWN)).status === 200);
 
   console.log('\nReset password');
-  const reset = await call(admin, 'POST', `/api/staff/${teacherId}/reset-password`);
+  const reset = await call(admin, 'POST', `/api/v1/staff/${teacherId}/reset-password`);
   const newTemp = reset.payload?.data?.temporaryPassword;
   check('reset returns a new temporary password', reset.status === 200 && typeof newTemp === 'string', reset.payload?.message);
   check('Teacher was signed out', (await call(teacher, 'GET', '/dashboard')).status !== 200);
@@ -137,7 +145,7 @@ try {
   check('the new temporary password works and forces a change', again.payload?.data?.redirectTo === '/change-password');
 
   console.log('\nDeactivate');
-  await call(admin, 'POST', `/api/staff/${teacherId}/status`, { status: 'SUSPENDED' });
+  await call(admin, 'POST', `/api/v1/staff/${teacherId}/status`, { status: 'SUSPENDED' });
   check('a suspended Teacher cannot sign in', (await login(jar(), TEACHER_EMAIL, newTemp)).status === 403);
 } catch (error) {
   failures.push(`threw: ${error.message}`);

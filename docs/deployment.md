@@ -1,73 +1,56 @@
 # Deployment
 
-The application is a standard Next.js app.
+TDMS is a Node.js application: one Fastify server that answers the API
+(`/api/v1/…`) and serves the built React app for every other path. It needs
+Node 22 or later, a PostgreSQL database and the environment variables in
+`.env.example`.
 
-## vercel.json
+## Build and run
 
-The Laravel-era `vercel.json` (PHP runtime, hand-written routes,
-`outputDirectory: public`) was deleted. A minimal one replaces it:
-
-```json
-{
-  "framework": "nextjs",
-  "outputDirectory": null,
-  "regions": ["sin1"]
-}
+```bash
+npm ci                 # install exactly what package-lock.json pins
+npm run build          # prisma generate + Vite build (client/dist) + server bundle (server/dist)
+npm run db:migrate     # apply migrations to the target database
+npm start              # node server/dist/server.js — listens on PORT (default 3000)
 ```
 
-The first two lines exist to override **stale dashboard Project Settings left over
-from the PHP deployment**, which survive a repository change because they
-live in the Vercel project, not in git. With the old settings the build
-compiled fine and then failed with:
+`npm start` reads `.env` if one exists; on a host, set the variables in its
+environment instead. In production set `NODE_ENV=production`: it marks the
+session cookie `Secure` and refuses development-only settings.
 
-```
-Error: No Output Directory named "dist" found after the Build completed.
-```
+## Where to host it
 
-That is Vercel running the *static* build path — it had the Framework
-Preset on "Other" and an Output Directory override of `dist`, so after
-running the build it went looking for a folder of static files. A Next.js
-build produces `.next` and a set of functions instead, which Vercel only
-knows how to deploy once the framework preset says `nextjs`.
+Any host that runs a long-lived Node process works unchanged — Render,
+Railway, Fly.io, a VPS behind nginx, or a container. The server trusts
+`X-Forwarded-*` headers, so it can sit behind the host's proxy or load
+balancer, and it serves its own static files.
 
-`vercel.json` takes precedence over the dashboard, so committing these two
-keys fixes it for every environment at once and keeps the setting in
-version control. Note that `"framework": null` would mean "Other" — the
-slug `"nextjs"` is what is wanted. Setting `outputDirectory` to `null`
-clears the dashboard override and returns it to the framework default.
+**Vercel:** the Next.js deployment this project used to have no longer
+applies — `vercel.json` now sets `"framework": null` so the old Next.js
+preset is not used. Running the Fastify server on Vercel needs a
+serverless entry point that wraps `buildApp()` from `server/src/app.ts`
+and static hosting for `client/dist`; that adapter is not part of this
+repository yet. Until it is, deploy to a Node host.
 
-You may also clear both in the dashboard (Settings → Build & Deployment);
-the file makes that unnecessary.
+### Keep the server next to the database
 
-### Function region
-
-`"regions": ["sin1"]` pins the serverless functions to Singapore
-(`ap-southeast-1`) — the same AWS region as the Neon database.
-
-This matters more than it looks. Vercel functions default to `iad1`
-(Washington, D.C.), so without this every Prisma query would cross the
-Pacific at roughly 230 ms per round trip. The dashboard alone issues about
-ten queries, which is seconds of latency per page load for work the
-database answers in single-digit milliseconds. Vercel's own guidance is to
-run functions in the same region as the database.
-
-It is a single region, so it is valid on every plan including Hobby
-(multi-region requires Pro or Enterprise). Static assets are unaffected —
-they are served from all 126 PoPs regardless — and the Edge middleware
-stays globally distributed, which is fine because it only reads a cookie.
-
-If the database ever moves, change this to match it: the region codes are
-listed at https://vercel.com/docs/regions.
+Put the server in the same region as the Neon database. Every page issues
+several queries; across an ocean each one costs roughly 200 ms, which adds
+up to seconds per page and can exceed Prisma's transaction limits. The
+current Neon database is in `us-east-2` (Ohio); `vercel.json` still names
+`sin1` (Singapore) from an earlier database and must be changed to match if
+Vercel is used again. The region codes are listed at
+https://vercel.com/docs/regions.
 
 ## Commands
 
 ```bash
 npm install          # install
-npm run dev          # local development, http://localhost:3000
-npm run build        # prisma generate + next build
-npm start            # serve the production build
-npm test             # unit tests
-npm run typecheck    # tsc --noEmit
+npm run dev          # app on http://localhost:3000 (Vite), API on :3001 (Fastify)
+npm run build        # prisma generate + client and server builds
+npm start            # production server
+npm test             # unit tests (Vitest)
+npm run typecheck    # tsc for server and client
 ```
 
 Database:
@@ -75,7 +58,6 @@ Database:
 ```bash
 npm run db:migrate       # prisma migrate deploy
 npm run db:seed          # roles, permissions, credential requirements
-npm run db:seed:demo     # demo accounts — development only
 npm run db:generate      # regenerate the Prisma client
 ```
 
@@ -132,7 +114,7 @@ Performance Task documentation (PDF, Word, Excel, PowerPoint or images, up to
 4 MB, checked by content as well as extension). On Vercel they are stored in
 **Vercel Blob**: connect a Blob store to the project (Storage → Blob) and
 Vercel sets `BLOB_READ_WRITE_TOKEN`. Files are private; they are only served
-through `/api/documents/[id]/file`, which checks who is asking.
+through `/api/v1/documents/[id]/file`, which checks who is asking.
 
 Until a store is connected, uploads are refused with "File storage is not
 configured" and a document cannot be submitted for review — nothing is
@@ -157,7 +139,7 @@ Precedence is simply: `DATABASE_URL` if set, otherwise the parts. Check which
 one is in play:
 
 ```bash
-curl -s https://<deployment>/api/health | jq .databaseUrlSource
+curl -s https://<deployment>/api/v1/health | jq .databaseUrlSource
 # "DATABASE_URL" | "DB_* parts" | "none"
 ```
 
@@ -179,12 +161,12 @@ will run out of connections under any real load.
 
 ## Diagnosing a deployment
 
-`GET /api/health` is unauthenticated and reports whether the database is
+`GET /api/v1/health` is unauthenticated and reports whether the database is
 reachable, the Prisma error code if it is not, and whether each required
 environment variable is set — booleans and codes only, never a value:
 
 ```bash
-curl -s https://<deployment>/api/health | jq
+curl -s https://<deployment>/api/v1/health | jq
 ```
 
 `"env": { "DATABASE_URL": false }` means the variable is simply not set for
@@ -230,7 +212,7 @@ npm run test:e2e       # in another
 
 `scripts/e2e/session-redirect.mjs` covers the login/dashboard handoff: a
 garbage cookie, an expired cookie, the authenticated redirect, a
-mid-session deactivation, and `/api/health`. It deactivates and restores
+mid-session deactivation, and `/api/v1/health`. It deactivates and restores
 the `teacher` demo account, so it refuses to run against a non-local
 `BASE` unless you pass `ALLOW_REMOTE=1`.
 
@@ -281,7 +263,7 @@ So a Resend key now wins by default and a leftover SMTP host cannot hijack
 delivery. Specifically:
 
 * with a Resend key present, a loopback `MAIL_HOST` is **ignored**, and
-  `/api/health` reports it as a warning so the stale value can be seen and
+  `/api/v1/health` reports it as a warning so the stale value can be seen and
   removed;
 * with no key, a loopback `MAIL_HOST` on a deployment is a **configuration
   fault**, named as such, rather than a connection attempt that cannot succeed;
@@ -317,7 +299,7 @@ run time, so **a change does nothing until a redeploy picks it up**. Editing
    npm run mail:check -- --base https://your-app.vercel.app
    ```
 
-   It reads the target's own `/api/health`, then asks Resend for its verified
+   It reads the target's own `/api/v1/health`, then asks Resend for its verified
    domains and compares them with `EMAIL_FROM`. It sends nothing and prints no
    secret. `transport: resend` with `MAIL_HOST` still listed is the evidence
    that the stale value is no longer being used.
@@ -419,7 +401,7 @@ one fact that would have explained it.
 
 Two things changed as a result:
 
-1. **`/api/health` is not enough on its own** — it reports that the database is
+1. **`/api/v1/health` is not enough on its own** — it reports that the database is
    reachable, which it was. After pulling schema changes, check that they are
    actually applied:
 
@@ -468,11 +450,11 @@ so leaving a stale `MAIL_HOST` in place silently ignores the Resend key.
 
 ## Diagnosing a mail failure
 
-`/api/health` reports the mail configuration — enough to place a problem
+`/api/v1/health` reports the mail configuration — enough to place a problem
 without reading the server log, and with no secret in it:
 
 ```bash
-curl -s https://<deployment>/api/health | jq .mail
+curl -s https://<deployment>/api/v1/health | jq .mail
 ```
 
 ```jsonc

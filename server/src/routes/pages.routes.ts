@@ -1,0 +1,121 @@
+import type { FastifyInstance } from 'fastify';
+import { mountPage } from './page-bridge';
+import { loadAppShell } from '@/server/controllers/pages/app-shell';
+import { loadLogin, loadAccessCode, loadChangePassword, loadForgotPassword, loadSetup } from '@/server/controllers/pages/auth';
+import { assessmentListLoader, documentsLoader } from '@/server/controllers/pages/app/teaching/lists';
+import { loadAcademicReviews } from '@/server/controllers/pages/app/academic-reviews';
+import { loadAdminAccessCodes } from '@/server/controllers/pages/app/admin-access-codes';
+import { loadAdmins } from '@/server/controllers/pages/app/admins';
+import { loadApplications } from '@/server/controllers/pages/app/applications';
+import { loadAuditLogs } from '@/server/controllers/pages/app/audit-logs';
+import { loadCalendar } from '@/server/controllers/pages/app/calendar';
+import { loadClassSetup } from '@/server/controllers/pages/app/class-setup';
+import { loadCurriculaId } from '@/server/controllers/pages/app/curricula/_id';
+import { loadDashboard } from '@/server/controllers/pages/app/dashboard';
+import { loadEnrollments } from '@/server/controllers/pages/app/enrollments';
+import { loadInstructors } from '@/server/controllers/pages/app/instructors';
+import { loadInstructorsId } from '@/server/controllers/pages/app/instructors/_id';
+import { loadLearningSupport } from '@/server/controllers/pages/app/learning-support';
+import { loadMyAssessments } from '@/server/controllers/pages/app/my/assessments';
+import { loadMyAssessmentsId } from '@/server/controllers/pages/app/my/assessments/_id';
+import { loadMyAttendance } from '@/server/controllers/pages/app/my/attendance';
+import { loadMyBadges } from '@/server/controllers/pages/app/my/badges';
+import { loadMyGrades } from '@/server/controllers/pages/app/my/grades';
+import { loadMyQr } from '@/server/controllers/pages/app/my/qr';
+import { loadNotifications } from '@/server/controllers/pages/app/notifications';
+import { loadProfile } from '@/server/controllers/pages/app/profile';
+import { loadPrograms } from '@/server/controllers/pages/app/programs';
+import { loadProgramsId } from '@/server/controllers/pages/app/programs/_id';
+import { loadSchoolYears } from '@/server/controllers/pages/app/school-years';
+import { loadStaff } from '@/server/controllers/pages/app/staff';
+import { loadStatusRequests } from '@/server/controllers/pages/app/status-requests';
+import { loadStudents } from '@/server/controllers/pages/app/students';
+import { loadStudentsIdEnrollment } from '@/server/controllers/pages/app/students/_id/enrollment';
+import { loadSubjects } from '@/server/controllers/pages/app/subjects';
+import { loadSystemHealth } from '@/server/controllers/pages/app/system-health';
+import { loadTeachingAssessmentsId } from '@/server/controllers/pages/app/teaching/assessments/_id';
+import { loadTeachingAssessmentsIdCheck } from '@/server/controllers/pages/app/teaching/assessments/_id/check';
+import { loadTeachingAttendanceRecords } from '@/server/controllers/pages/app/teaching/attendance-records';
+import { loadTeachingAttendance } from '@/server/controllers/pages/app/teaching/attendance';
+import { loadTeachingAttendanceId } from '@/server/controllers/pages/app/teaching/attendance/_id';
+import { loadTeachingBadges } from '@/server/controllers/pages/app/teaching/badges';
+import { loadTeachingChecking } from '@/server/controllers/pages/app/teaching/checking';
+import { loadTeachingClasses } from '@/server/controllers/pages/app/teaching/classes';
+import { loadTeachingClassesId } from '@/server/controllers/pages/app/teaching/classes/_id';
+import { loadTeachingGradebook } from '@/server/controllers/pages/app/teaching/gradebook';
+import { loadTeachingLearningSupport } from '@/server/controllers/pages/app/teaching/learning-support';
+import { loadTeachingPds } from '@/server/controllers/pages/app/teaching/pds';
+import { loadTeachingProgress } from '@/server/controllers/pages/app/teaching/progress';
+import { loadTeachingRecords } from '@/server/controllers/pages/app/teaching/records';
+import { loadTeachingStudents } from '@/server/controllers/pages/app/teaching/students';
+import { loadTeachingSubjects } from '@/server/controllers/pages/app/teaching/subjects';
+
+/**
+ * Every page loader, at GET /api/v1/pages<path> — the same path as the
+ * screen in the React app, so /students/12/enrollment loads from
+ * /api/v1/pages/students/12/enrollment.
+ */
+export function registerPageRoutes(app: FastifyInstance): void {
+  mountPage(app, '/app-shell', loadAppShell);
+
+  mountPage(app, '/login', loadLogin);
+  mountPage(app, '/login/access-code', loadAccessCode);
+  mountPage(app, '/change-password', loadChangePassword);
+  mountPage(app, '/forgot-password', loadForgotPassword);
+  mountPage(app, '/setup', loadSetup);
+
+  mountPage(app, '/academic-reviews', loadAcademicReviews);
+  mountPage(app, '/admin-access-codes', loadAdminAccessCodes);
+  mountPage(app, '/admins', loadAdmins);
+  mountPage(app, '/applications', loadApplications);
+  mountPage(app, '/audit-logs', loadAuditLogs);
+  mountPage(app, '/calendar', loadCalendar);
+  mountPage(app, '/class-setup', loadClassSetup);
+  mountPage(app, '/curricula/:id', loadCurriculaId);
+  mountPage(app, '/dashboard', loadDashboard);
+  mountPage(app, '/enrollments', loadEnrollments);
+  mountPage(app, '/instructors', loadInstructors);
+  mountPage(app, '/instructors/:id', loadInstructorsId);
+  mountPage(app, '/learning-support', loadLearningSupport);
+  mountPage(app, '/my/assessments', loadMyAssessments);
+  mountPage(app, '/my/assessments/:id', loadMyAssessmentsId);
+  mountPage(app, '/my/attendance', loadMyAttendance);
+  mountPage(app, '/my/badges', loadMyBadges);
+  mountPage(app, '/my/grades', loadMyGrades);
+  mountPage(app, '/my/qr', loadMyQr);
+  mountPage(app, '/notifications', loadNotifications);
+  mountPage(app, '/profile', loadProfile);
+  mountPage(app, '/programs', loadPrograms);
+  mountPage(app, '/programs/:id', loadProgramsId);
+  mountPage(app, '/school-years', loadSchoolYears);
+  mountPage(app, '/staff', loadStaff);
+  mountPage(app, '/status-requests', loadStatusRequests);
+  mountPage(app, '/students', loadStudents);
+  mountPage(app, '/students/:id/enrollment', loadStudentsIdEnrollment);
+  mountPage(app, '/subjects', loadSubjects);
+  mountPage(app, '/system-health', loadSystemHealth);
+  mountPage(app, '/teaching/assessments/:id', loadTeachingAssessmentsId);
+  mountPage(app, '/teaching/assessments/:id/check', loadTeachingAssessmentsIdCheck);
+  mountPage(app, '/teaching/attendance-records', loadTeachingAttendanceRecords);
+  mountPage(app, '/teaching/attendance', loadTeachingAttendance);
+  mountPage(app, '/teaching/attendance/:id', loadTeachingAttendanceId);
+  mountPage(app, '/teaching/badges', loadTeachingBadges);
+  mountPage(app, '/teaching/checking', loadTeachingChecking);
+  mountPage(app, '/teaching/classes', loadTeachingClasses);
+  mountPage(app, '/teaching/classes/:id', loadTeachingClassesId);
+  mountPage(app, '/teaching/gradebook', loadTeachingGradebook);
+  mountPage(app, '/teaching/learning-support', loadTeachingLearningSupport);
+  mountPage(app, '/teaching/pds', loadTeachingPds);
+  mountPage(app, '/teaching/progress', loadTeachingProgress);
+  mountPage(app, '/teaching/records', loadTeachingRecords);
+  mountPage(app, '/teaching/students', loadTeachingStudents);
+  mountPage(app, '/teaching/subjects', loadTeachingSubjects);
+
+  mountPage(app, '/teaching/quizzes', assessmentListLoader('QUIZ'));
+  mountPage(app, '/teaching/exams', assessmentListLoader('EXAM'));
+  mountPage(app, '/teaching/activities', assessmentListLoader('ACTIVITY'));
+  mountPage(app, '/teaching/performance-tasks', assessmentListLoader('PT'));
+  mountPage(app, '/teaching/documents/lesson-plans', documentsLoader('LESSON_PLAN'));
+  mountPage(app, '/teaching/documents/tos', documentsLoader('TOS'));
+  mountPage(app, '/teaching/documents/pt', documentsLoader('PT'));
+}

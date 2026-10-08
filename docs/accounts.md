@@ -39,7 +39,7 @@ change it without a rebuild.
 Check which way a deployment is set:
 
 ```bash
-curl -s https://<deployment>/api/health | jq .domainPolicy
+curl -s https://<deployment>/api/v1/health | jq .domainPolicy
 # { "enabled": false, "allowedDomain": "asiancollege.edu.ph",
 #   "summary": "OPEN — any well-formed Google account is accepted (development setting)" }
 ```
@@ -54,7 +54,7 @@ off `NODE_ENV` would restrict the very environment being developed in.
 
 The cost is that a real launch which forgets the variable accepts any Google
 account. Rather than leave that in a document nobody re-reads, the state is
-reported by `/api/health` and described in words that are hard to misread
+reported by `/api/v1/health` and described in words that are hard to misread
 (`OPEN — …`). **Set it to `true` before the system carries real student
 records.**
 

@@ -105,6 +105,7 @@ async function nextStudentNumber(tx: Prisma.TransactionClient): Promise<string> 
 
 export async function createStudent(input: z.infer<typeof studentSchema>) {
   await assertProgramAndCurriculumAgree(input.programId, input.curriculumId);
+  await assertNotADuplicate(input);
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
@@ -141,6 +142,7 @@ export async function createStudent(input: z.infer<typeof studentSchema>) {
 export async function updateStudent(id: bigint, input: z.infer<typeof studentSchema>) {
   await getStudent(id);
   await assertProgramAndCurriculumAgree(input.programId, input.curriculumId);
+  await assertNotADuplicate(input, id);
 
   return prisma.student.update({
     where: { id },
@@ -158,6 +160,50 @@ export async function updateStudent(id: bigint, input: z.infer<typeof studentSch
       updatedAt: new Date(),
     },
   });
+}
+
+/**
+ * The same person must not be registered twice. Two signals, each decisive
+ * on its own:
+ *
+ *   * the same email address (case-insensitive) — an address belongs to
+ *     one student;
+ *   * the same first name, last name and date of birth — a second record
+ *     for one person, typed without the email.
+ *
+ * The message names the existing student number so staff can find the
+ * record. On an update the record itself is excluded, so saving a student
+ * unchanged never trips it.
+ */
+async function assertNotADuplicate(input: z.infer<typeof studentSchema>, excludeId?: bigint) {
+  const others = excludeId === undefined ? {} : { id: { not: excludeId } };
+
+  if (input.email) {
+    const sameEmail = await prisma.student.findFirst({
+      where: { ...others, email: { equals: input.email, mode: 'insensitive' } },
+      select: { studentNumber: true },
+    });
+    if (sameEmail) {
+      const text = `Student ${sameEmail.studentNumber} already uses this email address.`;
+      throw new AppError(text, 422, { email: [text] });
+    }
+  }
+
+  if (input.dateOfBirth) {
+    const samePerson = await prisma.student.findFirst({
+      where: {
+        ...others,
+        firstName: { equals: input.firstName, mode: 'insensitive' },
+        lastName: { equals: input.lastName, mode: 'insensitive' },
+        dateOfBirth: input.dateOfBirth,
+      },
+      select: { studentNumber: true },
+    });
+    if (samePerson) {
+      const text = `This student may already be registered as ${samePerson.studentNumber} (same name and date of birth).`;
+      throw new AppError(text, 422, { lastName: [text] });
+    }
+  }
 }
 
 /**

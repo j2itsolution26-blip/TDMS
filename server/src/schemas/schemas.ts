@@ -9,6 +9,7 @@ import {
 } from '@shared/types/domain';
 import { checkInstitutionalEmail, allowedDomain } from '@/server/lib/institutional-email';
 import { passwordProblems } from '@shared/lib/password-policy';
+import { dateOfBirthProblem, phoneProblem } from '@shared/lib/student-rules';
 
 /**
  * Any address that will belong to a TDMS account goes through this, not
@@ -255,13 +256,30 @@ export const curriculumSubjectSchema = z
 
 // --- Students --------------------------------------------------------------
 
+/** Optional phone, checked by the same rule the form shows (shared/lib/student-rules). */
+const studentPhone = nullableString(30).superRefine((value, ctx) => {
+  const problem = value === null ? null : phoneProblem(value);
+  if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
+});
+
+/** Optional date of birth: a real calendar date, not in the future, not before 1900. */
+const studentDateOfBirth = z
+  .union([z.string(), z.date()])
+  .nullable()
+  .transform((v) => (v === null || v === '' ? null : v instanceof Date ? v.toISOString().slice(0, 10) : v.trim().slice(0, 10)))
+  .superRefine((value, ctx) => {
+    const problem = value === null ? null : dateOfBirthProblem(value);
+    if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
+  })
+  .transform((v) => (v === null ? null : new Date(`${v}T00:00:00Z`)));
+
 export const studentSchema = z.object({
   firstName: z.string().trim().min(1, 'The first name is required.').max(100),
   middleName: nullableString(100),
   lastName: z.string().trim().min(1, 'The last name is required.').max(100),
   email: nullableEmail,
-  phone: nullableString(30),
-  dateOfBirth: nullableDate,
+  phone: studentPhone,
+  dateOfBirth: studentDateOfBirth,
   programId: idSchema,
   curriculumId: idSchema,
   yearLevel: z.coerce.number().int().min(1).max(4),

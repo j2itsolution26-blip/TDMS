@@ -93,6 +93,27 @@ describe('Laravel rule parity', () => {
     expect(parsed.dateOfBirth).toBeNull();
   });
 
+  it('applies the shared student field rules on the server', () => {
+    const base = {
+      firstName: 'A', middleName: '', lastName: 'B', email: '', phone: '',
+      dateOfBirth: '', programId: '1', curriculumId: '2', yearLevel: 1, status: 'active', enrollmentDate: '',
+    };
+    const errorsFor = (patch: Record<string, unknown>) => {
+      const r = studentSchema.safeParse({ ...base, ...patch });
+      return r.success ? {} : fieldErrors(r.error);
+    };
+
+    expect(errorsFor({ dateOfBirth: '2999-01-01' }).dateOfBirth).toEqual(['The date of birth cannot be in the future.']);
+    expect(errorsFor({ dateOfBirth: '2026-02-31' }).dateOfBirth).toEqual(['Enter a valid date.']);
+    expect(errorsFor({ dateOfBirth: '1850-05-05' }).dateOfBirth).toEqual(['Enter a date of birth after 1900.']);
+    expect(errorsFor({ phone: 'call me' }).phone?.[0]).toMatch(/digits/);
+    expect(errorsFor({ email: 'not-an-email' }).email).toEqual(['Please enter a valid email address.']);
+
+    const parsed = studentSchema.parse({ ...base, dateOfBirth: '2005-06-15', phone: '+63 917 123 4567' });
+    expect(parsed.dateOfBirth?.toISOString()).toBe('2005-06-15T00:00:00.000Z');
+    expect(parsed.phone).toBe('+63 917 123 4567');
+  });
+
   it('enforces the YYYY-YYYY school year format', () => {
     const base = { studentId: '1', curriculumId: '1', semester: 1, yearLevel: 1 };
     expect(enrollmentSchema.safeParse({ ...base, schoolYear: '2026-2027' }).success).toBe(true);

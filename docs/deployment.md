@@ -25,21 +25,32 @@ Railway, Fly.io, a VPS behind nginx, or a container. The server trusts
 `X-Forwarded-*` headers, so it can sit behind the host's proxy or load
 balancer, and it serves its own static files.
 
-**Vercel:** the Next.js deployment this project used to have no longer
-applies — `vercel.json` now sets `"framework": null` so the old Next.js
-preset is not used. Running the Fastify server on Vercel needs a
-serverless entry point that wraps `buildApp()` from `server/src/app.ts`
-and static hosting for `client/dist`; that adapter is not part of this
-repository yet. Until it is, deploy to a Node host.
+**Vercel** is configured in `vercel.json`:
+
+- `npm run build` writes the React app to `client/dist`, which Vercel's CDN
+  serves (`outputDirectory`), and compiles the API to `server/dist/vercel.js`.
+- `api/index.js` is the one Vercel Function. It re-exports that build:
+  the same Fastify app as `npm start`, built once per instance and handed
+  each request, without `listen()` (see `server/src/vercel.ts`).
+- Rewrites send `/api/*` to the function, keeping the original URL, and
+  every other extensionless path to `index.html` for React Router. Missing
+  files with an extension stay 404s.
+- Prisma generates the `rhel-openssl-3.0.x` engine (Vercel's runtime) next to
+  the local one, and `includeFiles` ships it with the function.
+
+Set the variables from `.env.example` in Vercel → Settings → Environment
+Variables for each environment you deploy (Production and Preview are
+separate) — at minimum `DATABASE_URL`, and `BLOB_READ_WRITE_TOKEN` for
+uploads (Vercel's filesystem is discarded after each request). Then redeploy:
+variables only apply to new deployments.
 
 ### Keep the server next to the database
 
 Put the server in the same region as the Neon database. Every page issues
 several queries; across an ocean each one costs roughly 200 ms, which adds
 up to seconds per page and can exceed Prisma's transaction limits. The
-current Neon database is in `us-east-2` (Ohio); `vercel.json` still names
-`sin1` (Singapore) from an earlier database and must be changed to match if
-Vercel is used again. The region codes are listed at
+current Neon database is in `us-east-2` (Ohio), so `vercel.json` runs the
+function in `cle1` (Cleveland, AWS us-east-2). The region codes are listed at
 https://vercel.com/docs/regions.
 
 ## Commands

@@ -136,6 +136,10 @@ const DASHBOARD_TITLES: Record<DashboardRole, { title: string; description: stri
     title: 'My Dashboard',
     description: 'Your program, subjects, requirements and enrollment.',
   },
+  assessment_center_manager: {
+    title: 'Assessment Center',
+    description: 'Assessment batches, results, the training calendar and batch reports.',
+  },
   none: {
     title: 'Dashboard',
     description: 'Your account is signed in but has no role yet.',

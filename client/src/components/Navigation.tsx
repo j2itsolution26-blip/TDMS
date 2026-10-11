@@ -133,6 +133,7 @@ const GROUP_LABELS: Record<NavGroup, string> = {
   profile: 'Profile',
   oversight: 'Academic Oversight',
   learning: 'My Learning',
+  assessment: 'Assessment Center',
 };
 
 const STROKE = 1.9;

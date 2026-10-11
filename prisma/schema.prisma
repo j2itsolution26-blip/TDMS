@@ -18,7 +18,7 @@
 // src/server/auth/rbac.ts). Existing rows therefore stay valid untouched.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   // native: this machine. rhel-openssl-3.0.x: Vercel's build and function runtime (Amazon Linux 2023).
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
@@ -102,6 +102,10 @@ model User {
   taughtClasses              ClassOffering[]           @relation("ClassInstructor")
   notifications              Notification[]
   instructorProfile          InstructorProfile?
+  /// TVET Assessment Center.
+  assessedBatches            AssessmentBatch[]         @relation("AssessmentBatchAssessor")
+  assignedActivities         TrainingActivity[]        @relation("TrainingActivityAssignee")
+  responsibleActivities      TrainingActivity[]        @relation("TrainingActivityResponsible")
 
   @@map("users")
 }
@@ -455,6 +459,8 @@ model Program {
   applications           Application[]
   credentialRequirements CredentialRequirement[]
   sections               Section[]
+  assessmentBatches      AssessmentBatch[]
+  trainingActivities     TrainingActivity[]
 
   @@map("programs")
 }
@@ -551,6 +557,7 @@ model Student {
   badges             StudentBadge[]
   statusRequests     StudentStatusRequest[]
   learningSupports   LearningSupport[]
+  assessmentResults  AssessmentResult[]
 
   @@map("students")
 }
@@ -1181,4 +1188,102 @@ model LegacyFailedJob {
 
   @@index([connection, queue, failedAt], map: "failed_jobs_connection_queue_failed_at_index")
   @@map("failed_jobs")
+}
+
+// --- TVET Assessment Center ------------------------------------------------------------
+
+/// A group of candidates assessed together for one qualification.
+/// status: OPEN | FINALIZED | CANCELLED (CHECK constraint in the migration).
+model AssessmentBatch {
+  id             BigInt    @id @default(autoincrement())
+  batchNumber    String    @unique(map: "assessment_batches_batch_number_unique") @map("batch_number") @db.VarChar(40)
+  programId      BigInt    @map("program_id")
+  assessmentDate DateTime  @map("assessment_date") @db.Date
+  venue          String?   @db.VarChar(255)
+  assessorUserId BigInt?   @map("assessor_user_id")
+  /// Copied from the account when one is chosen, so the report keeps the name.
+  assessorName   String    @map("assessor_name") @db.VarChar(255)
+  status         String    @default("OPEN") @db.VarChar(16)
+  notes          String?
+  finalizedAt    DateTime? @map("finalized_at")
+  finalizedBy    BigInt?   @map("finalized_by")
+  cancelledAt    DateTime? @map("cancelled_at")
+  cancelReason   String?   @map("cancel_reason") @db.VarChar(500)
+  createdBy      BigInt?   @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  program    Program            @relation(fields: [programId], references: [id], onDelete: Restrict)
+  assessor   User?              @relation("AssessmentBatchAssessor", fields: [assessorUserId], references: [id], onDelete: SetNull)
+  results    AssessmentResult[]
+  activities TrainingActivity[]
+
+  @@index([programId])
+  @@index([assessmentDate])
+  @@index([status])
+  @@map("assessment_batches")
+}
+
+/// One attempt by one candidate in one batch. Finalized rows are never
+/// changed; a reassessment is a new row pointing at the one it follows.
+/// status: PENDING | DRAFT | FINALIZED | CANCELLED; result: C | NYC | null.
+model AssessmentResult {
+  id               BigInt    @id @default(autoincrement())
+  batchId          BigInt    @map("batch_id")
+  studentId        BigInt    @map("student_id")
+  attempt          Int       @default(1) @db.SmallInt
+  result           String?   @db.VarChar(8)
+  status           String    @default("PENDING") @db.VarChar(16)
+  previousResultId BigInt?   @unique(map: "assessment_results_previous_result_id_unique") @map("previous_result_id")
+  remarks          String?   @db.VarChar(500)
+  recordedBy       BigInt?   @map("recorded_by")
+  recordedAt       DateTime? @map("recorded_at")
+  finalizedBy      BigInt?   @map("finalized_by")
+  finalizedAt      DateTime? @map("finalized_at")
+  cancelledAt      DateTime? @map("cancelled_at")
+  cancelReason     String?   @map("cancel_reason") @db.VarChar(500)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  batch        AssessmentBatch   @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  student      Student           @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  previous     AssessmentResult? @relation("Reassessment", fields: [previousResultId], references: [id], onDelete: Restrict)
+  reassessment AssessmentResult? @relation("Reassessment")
+
+  @@unique([batchId, studentId, attempt], map: "assessment_results_batch_student_attempt_unique")
+  @@index([studentId])
+  @@index([status])
+  @@map("assessment_results")
+}
+
+/// The training and assessment calendar.
+/// activityType: TRAINING | ASSESSMENT; status: SCHEDULED | IN_PROGRESS | COMPLETED | CANCELLED.
+model TrainingActivity {
+  id                BigInt   @id @default(autoincrement())
+  title             String   @db.VarChar(255)
+  description       String?
+  activityType      String   @map("activity_type") @db.VarChar(16)
+  programId         BigInt?  @map("program_id")
+  batchId           BigInt?  @map("batch_id")
+  startsAt          DateTime @map("starts_at") @db.Timestamptz(0)
+  endsAt            DateTime @map("ends_at") @db.Timestamptz(0)
+  venue             String?  @db.VarChar(255)
+  assignedUserId    BigInt?  @map("assigned_user_id")
+  assignedName      String?  @map("assigned_name") @db.VarChar(255)
+  responsibleUserId BigInt?  @map("responsible_user_id")
+  responsibleName   String?  @map("responsible_name") @db.VarChar(255)
+  status            String   @default("SCHEDULED") @db.VarChar(16)
+  createdBy         BigInt?  @map("created_by")
+  updatedBy         BigInt?  @map("updated_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at")
+
+  program     Program?         @relation(fields: [programId], references: [id], onDelete: SetNull)
+  batch       AssessmentBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  assigned    User?            @relation("TrainingActivityAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  responsible User?            @relation("TrainingActivityResponsible", fields: [responsibleUserId], references: [id], onDelete: SetNull)
+
+  @@index([startsAt])
+  @@index([endsAt])
+  @@map("training_activities")
 }

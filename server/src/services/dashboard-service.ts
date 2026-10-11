@@ -100,6 +100,7 @@ const ROLE_ORDER: Exclude<DashboardRole, 'none'>[] = [
   'coordinator',
   'secretary',
   'assessment_center_manager',
+  'processing_officer',
   'teacher',
   'student',
 ];
@@ -137,6 +138,10 @@ const DASHBOARD_TITLES: Record<DashboardRole, { title: string; description: stri
     title: 'My Dashboard',
     description: 'Your program, subjects, requirements and enrollment.',
   },
+  processing_officer: {
+    title: 'Processing Dashboard',
+    description: 'Learner records, enrollment, document requirements and the training and assessment calendar.',
+  },
   assessment_center_manager: {
     title: 'Assessment Center',
     description: 'Assessment batches, results, the training calendar and batch reports.',
@@ -164,6 +169,10 @@ export async function getDashboardView(user: AuthUser): Promise<DashboardView> {
     case 'coordinator':
     case 'secretary':
       return { ...head, ...(await workspaceView(user, role)) };
+    // The Processing Officer does the office's records work: the Secretary's
+    // workspace, every panel of which is gated by the viewer's own permissions.
+    case 'processing_officer':
+      return { ...head, ...(await workspaceView(user, 'secretary')) };
     // The Diploma Instructor has a dashboard of their own (instructor-dashboard.ts),
     // rendered by the page before this view is asked for.
     case 'student':
@@ -661,7 +670,7 @@ async function superAdminView(user: AuthUser): Promise<Body> {
     href: systemPolicy.viewSystemHealth(user) ? '/system-health' : undefined,
   });
 
-  const roleOrder = ['super_admin', 'admin', 'director', 'coordinator', 'secretary', 'teacher', 'student'];
+  const roleOrder = ['super_admin', 'admin', 'director', 'coordinator', 'secretary', 'assessment_center_manager', 'processing_officer', 'teacher', 'student'];
 
   const ok = (yes: boolean, good: string, bad: string) =>
     yes ? { status: 'active', label: good } : { status: 'pending', label: bad };

@@ -105,6 +105,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   // Migration 20261011000000_assessment_center adds the same rows to an
   // existing database.
   assessment_center_manager: ['assessment.results.manage', 'assessment.calendar.manage', 'assessment.supplies.manage'],
+  processing_officer: ['students.manage', 'students.enroll', 'credentials.verify', 'assessment.calendar.manage'],
 };
 
 /** Port of CredentialRequirementsSeeder::GLOBAL_REQUIREMENTS. */

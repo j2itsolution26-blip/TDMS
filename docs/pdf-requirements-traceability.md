@@ -57,18 +57,18 @@ file paths in this repository and test runs.
 
 ## TVET Processing Officer
 
-The role does not exist yet (`shared/types/domain.ts`, `prisma/seed.ts`).
+The role exists since migration `20261011020000_processing_officer` and is assignable from Admin → Add Staff (`scripts/e2e/staff-roles.mjs`, 52/52). Permissions: `students.manage`, `students.enroll`, `credentials.verify`, `assessment.calendar.manage` — nothing administrative.
 
 | Requirement | Status | Evidence / gap |
 |---|---|---|
-| Role itself | MISSING | Needs a migration and policies; waiting on confirmed permissions (Questions 8). |
-| PDS, visible to Director and Admin | MISSING | The staff PDS added in this pass supports it once the role exists (one line in `PDS_ROLES` / `PDS_READERS`). |
+| Role itself | ✱ VERIFIED | Created by the Admin, signs in with a temporary password, opens its own dashboard (the records workspace under its own title); sidebar and API limited to its permissions. |
+| PDS, visible to Director and Admin | ✱ VERIFIED | `PDS_ROLES`, `PDS_READERS.admin`. |
 | Upload TESDA learner profile, application for assessment | MISSING | Document storage exists (`controllers/documents*`). |
 | Scholarship enrollment (profile, previous school, year level, school year) | MISSING | No scholarship model; `Student` has no previous-school field. |
-| Requirement management (7 documents, can add more) | PARTIAL | `CredentialRequirement` / `StudentCredential` checklist; 4 of 7 seeded (no barangay clearance, ID, uniform); no screen to add requirement types though `credentialRequirementPolicy` exists. |
+| Requirement management (7 documents, can add more) | PARTIAL | The Officer can verify documents (`credentials.verify`). Gaps: `CredentialRequirement` / `StudentCredential` checklist; 4 of 7 seeded (no barangay clearance, ID, uniform); no screen to add requirement types though `credentialRequirementPolicy` exists. |
 | Learner Profile form (print/upload) | BLOCKED | Official template ("TDMS drive") is not in the repository. |
 | Reserve trainees per qualification → final list | MISSING | |
-| CRUD training & assessment calendar | MISSING | Calendar exists; the role does not. |
+| CRUD training & assessment calendar | ✱ VERIFIED | `assessment.calendar.manage`. |
 | Collect/process assessment fees | BLOCKED | Fee schedule and procedure not specified. |
 
 ## TVET Coordinator
@@ -171,5 +171,5 @@ Not deployment-verified: nothing was deployed, and the new migration has not bee
 5. **Diploma inventory** — who keeps it? The Manager's categories are TVET qualifications and office supplies.
 6. **Grading periods** — should grades be computed per prelim/midterm/final? With what weights?
 7. **Clearance, payments, assessment fees** — clearance items and signatories, which requirements are payable, and the fee schedule.
-8. **Processing Officer** — confirm the role's permissions before it is created.
+8. **Processing Officer** — created with records, enrollment, documents and calendar permissions only. Confirm, or name what to add or remove.
 9. **Learner Profile form** — the official template.

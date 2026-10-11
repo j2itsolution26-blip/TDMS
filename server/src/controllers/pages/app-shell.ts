@@ -55,7 +55,7 @@ import { ROLE_LABELS, type RoleName } from '@shared/types/domain';
 /** The Assessment Center links, in sidebar order; each appears only where its policy allows. */
 const ASSESSMENT_LINKS = ['/assessment/results', '/assessment/calendar', '/assessment/reports', '/assessment/inventory', '/assessment/purchases'];
 
-const ROLE_SIDEBARS: Record<'director' | 'coordinator' | 'secretary' | 'assessment_center_manager' | 'teacher' | 'student', [NavGroup, string[]][]> = {
+const ROLE_SIDEBARS: Record<'director' | 'coordinator' | 'secretary' | 'assessment_center_manager' | 'processing_officer' | 'teacher' | 'student', [NavGroup, string[]][]> = {
   director: [
     ['main', ['/dashboard']],
     ['academic', ['/programs', '/subjects', '/school-years']],
@@ -81,6 +81,14 @@ const ROLE_SIDEBARS: Record<'director' | 'coordinator' | 'secretary' | 'assessme
     ['records', ['/students', '/status-requests']],
     ['admissions', ['/applications', '/enrollments']],
     ['programs', ['/programs']],
+    ['calendar', ['/calendar', '/assessment/calendar']],
+    ['account', ['/profile', '/teaching/pds']],
+  ],
+  // The TVET Processing Officer: learner records, enrollment and documents, and the training calendar.
+  processing_officer: [
+    ['main', ['/dashboard']],
+    ['records', ['/students']],
+    ['admissions', ['/enrollments']],
     ['calendar', ['/calendar', '/assessment/calendar']],
     ['account', ['/profile', '/teaching/pds']],
   ],

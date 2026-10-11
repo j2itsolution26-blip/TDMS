@@ -181,7 +181,7 @@ export async function archiveSchoolYear(
           });
     }
 
-    await notifyRoles(tx, ['admin', 'director', 'coordinator', 'secretary', 'teacher'], {
+    await notifyRoles(tx, ['admin', 'director', 'coordinator', 'secretary', 'teacher', 'assessment_center_manager', 'processing_officer'], {
       type: 'school-year.archived',
       title: `School year ${year.label} archived`,
       body: next

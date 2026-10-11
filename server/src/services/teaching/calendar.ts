@@ -90,7 +90,7 @@ export async function createCalendarEvent(user: AuthUser, input: z.output<typeof
       },
     });
     if (input.notify) {
-      await notifyRoles(tx, ['admin', 'director', 'coordinator', 'secretary', 'teacher', 'student'], {
+      await notifyRoles(tx, ['admin', 'director', 'coordinator', 'secretary', 'teacher', 'assessment_center_manager', 'processing_officer', 'student'], {
         type: 'calendar.event',
         title: `${CALENDAR_TYPE_LABELS[input.type]}: ${input.title}`,
         body: input.startsOn === input.endsOn ? input.startsOn : `${input.startsOn} to ${input.endsOn}`,

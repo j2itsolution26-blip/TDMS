@@ -32,18 +32,21 @@ export default function SecretaryDashboard({
   greeting,
   date,
   description,
+  roleLabel = 'TVET Secretary',
 }: {
   workspace: SecretaryWorkspace;
   firstName: string;
   greeting: string;
   date: string;
   description: string;
+  /** The same workspace serves the Processing Officer under their own title. */
+  roleLabel?: string;
 }) {
   const waiting = w.queue.reduce((sum, q) => sum + q.count, 0);
 
   return (
     <div className="space-y-6">
-      <DashboardHeader firstName={firstName} greeting={greeting} date={date} roleLabel="TVET Secretary" description={description} />
+      <DashboardHeader firstName={firstName} greeting={greeting} date={date} roleLabel={roleLabel} description={description} />
 
       <MetricGrid metrics={w.metrics} />
 

@@ -54,7 +54,7 @@ export async function loadDashboard(_request: PageRequest) {
       workspace: view.workspace,
       // The Director monitors the institution; the Coordinator and Secretary do not.
       monitoring: view.workspace.kind === 'director' ? await institutionMonitoring(now) : null,
-      common: { firstName, greeting: greetingForHour(hourIn(now, tz)), date: formatLongDate(now, tz), description: view.description },
+      common: { firstName, greeting: greetingForHour(hourIn(now, tz)), date: formatLongDate(now, tz), description: view.description, roleLabel: view.roleLabel },
     };
   }
 

@@ -22,7 +22,7 @@ async function usersWithRoles(roles: string[]) {
 export const assessorOptions = () => usersWithRoles(['teacher', 'assessment_center_manager']);
 
 /** Who can be named responsible for an activity: staff, not students. */
-export const staffOptions = () => usersWithRoles(['admin', 'director', 'coordinator', 'secretary', 'teacher', 'assessment_center_manager']);
+export const staffOptions = () => usersWithRoles(['admin', 'director', 'coordinator', 'secretary', 'teacher', 'assessment_center_manager', 'processing_officer']);
 
 export async function qualificationOptions() {
   const rows = await prisma.program.findMany({ orderBy: { code: 'asc' }, select: { id: true, code: true, name: true, isActive: true } });

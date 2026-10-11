@@ -18,7 +18,7 @@ import { suppliesSummary } from './supplies';
  * scholarships yet (see docs/pdf-requirements-traceability.md).
  */
 
-const STAFF_ROLES = ['director', 'coordinator', 'secretary', 'teacher', 'assessment_center_manager'] as const;
+const STAFF_ROLES = ['director', 'coordinator', 'secretary', 'teacher', 'assessment_center_manager', 'processing_officer'] as const;
 const DAY = 24 * 60 * 60 * 1000;
 
 async function staffByRole() {

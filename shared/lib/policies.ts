@@ -164,8 +164,9 @@ export const credentialRequirementPolicy = {
 // --- StudentCredentialPolicy ----------------------------------------------
 
 export const studentCredentialPolicy = {
-  viewAny: (u: AuthUser) => inRoles(u, OFFICE_VIEWERS),
-  view: (u: AuthUser) => inRoles(u, OFFICE_VIEWERS),
+  // Whoever may verify documents may see them (the Processing Officer).
+  viewAny: (u: AuthUser) => inRoles(u, OFFICE_VIEWERS) || can(u, 'credentials.verify'),
+  view: (u: AuthUser) => inRoles(u, OFFICE_VIEWERS) || can(u, 'credentials.verify'),
   verify: (u: AuthUser) => can(u, 'credentials.verify'),
   delete: (u: AuthUser) => isSuperAdmin(u),
 };
@@ -173,8 +174,9 @@ export const studentCredentialPolicy = {
 // --- EnrollmentPolicy ------------------------------------------------------
 
 export const enrollmentPolicy = {
-  viewAny: (u: AuthUser) => inRoles(u, OFFICE_VIEWERS),
-  view: (u: AuthUser) => inRoles(u, OFFICE_VIEWERS),
+  // Whoever may enroll may see enrollments (the Processing Officer).
+  viewAny: (u: AuthUser) => inRoles(u, OFFICE_VIEWERS) || can(u, 'students.enroll'),
+  view: (u: AuthUser) => inRoles(u, OFFICE_VIEWERS) || can(u, 'students.enroll'),
   create: (u: AuthUser) => can(u, 'students.enroll'),
   transition: (u: AuthUser) => can(u, 'students.enroll'),
   delete: (u: AuthUser) => isSuperAdmin(u),
@@ -402,7 +404,7 @@ export const assessmentCenterPolicy = {
   /** Create batches, enrol candidates, record, finalize, reassess and cancel results. */
   manageResults: (u: AuthUser) => can(u, 'assessment.results.manage'),
   /** "Reflect to all staff and admins": every staff role reads the training calendar. */
-  viewCalendar: (u: AuthUser) => inRoles(u, [...ASSESSMENT_VIEWERS, 'teacher', 'secretary']),
+  viewCalendar: (u: AuthUser) => inRoles(u, [...ASSESSMENT_VIEWERS, 'teacher', 'secretary', 'processing_officer']),
   manageCalendar: (u: AuthUser) => can(u, 'assessment.calendar.manage'),
   /** Printable and exported batch result reports. */
   viewReports: (u: AuthUser) => inRoles(u, ASSESSMENT_VIEWERS),
@@ -432,17 +434,18 @@ export const announcementPolicy = {
 /**
  * Who keeps a Personal Data Sheet, and who may read whose — as the function
  * and role document assigns it: the Instructor, Coordinator, Secretary and
- * Assessment Center Manager each complete their own; every one "reflects to
- * the TVET Director", and the Secretary's also to the Admin.
+ * Assessment Center Manager and Processing Officer each complete their own;
+ * every one "reflects to the TVET Director", and the Secretary's and the
+ * Processing Officer's also to the Admin.
  *
  * Role checks rather than inRoles(): a PDS holds birth dates, addresses and
  * family details, so the Super Admin is not a reader by default. Every read
  * is audited (services/teaching/pds.ts).
  */
-export const PDS_ROLES = ['teacher', 'coordinator', 'secretary', 'assessment_center_manager'] as const;
+export const PDS_ROLES = ['teacher', 'coordinator', 'secretary', 'assessment_center_manager', 'processing_officer'] as const;
 const PDS_READERS: Record<string, readonly string[]> = {
   director: PDS_ROLES,
-  admin: ['secretary'],
+  admin: ['secretary', 'processing_officer'],
 };
 
 export const staffPdsPolicy = {

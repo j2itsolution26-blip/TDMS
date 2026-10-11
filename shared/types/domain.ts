@@ -91,6 +91,9 @@ export const ROLES = [
   // Added for the TVET Assessment Center: batches, results, the training and
   // assessment calendar and batch reports — nothing else.
   'assessment_center_manager',
+  // TESDA processing: learner records, enrollment, document requirements and
+  // the training and assessment calendar.
+  'processing_officer',
 ] as const;
 
 export type RoleName = (typeof ROLES)[number];
@@ -219,4 +222,5 @@ export const ROLE_LABELS: Record<RoleName, string> = {
   teacher: 'Diploma Instructor',
   student: 'Student',
   assessment_center_manager: 'TVET Assessment Center Manager',
+  processing_officer: 'TVET Processing Officer',
 };

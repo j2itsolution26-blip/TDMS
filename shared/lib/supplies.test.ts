@@ -19,8 +19,8 @@ describe('staffPdsPolicy', () => {
   const manager = { id: '4', roles: ['assessment_center_manager'] };
   const teacher = { id: '5', roles: ['teacher'] };
 
-  it('lets the four staff roles keep their own sheet, and nobody else', () => {
-    for (const r of ['teacher', 'coordinator', 'secretary', 'assessment_center_manager']) expect(staffPdsPolicy.keepOwn(user('9', [r]))).toBe(true);
+  it('lets the five staff roles keep their own sheet, and nobody else', () => {
+    for (const r of ['teacher', 'coordinator', 'secretary', 'assessment_center_manager', 'processing_officer']) expect(staffPdsPolicy.keepOwn(user('9', [r]))).toBe(true);
     for (const r of ['director', 'admin', 'student', 'super_admin']) expect(staffPdsPolicy.keepOwn(user('9', [r]))).toBe(false);
   });
 
@@ -28,8 +28,9 @@ describe('staffPdsPolicy', () => {
     expect([secretary, manager, teacher, { id: '6', roles: ['coordinator'] }].every((t) => staffPdsPolicy.view(director, t))).toBe(true);
   });
 
-  it("lets the Admin read only the Secretary's", () => {
+  it("lets the Admin read only the Secretary's and the Processing Officer's", () => {
     expect(staffPdsPolicy.view(admin, secretary)).toBe(true);
+    expect(staffPdsPolicy.view(admin, { id: '7', roles: ['processing_officer'] })).toBe(true);
     expect(staffPdsPolicy.view(admin, manager)).toBe(false);
     expect(staffPdsPolicy.view(admin, teacher)).toBe(false);
   });

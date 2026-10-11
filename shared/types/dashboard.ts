@@ -21,6 +21,7 @@ export type DashboardRole =
   | 'teacher'
   | 'student'
   | 'assessment_center_manager'
+  | 'processing_officer'
   | 'none';
 
 /** The icon set the dashboard draws. Named by meaning, not by picture. */

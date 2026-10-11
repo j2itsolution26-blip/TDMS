@@ -152,7 +152,7 @@ export interface AuditEventView {
   isTest: boolean;
 }
 
-const ROLE_ORDER: RoleName[] = ['super_admin', 'admin', 'director', 'coordinator', 'secretary', 'teacher', 'student'];
+const ROLE_ORDER: RoleName[] = ['super_admin', 'admin', 'director', 'coordinator', 'secretary', 'assessment_center_manager', 'processing_officer', 'teacher', 'student'];
 
 /** Each address's account as it is now — current name and most senior role — in two queries. */
 async function peopleByEmail(emails: string[]): Promise<Map<string, { name: string; role: RoleName | null }>> {

@@ -382,6 +382,34 @@ export const teachingPolicy = {
   manageCalendar: (u: AuthUser) => hasAnyRole(u, ['admin', 'director', 'coordinator']),
 };
 
+// --- TVET Assessment Center ------------------------------------------------
+
+/**
+ * The TVET Assessment Center: assessment batches and results, the training
+ * and assessment calendar, and batch result reports.
+ *
+ * Acting needs an `assessment.*` permission, which only the TVET Assessment
+ * Center Manager holds — and that role holds nothing else, so it opens this
+ * module and no other administrative screen. can() keeps the Super Admin to
+ * oversight, as everywhere.
+ *
+ * Viewing is wider: the Admin, Director and Coordinator oversee results, and
+ * the calendar is also read by Diploma Instructors, who may be assigned to
+ * train or assess.
+ */
+const ASSESSMENT_VIEWERS = ['assessment_center_manager', 'admin', 'director', 'coordinator'] as const;
+
+export const assessmentCenterPolicy = {
+  /** Results monitoring, batch details, candidate history and reports. */
+  view: (u: AuthUser) => inRoles(u, ASSESSMENT_VIEWERS),
+  /** Create batches, enrol candidates, record, finalize, reassess and cancel results. */
+  manageResults: (u: AuthUser) => can(u, 'assessment.results.manage'),
+  viewCalendar: (u: AuthUser) => inRoles(u, [...ASSESSMENT_VIEWERS, 'teacher']),
+  manageCalendar: (u: AuthUser) => can(u, 'assessment.calendar.manage'),
+  /** Printable and exported batch result reports. */
+  viewReports: (u: AuthUser) => inRoles(u, ASSESSMENT_VIEWERS),
+};
+
 /** A student's own attendance QR, assessments, released scores and badges. */
 export const studentPortalPolicy = {
   use: (u: AuthUser) => hasRole(u, 'student'),

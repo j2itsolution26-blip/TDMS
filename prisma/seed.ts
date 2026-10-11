@@ -99,6 +99,11 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'reports.view.own-classes',
   ],
   student: ['academic-records.view.own'],
+  // The TVET Assessment Center Manager: assessment batches and results, and the
+  // training and assessment calendar. Nothing else — see assessmentCenterPolicy.
+  // Migration 20261011000000_assessment_center adds the same rows to an
+  // existing database.
+  assessment_center_manager: ['assessment.results.manage', 'assessment.calendar.manage'],
 };
 
 /** Port of CredentialRequirementsSeeder::GLOBAL_REQUIREMENTS. */

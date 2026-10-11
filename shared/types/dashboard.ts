@@ -20,6 +20,7 @@ export type DashboardRole =
   | 'secretary'
   | 'teacher'
   | 'student'
+  | 'assessment_center_manager'
   | 'none';
 
 /** The icon set the dashboard draws. Named by meaning, not by picture. */

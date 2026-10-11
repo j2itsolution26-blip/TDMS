@@ -18,4 +18,4 @@ export type NavIcon =
 export type NavGroup =
   | 'main' | 'academic' | 'people' | 'records' | 'admissions' | 'programs' | 'system' | 'account'
   | 'teaching' | 'attendance' | 'assessments' | 'activities' | 'documents' | 'engagement' | 'calendar' | 'profile'
-  | 'oversight' | 'learning';
+  | 'oversight' | 'learning' | 'assessment';

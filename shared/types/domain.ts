@@ -88,6 +88,9 @@ export const ROLES = [
   'secretary',
   'teacher',
   'student',
+  // Added for the TVET Assessment Center: batches, results, the training and
+  // assessment calendar and batch reports — nothing else.
+  'assessment_center_manager',
 ] as const;
 
 export type RoleName = (typeof ROLES)[number];
@@ -215,4 +218,5 @@ export const ROLE_LABELS: Record<RoleName, string> = {
   // reference it. Only what people read changes.
   teacher: 'Diploma Instructor',
   student: 'Student',
+  assessment_center_manager: 'TVET Assessment Center Manager',
 };

@@ -5,6 +5,7 @@ import { loadLogin, loadAccessCode, loadChangePassword, loadForgotPassword, load
 import { assessmentListLoader, documentsLoader } from '@/server/controllers/pages/app/teaching/lists';
 import { loadAcademicReviews } from '@/server/controllers/pages/app/academic-reviews';
 import { loadAdminAccessCodes } from '@/server/controllers/pages/app/admin-access-codes';
+import { loadAssessmentBatch, loadAssessmentCalendar, loadAssessmentCandidate, loadAssessmentReportPrint, loadAssessmentReports, loadAssessmentResults } from '@/server/controllers/pages/app/assessment';
 import { loadAdmins } from '@/server/controllers/pages/app/admins';
 import { loadApplications } from '@/server/controllers/pages/app/applications';
 import { loadAuditLogs } from '@/server/controllers/pages/app/audit-logs';
@@ -68,6 +69,12 @@ export function registerPageRoutes(app: FastifyInstance): void {
   mountPage(app, '/admin-access-codes', loadAdminAccessCodes);
   mountPage(app, '/admins', loadAdmins);
   mountPage(app, '/applications', loadApplications);
+  mountPage(app, '/assessment/results', loadAssessmentResults);
+  mountPage(app, '/assessment/batches/:id', loadAssessmentBatch);
+  mountPage(app, '/assessment/candidates/:id', loadAssessmentCandidate);
+  mountPage(app, '/assessment/calendar', loadAssessmentCalendar);
+  mountPage(app, '/assessment/reports', loadAssessmentReports);
+  mountPage(app, '/assessment/reports/print', loadAssessmentReportPrint);
   mountPage(app, '/audit-logs', loadAuditLogs);
   mountPage(app, '/calendar', loadCalendar);
   mountPage(app, '/class-setup', loadClassSetup);

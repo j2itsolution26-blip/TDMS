@@ -20,6 +20,13 @@ const ResetPassword = lazy(() => import('@/pages/auth/ResetPassword'));
 const VerifyEmail = lazy(() => import('@/pages/auth/VerifyEmail'));
 const Setup = lazy(() => import('@/pages/auth/Setup'));
 
+const AssessmentResults = lazy(() => import('@/pages/app/assessment/results'));
+const AssessmentBatch = lazy(() => import('@/pages/app/assessment/batches/_id'));
+const AssessmentCandidate = lazy(() => import('@/pages/app/assessment/candidates/_id'));
+const AssessmentCalendar = lazy(() => import('@/pages/app/assessment/calendar'));
+const AssessmentReports = lazy(() => import('@/pages/app/assessment/reports'));
+const AssessmentReportPrint = lazy(() => import('@/pages/app/assessment/reports/print'));
+
 const P0 = lazy(() => import('@/pages/app/academic-reviews'));
 const P1 = lazy(() => import('@/pages/app/admin-access-codes'));
 const P2 = lazy(() => import('@/pages/app/admins'));
@@ -84,7 +91,15 @@ export default function App() {
             {/* Retired: the first Super Admin is created at /setup. */}
             <Route path="/create-super-admin" element={<Navigate to="/setup" replace />} />
 
+            {/* Printable report: its own tab, no app shell. */}
+            <Route path="/assessment/reports/print" element={<AssessmentReportPrint />} />
+
             <Route element={<AppLayout />}>
+              <Route path="/assessment/results" element={<AssessmentResults />} />
+              <Route path="/assessment/batches/:id" element={<AssessmentBatch />} />
+              <Route path="/assessment/candidates/:id" element={<AssessmentCandidate />} />
+              <Route path="/assessment/calendar" element={<AssessmentCalendar />} />
+              <Route path="/assessment/reports" element={<AssessmentReports />} />
               <Route path="/academic-reviews" element={<P0 />} />
               <Route path="/admin-access-codes" element={<P1 />} />
               <Route path="/admins" element={<P2 />} />

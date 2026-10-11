@@ -1,5 +1,6 @@
 import { requireUser } from '@/server/auth/current-user';
 import { dashboardRoleFor, getDashboardView, greeting, formatToday } from '@/server/services/dashboard-service';
+import { assessmentDashboard } from '@/server/services/assessment-center/options';
 import { instructorDashboard } from '@/server/services/teaching/instructor-dashboard';
 import { greetingForHour, formatLongDate, hourIn } from '@shared/lib/greeting';
 import { institutionTimeZone } from '@shared/lib/institution-time';
@@ -23,6 +24,17 @@ export async function loadDashboard(_request: PageRequest) {
       data: await instructorDashboard(user, now),
       firstName,
       greeting: greetingForHour(hourIn(now, tz)),
+    };
+  }
+
+  // The TVET Assessment Center Manager's workspace.
+  if (dashboardRoleFor(user) === 'assessment_center_manager') {
+    return {
+      kind: 'assessment' as const,
+      data: await assessmentDashboard(now),
+      firstName,
+      greeting: greetingForHour(hourIn(now, tz)),
+      date: formatLongDate(now, tz),
     };
   }
 

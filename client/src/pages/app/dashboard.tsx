@@ -4,6 +4,7 @@ import DashboardChart from '@/components/dashboard/DashboardChart';
 import DirectorDashboard from '@/components/dashboard/DirectorDashboard';
 import CoordinatorDashboard from '@/components/dashboard/CoordinatorDashboard';
 import SecretaryDashboard from '@/components/dashboard/SecretaryDashboard';
+import AssessmentDashboard from '@/components/dashboard/AssessmentDashboard';
 import AdminDashboard from '@/components/dashboard/AdminDashboard';
 import { Page } from '@/lib/page-data';
 import type { loadDashboard } from '@/server/controllers/pages/app/dashboard';
@@ -16,6 +17,8 @@ function View(d: Data) {
   switch (d.kind) {
     case 'teacher':
       return <InstructorDashboard data={d.data} firstName={d.firstName} greeting={d.greeting} />;
+    case 'assessment':
+      return <AssessmentDashboard data={d.data} firstName={d.firstName} greeting={d.greeting} date={d.date} />;
     case 'admin':
       return <AdminDashboard panels={d.panels} firstName={d.firstName} greeting={d.greeting} date={d.date} />;
     case 'workspace':

@@ -12,6 +12,7 @@ import {
   systemPolicy,
   teachingPolicy,
   studentPortalPolicy,
+  assessmentCenterPolicy,
 } from '@/server/auth/policies';
 import { getNotificationSummary } from '@/server/services/teaching/notifications';
 import { dashboardRoleFor } from '@/server/services/dashboard-service';
@@ -47,13 +48,17 @@ import { ROLE_LABELS, type RoleName } from '@shared/types/domain';
  * entry of its own. A Coordinator may not see student records, so the
  * Students link is absent for them by policy.
  */
-const ROLE_SIDEBARS: Record<'director' | 'coordinator' | 'secretary' | 'teacher' | 'student', [NavGroup, string[]][]> = {
+/** The Assessment Center links, in sidebar order; each appears only where its policy allows. */
+const ASSESSMENT_LINKS = ['/assessment/results', '/assessment/calendar', '/assessment/reports'];
+
+const ROLE_SIDEBARS: Record<'director' | 'coordinator' | 'secretary' | 'assessment_center_manager' | 'teacher' | 'student', [NavGroup, string[]][]> = {
   director: [
     ['main', ['/dashboard']],
     ['academic', ['/programs', '/subjects', '/school-years']],
     ['people', ['/students']],
     ['admissions', ['/applications', '/enrollments']],
     ['oversight', ['/academic-reviews', '/status-requests', '/learning-support', '/instructors']],
+    ['assessment', ASSESSMENT_LINKS],
     ['calendar', ['/calendar']],
     ['account', ['/profile']],
   ],
@@ -63,6 +68,7 @@ const ROLE_SIDEBARS: Record<'director' | 'coordinator' | 'secretary' | 'teacher'
     ['people', ['/students']],
     ['admissions', ['/applications', '/enrollments']],
     ['oversight', ['/academic-reviews', '/status-requests', '/learning-support']],
+    ['assessment', ASSESSMENT_LINKS],
     ['calendar', ['/calendar']],
     ['account', ['/profile']],
   ],
@@ -71,6 +77,13 @@ const ROLE_SIDEBARS: Record<'director' | 'coordinator' | 'secretary' | 'teacher'
     ['records', ['/students', '/status-requests']],
     ['admissions', ['/applications', '/enrollments']],
     ['programs', ['/programs']],
+    ['calendar', ['/calendar']],
+    ['account', ['/profile']],
+  ],
+  // The TVET Assessment Center Manager: assessments, the training calendar and reports.
+  assessment_center_manager: [
+    ['main', ['/dashboard']],
+    ['assessment', ASSESSMENT_LINKS],
     ['calendar', ['/calendar']],
     ['account', ['/profile']],
   ],
@@ -84,7 +97,7 @@ const ROLE_SIDEBARS: Record<'director' | 'coordinator' | 'secretary' | 'teacher'
     ['academic', ['/teaching/students', '/teaching/progress', '/teaching/learning-support']],
     ['documents', ['/teaching/documents/lesson-plans', '/teaching/documents/tos', '/teaching/documents/pt']],
     ['engagement', ['/teaching/badges']],
-    ['calendar', ['/calendar']],
+    ['calendar', ['/calendar', '/assessment/calendar']],
     ['profile', ['/profile', '/teaching/pds']],
   ],
   student: [
@@ -198,6 +211,16 @@ export async function loadAppShell(_request: PageRequest) {
     items.push({ label: 'Quizzes & Exams', href: '/my/assessments', match: ['/my/assessments'], icon: 'quiz', group: 'learning' });
     items.push({ label: 'My Grades', href: '/my/grades', match: ['/my/grades'], icon: 'gradebook', group: 'learning' });
     items.push({ label: 'My Badges', href: '/my/badges', match: ['/my/badges'], icon: 'badge', group: 'learning' });
+  }
+  // The TVET Assessment Center.
+  if (assessmentCenterPolicy.view(user)) {
+    items.push({ label: 'Assessment Results', href: '/assessment/results', match: ['/assessment/results', '/assessment/batches', '/assessment/candidates'], icon: 'checking', group: 'assessment' });
+  }
+  if (assessmentCenterPolicy.viewCalendar(user)) {
+    items.push({ label: 'Training & Assessment Calendar', href: '/assessment/calendar', match: ['/assessment/calendar'], icon: 'calendar', group: 'assessment' });
+  }
+  if (assessmentCenterPolicy.viewReports(user)) {
+    items.push({ label: 'Batch Result Reports', href: '/assessment/reports', match: ['/assessment/reports'], icon: 'document', group: 'assessment' });
   }
   // The official calendar: everyone signed in may read it.
   items.push({ label: 'School Calendar', href: '/calendar', match: ['/calendar'], icon: 'calendar', group: 'calendar' });

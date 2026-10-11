@@ -99,6 +99,7 @@ const ROLE_ORDER: Exclude<DashboardRole, 'none'>[] = [
   'director',
   'coordinator',
   'secretary',
+  'assessment_center_manager',
   'teacher',
   'student',
 ];

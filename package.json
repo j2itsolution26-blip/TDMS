@@ -36,7 +36,8 @@
     "test:prod": "node scripts/e2e/production-flow.mjs",
     "test:admins": "node scripts/e2e/admin-access-code.mjs",
     "test:staff": "node scripts/e2e/staff-accounts.mjs",
-    "test:instructor": "node scripts/e2e/diploma-instructor.mjs"
+    "test:instructor": "node scripts/e2e/diploma-instructor.mjs",
+    "test:assessment": "node scripts/e2e/assessment-center.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

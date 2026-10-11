@@ -49,7 +49,7 @@ import type { AuthUser, AccountStatus } from '@shared/types/domain';
  * Existing Admin accounts are therefore listed and managed on their own
  * screen, not this one.
  */
-export const STAFF_ROLES = ['director', 'coordinator', 'secretary', 'teacher'] as const;
+export const STAFF_ROLES = ['director', 'coordinator', 'secretary', 'teacher', 'assessment_center_manager'] as const;
 
 /**
  * Which roles the CURRENT actor may grant.

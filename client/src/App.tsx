@@ -20,6 +20,9 @@ const ResetPassword = lazy(() => import('@/pages/auth/ResetPassword'));
 const VerifyEmail = lazy(() => import('@/pages/auth/VerifyEmail'));
 const Setup = lazy(() => import('@/pages/auth/Setup'));
 
+const Announcements = lazy(() => import('@/pages/app/announcements'));
+const Inventory = lazy(() => import('@/pages/app/assessment/inventory'));
+const Purchases = lazy(() => import('@/pages/app/assessment/purchases'));
 const AssessmentResults = lazy(() => import('@/pages/app/assessment/results'));
 const AssessmentBatch = lazy(() => import('@/pages/app/assessment/batches/_id'));
 const AssessmentCandidate = lazy(() => import('@/pages/app/assessment/candidates/_id'));
@@ -95,6 +98,9 @@ export default function App() {
             <Route path="/assessment/reports/print" element={<AssessmentReportPrint />} />
 
             <Route element={<AppLayout />}>
+              <Route path="/announcements" element={<Announcements />} />
+              <Route path="/assessment/inventory" element={<Inventory />} />
+              <Route path="/assessment/purchases" element={<Purchases />} />
               <Route path="/assessment/results" element={<AssessmentResults />} />
               <Route path="/assessment/batches/:id" element={<AssessmentBatch />} />
               <Route path="/assessment/candidates/:id" element={<AssessmentCandidate />} />

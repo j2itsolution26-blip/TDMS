@@ -13,6 +13,10 @@ import {
   teachingPolicy,
   studentPortalPolicy,
   assessmentCenterPolicy,
+  staffPdsPolicy,
+  suppliesPolicy,
+  announcementPolicy,
+  hasAnyRole,
 } from '@/server/auth/policies';
 import { getNotificationSummary } from '@/server/services/teaching/notifications';
 import { dashboardRoleFor } from '@/server/services/dashboard-service';
@@ -49,7 +53,7 @@ import { ROLE_LABELS, type RoleName } from '@shared/types/domain';
  * Students link is absent for them by policy.
  */
 /** The Assessment Center links, in sidebar order; each appears only where its policy allows. */
-const ASSESSMENT_LINKS = ['/assessment/results', '/assessment/calendar', '/assessment/reports'];
+const ASSESSMENT_LINKS = ['/assessment/results', '/assessment/calendar', '/assessment/reports', '/assessment/inventory', '/assessment/purchases'];
 
 const ROLE_SIDEBARS: Record<'director' | 'coordinator' | 'secretary' | 'assessment_center_manager' | 'teacher' | 'student', [NavGroup, string[]][]> = {
   director: [
@@ -59,7 +63,7 @@ const ROLE_SIDEBARS: Record<'director' | 'coordinator' | 'secretary' | 'assessme
     ['admissions', ['/applications', '/enrollments']],
     ['oversight', ['/academic-reviews', '/status-requests', '/learning-support', '/instructors']],
     ['assessment', ASSESSMENT_LINKS],
-    ['calendar', ['/calendar']],
+    ['calendar', ['/calendar', '/announcements']],
     ['account', ['/profile']],
   ],
   coordinator: [
@@ -70,22 +74,22 @@ const ROLE_SIDEBARS: Record<'director' | 'coordinator' | 'secretary' | 'assessme
     ['oversight', ['/academic-reviews', '/status-requests', '/learning-support']],
     ['assessment', ASSESSMENT_LINKS],
     ['calendar', ['/calendar']],
-    ['account', ['/profile']],
+    ['account', ['/profile', '/teaching/pds']],
   ],
   secretary: [
     ['main', ['/dashboard']],
     ['records', ['/students', '/status-requests']],
     ['admissions', ['/applications', '/enrollments']],
     ['programs', ['/programs']],
-    ['calendar', ['/calendar']],
-    ['account', ['/profile']],
+    ['calendar', ['/calendar', '/assessment/calendar']],
+    ['account', ['/profile', '/teaching/pds']],
   ],
   // The TVET Assessment Center Manager: assessments, the training calendar and reports.
   assessment_center_manager: [
     ['main', ['/dashboard']],
     ['assessment', ASSESSMENT_LINKS],
     ['calendar', ['/calendar']],
-    ['account', ['/profile']],
+    ['account', ['/profile', '/teaching/pds']],
   ],
   // The Diploma Instructor's sidebar, grouped as the module specifies.
   teacher: [
@@ -97,13 +101,13 @@ const ROLE_SIDEBARS: Record<'director' | 'coordinator' | 'secretary' | 'assessme
     ['academic', ['/teaching/students', '/teaching/progress', '/teaching/learning-support']],
     ['documents', ['/teaching/documents/lesson-plans', '/teaching/documents/tos', '/teaching/documents/pt']],
     ['engagement', ['/teaching/badges']],
-    ['calendar', ['/calendar', '/assessment/calendar']],
+    ['calendar', ['/calendar', '/assessment/calendar', '/announcements']],
     ['profile', ['/profile', '/teaching/pds']],
   ],
   student: [
     ['main', ['/dashboard']],
     ['learning', ['/my/qr', '/my/attendance', '/my/assessments', '/my/grades', '/my/badges']],
-    ['calendar', ['/calendar']],
+    ['calendar', ['/calendar', '/announcements']],
     ['account', ['/profile']],
   ],
 };
@@ -180,8 +184,8 @@ export async function loadAppShell(_request: PageRequest) {
   if (teachingPolicy.monitorLearningSupport(user)) {
     items.push({ label: 'Learning Support', href: '/learning-support', match: ['/learning-support'], icon: 'support', group: 'oversight' });
   }
-  if (teachingPolicy.viewInstructorProfiles(user)) {
-    items.push({ label: 'Instructor Profiles', href: '/instructors', match: ['/instructors'], icon: 'instructors', group: 'oversight' });
+  if (staffPdsPolicy.viewAny(user)) {
+    items.push({ label: 'Staff Profiles (PDS)', href: '/instructors', match: ['/instructors'], icon: 'instructors', group: 'oversight' });
   }
   if (teachingPolicy.teach(user)) {
     const t = (label: string, href: string, icon: NavItem['icon'], group: NavGroup, match: string[] = [href]) => items.push({ label, href, match, icon, group });
@@ -204,6 +208,9 @@ export async function loadAppShell(_request: PageRequest) {
     t('PT', '/teaching/documents/pt', 'task', 'documents');
     t('Badges', '/teaching/badges', 'badge', 'engagement');
     t('PDS', '/teaching/pds', 'pds', 'profile');
+  } else if (staffPdsPolicy.keepOwn(user)) {
+    // The other staff who keep a Personal Data Sheet.
+    items.push({ label: 'My PDS', href: '/teaching/pds', match: ['/teaching/pds'], icon: 'pds', group: 'account' });
   }
   if (studentPortalPolicy.use(user)) {
     items.push({ label: 'My QR Code', href: '/my/qr', match: ['/my/qr'], icon: 'qr', group: 'learning' });
@@ -221,6 +228,14 @@ export async function loadAppShell(_request: PageRequest) {
   }
   if (assessmentCenterPolicy.viewReports(user)) {
     items.push({ label: 'Batch Result Reports', href: '/assessment/reports', match: ['/assessment/reports'], icon: 'document', group: 'assessment' });
+  }
+  if (suppliesPolicy.view(user)) {
+    items.push({ label: 'Inventory', href: '/assessment/inventory', match: ['/assessment/inventory'], icon: 'records', group: 'assessment' });
+    items.push({ label: 'Purchases', href: '/assessment/purchases', match: ['/assessment/purchases'], icon: 'enrollments', group: 'assessment' });
+  }
+  // Announcements: published by the Director, read by the instructors and students they address.
+  if (announcementPolicy.manage(user) || hasAnyRole(user, ['teacher', 'student'])) {
+    items.push({ label: 'Announcements', href: '/announcements', match: ['/announcements'], icon: 'notifications', group: 'calendar' });
   }
   // The official calendar: everyone signed in may read it.
   items.push({ label: 'School Calendar', href: '/calendar', match: ['/calendar'], icon: 'calendar', group: 'calendar' });

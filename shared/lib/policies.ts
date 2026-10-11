@@ -375,9 +375,6 @@ export const teachingPolicy = {
   /** Learning Support Recommendations and their interventions. */
   monitorLearningSupport: (u: AuthUser) => inRoles(u, ['director', 'coordinator']),
 
-  /** Instructor Personal Data Sheets. Every view is audited. */
-  viewInstructorProfiles: (u: AuthUser) => hasRole(u, 'director'),
-
   /** The official school calendar. Everybody signed in may read it. */
   manageCalendar: (u: AuthUser) => hasAnyRole(u, ['admin', 'director', 'coordinator']),
 };
@@ -404,10 +401,60 @@ export const assessmentCenterPolicy = {
   view: (u: AuthUser) => inRoles(u, ASSESSMENT_VIEWERS),
   /** Create batches, enrol candidates, record, finalize, reassess and cancel results. */
   manageResults: (u: AuthUser) => can(u, 'assessment.results.manage'),
-  viewCalendar: (u: AuthUser) => inRoles(u, [...ASSESSMENT_VIEWERS, 'teacher']),
+  /** "Reflect to all staff and admins": every staff role reads the training calendar. */
+  viewCalendar: (u: AuthUser) => inRoles(u, [...ASSESSMENT_VIEWERS, 'teacher', 'secretary']),
   manageCalendar: (u: AuthUser) => can(u, 'assessment.calendar.manage'),
   /** Printable and exported batch result reports. */
   viewReports: (u: AuthUser) => inRoles(u, ASSESSMENT_VIEWERS),
+};
+
+/**
+ * Assessment Center supplies: inventory and purchases per qualification.
+ * Kept by the Manager (`assessment.supplies.manage`); monitored by the
+ * Director and the Admin, whose dashboards show the inventory.
+ */
+export const suppliesPolicy = {
+  view: (u: AuthUser) => inRoles(u, ['assessment_center_manager', 'director', 'admin']),
+  manage: (u: AuthUser) => can(u, 'assessment.supplies.manage'),
+};
+
+/**
+ * Announcements: published by the TVET Director (`announcements.manage`) to
+ * instructors, students or both, optionally for one course. Everyone reads
+ * the ones addressed to them; the publisher's list is for managers.
+ */
+export const announcementPolicy = {
+  manage: (u: AuthUser) => can(u, 'announcements.manage'),
+};
+
+// --- Staff Personal Data Sheets --------------------------------------------
+
+/**
+ * Who keeps a Personal Data Sheet, and who may read whose — as the function
+ * and role document assigns it: the Instructor, Coordinator, Secretary and
+ * Assessment Center Manager each complete their own; every one "reflects to
+ * the TVET Director", and the Secretary's also to the Admin.
+ *
+ * Role checks rather than inRoles(): a PDS holds birth dates, addresses and
+ * family details, so the Super Admin is not a reader by default. Every read
+ * is audited (services/teaching/pds.ts).
+ */
+export const PDS_ROLES = ['teacher', 'coordinator', 'secretary', 'assessment_center_manager'] as const;
+const PDS_READERS: Record<string, readonly string[]> = {
+  director: PDS_ROLES,
+  admin: ['secretary'],
+};
+
+export const staffPdsPolicy = {
+  /** Complete and update one's own sheet. */
+  keepOwn: (u: AuthUser) => hasAnyRole(u, PDS_ROLES),
+  /** Open the staff profile list at all. */
+  viewAny: (u: AuthUser) => Object.keys(PDS_READERS).some((r) => hasRole(u, r)),
+  /** The PDS-keeping roles whose sheets this viewer may read. */
+  readableRoles: (u: AuthUser): string[] => [...new Set(Object.entries(PDS_READERS).filter(([r]) => hasRole(u, r)).flatMap(([, roles]) => roles))],
+  /** Read the sheet of someone holding `targetRoles`. Never one's own through this door. */
+  view: (u: AuthUser, target: TargetUser) =>
+    target.id !== u.id && target.roles.some((r) => staffPdsPolicy.readableRoles(u).includes(r)),
 };
 
 /** A student's own attendance QR, assessments, released scores and badges. */

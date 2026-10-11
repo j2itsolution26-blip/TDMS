@@ -22,7 +22,7 @@ import type { ActivityInput } from '@/server/schemas/assessment-center';
 const when = (d: Date) => d.toLocaleString('en-PH', { timeZone: institutionTimeZone(), dateStyle: 'medium', timeStyle: 'short' });
 
 /** Everyone told about calendar changes, besides the people assigned. */
-const CALENDAR_AUDIENCE = ['assessment_center_manager', 'admin', 'director', 'coordinator'];
+const CALENDAR_AUDIENCE = ['assessment_center_manager', 'admin', 'director', 'coordinator', 'secretary'];
 
 const INCLUDE = {
   program: { select: { id: true, code: true, name: true } },

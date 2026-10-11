@@ -7,7 +7,7 @@ type Data = Awaited<ReturnType<typeof loadTeachingPds>>;
 
 function View({ pds, user }: Data) {
   return (
-    <PageShell eyebrow="Profile" title="Personal Data Sheet" description="Your personal, family, education, eligibility, work and training record. Viewable by the TVET Director.">
+    <PageShell eyebrow="Profile" title="Personal Data Sheet" description="Your personal, family, education, eligibility, work and training record. Reflects to the TVET Director (and, for the Secretary, the Admin).">
       <PdsEditor initial={pds.data} name={user.name} email={user.email} />
     </PageShell>
   );

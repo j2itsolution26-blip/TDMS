@@ -461,6 +461,7 @@ model Program {
   sections               Section[]
   assessmentBatches      AssessmentBatch[]
   trainingActivities     TrainingActivity[]
+  announcements          Announcement[]
 
   @@map("programs")
 }
@@ -1286,4 +1287,73 @@ model TrainingActivity {
   @@index([startsAt])
   @@index([endsAt])
   @@map("training_activities")
+}
+
+// --- Assessment Center supplies --------------------------------------------------------
+
+/// Stock kept by the Assessment Center, per qualification or supply category
+/// (shared/lib/supplies.ts SUPPLY_CATEGORIES). Quantity on hand is good +
+/// defective; both are counted, never negative.
+model InventoryItem {
+  id                BigInt   @id @default(autoincrement())
+  category          String   @db.VarChar(40)
+  name              String   @db.VarChar(255)
+  unit              String?  @db.VarChar(40)
+  quantityGood      Int      @default(0) @map("quantity_good")
+  quantityDefective Int      @default(0) @map("quantity_defective")
+  remarks           String?  @db.VarChar(1000)
+  createdBy         BigInt?  @map("created_by")
+  updatedBy         BigInt?  @map("updated_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@unique([category, name], map: "inventory_items_category_name_unique")
+  @@index([category])
+  @@map("inventory_items")
+}
+
+/// A purchase being tracked for a qualification or supply category.
+/// status: REQUESTED | APPROVED | ORDERED | DELIVERED | CANCELLED.
+model PurchaseRequest {
+  id              BigInt   @id @default(autoincrement())
+  category        String   @db.VarChar(40)
+  itemName        String   @map("item_name") @db.VarChar(255)
+  quantity        Int
+  unit            String?  @db.VarChar(40)
+  status          String   @default("REQUESTED") @db.VarChar(16)
+  remarks         String?  @db.VarChar(1000)
+  statusChangedAt DateTime @default(now()) @map("status_changed_at")
+  createdBy       BigInt?  @map("created_by")
+  updatedBy       BigInt?  @map("updated_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@index([category])
+  @@index([status])
+  @@map("purchase_requests")
+}
+
+// --- Announcements -----------------------------------------------------------------------
+
+/// An announcement from the TVET Director. audience: INSTRUCTORS | STUDENTS |
+/// BOTH; programId narrows it to one course. Recipients are resolved when it
+/// is published and each gets a notification; withdrawing hides it from
+/// dashboards but keeps the record.
+model Announcement {
+  id             BigInt    @id @default(autoincrement())
+  title          String    @db.VarChar(255)
+  body           String
+  audience       String    @db.VarChar(16)
+  programId      BigInt?   @map("program_id")
+  recipientCount Int       @default(0) @map("recipient_count")
+  createdBy      BigInt?   @map("created_by")
+  withdrawnAt    DateTime? @map("withdrawn_at")
+  withdrawnBy    BigInt?   @map("withdrawn_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  program Program? @relation(fields: [programId], references: [id], onDelete: Restrict)
+
+  @@index([createdAt])
+  @@map("announcements")
 }

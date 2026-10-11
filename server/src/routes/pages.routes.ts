@@ -6,6 +6,7 @@ import { assessmentListLoader, documentsLoader } from '@/server/controllers/page
 import { loadAcademicReviews } from '@/server/controllers/pages/app/academic-reviews';
 import { loadAdminAccessCodes } from '@/server/controllers/pages/app/admin-access-codes';
 import { loadAssessmentBatch, loadAssessmentCalendar, loadAssessmentCandidate, loadAssessmentReportPrint, loadAssessmentReports, loadAssessmentResults } from '@/server/controllers/pages/app/assessment';
+import { loadAnnouncements, loadInventory, loadPurchases } from '@/server/controllers/pages/app/supplies';
 import { loadAdmins } from '@/server/controllers/pages/app/admins';
 import { loadApplications } from '@/server/controllers/pages/app/applications';
 import { loadAuditLogs } from '@/server/controllers/pages/app/audit-logs';
@@ -69,6 +70,9 @@ export function registerPageRoutes(app: FastifyInstance): void {
   mountPage(app, '/admin-access-codes', loadAdminAccessCodes);
   mountPage(app, '/admins', loadAdmins);
   mountPage(app, '/applications', loadApplications);
+  mountPage(app, '/announcements', loadAnnouncements);
+  mountPage(app, '/assessment/inventory', loadInventory);
+  mountPage(app, '/assessment/purchases', loadPurchases);
   mountPage(app, '/assessment/results', loadAssessmentResults);
   mountPage(app, '/assessment/batches/:id', loadAssessmentBatch);
   mountPage(app, '/assessment/candidates/:id', loadAssessmentCandidate);

@@ -1,6 +1,8 @@
 import { requireUser } from '@/server/auth/current-user';
 import { dashboardRoleFor, getDashboardView, greeting, formatToday } from '@/server/services/dashboard-service';
 import { assessmentDashboard } from '@/server/services/assessment-center/options';
+import { institutionMonitoring } from '@/server/services/monitoring';
+import { announcementsFor } from '@/server/services/announcements';
 import { instructorDashboard } from '@/server/services/teaching/instructor-dashboard';
 import { greetingForHour, formatLongDate, hourIn } from '@shared/lib/greeting';
 import { institutionTimeZone } from '@shared/lib/institution-time';
@@ -22,6 +24,7 @@ export async function loadDashboard(_request: PageRequest) {
     return {
       kind: 'teacher' as const,
       data: await instructorDashboard(user, now),
+      announcements: await announcementsFor(user, 5),
       firstName,
       greeting: greetingForHour(hourIn(now, tz)),
     };
@@ -41,7 +44,7 @@ export async function loadDashboard(_request: PageRequest) {
   const view = await getDashboardView(user);
 
   if (view.admin) {
-    return { kind: 'admin' as const, panels: view.admin, firstName, greeting: greetingForHour(hourIn(now, tz)), date: formatLongDate(now, tz) };
+    return { kind: 'admin' as const, panels: view.admin, monitoring: await institutionMonitoring(now), firstName, greeting: greetingForHour(hourIn(now, tz)), date: formatLongDate(now, tz) };
   }
 
   // The TVET Director, Coordinator and Secretary: one design system, three workspaces.
@@ -49,6 +52,8 @@ export async function loadDashboard(_request: PageRequest) {
     return {
       kind: 'workspace' as const,
       workspace: view.workspace,
+      // The Director monitors the institution; the Coordinator and Secretary do not.
+      monitoring: view.workspace.kind === 'director' ? await institutionMonitoring(now) : null,
       common: { firstName, greeting: greetingForHour(hourIn(now, tz)), date: formatLongDate(now, tz), description: view.description },
     };
   }
@@ -60,5 +65,6 @@ export async function loadDashboard(_request: PageRequest) {
     hasMain: Boolean(view.primary || view.secondary || view.chart),
     greeting: greeting(),
     today: formatToday(),
+    announcements: await announcementsFor(user, 5),
   };
 }

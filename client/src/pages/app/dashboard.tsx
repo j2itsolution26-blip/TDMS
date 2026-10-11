@@ -5,6 +5,7 @@ import DirectorDashboard from '@/components/dashboard/DirectorDashboard';
 import CoordinatorDashboard from '@/components/dashboard/CoordinatorDashboard';
 import SecretaryDashboard from '@/components/dashboard/SecretaryDashboard';
 import AssessmentDashboard from '@/components/dashboard/AssessmentDashboard';
+import MonitoringPanel, { AnnouncementsCard } from '@/components/dashboard/MonitoringPanel';
 import AdminDashboard from '@/components/dashboard/AdminDashboard';
 import { Page } from '@/lib/page-data';
 import type { loadDashboard } from '@/server/controllers/pages/app/dashboard';
@@ -16,15 +17,30 @@ type Data = Awaited<ReturnType<typeof loadDashboard>>;
 function View(d: Data) {
   switch (d.kind) {
     case 'teacher':
-      return <InstructorDashboard data={d.data} firstName={d.firstName} greeting={d.greeting} />;
+      return (
+        <div className="space-y-6">
+          <InstructorDashboard data={d.data} firstName={d.firstName} greeting={d.greeting} />
+          <AnnouncementsCard items={d.announcements} />
+        </div>
+      );
     case 'assessment':
       return <AssessmentDashboard data={d.data} firstName={d.firstName} greeting={d.greeting} date={d.date} />;
     case 'admin':
-      return <AdminDashboard panels={d.panels} firstName={d.firstName} greeting={d.greeting} date={d.date} />;
+      return (
+        <div className="space-y-8">
+          <AdminDashboard panels={d.panels} firstName={d.firstName} greeting={d.greeting} date={d.date} />
+          <MonitoringPanel m={d.monitoring} />
+        </div>
+      );
     case 'workspace':
       switch (d.workspace.kind) {
         case 'director':
-          return <DirectorDashboard workspace={d.workspace} {...d.common} />;
+          return (
+            <div className="space-y-8">
+              <DirectorDashboard workspace={d.workspace} {...d.common} />
+              {d.monitoring && <MonitoringPanel m={d.monitoring} />}
+            </div>
+          );
         case 'coordinator':
           return <CoordinatorDashboard workspace={d.workspace} {...d.common} />;
         case 'secretary':
@@ -42,6 +58,8 @@ function View(d: Data) {
             <h1 className="text-2xl font-semibold leading-tight text-ink sm:text-[28px]">{view.title}</h1>
             <p className="text-sm text-muted">{view.description}</p>
           </header>
+
+          <AnnouncementsCard items={d.announcements} />
 
           {view.notice && <DashboardNotice title={view.notice.title} body={view.notice.body} />}
 

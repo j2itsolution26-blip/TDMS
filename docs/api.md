@@ -32,10 +32,10 @@ maps each of those actions to its replacement.
 
 | Livewire action                        | Node endpoint                  | Auth | Permission |
 | -------------------------------------- | ------------------------------ | ---- | ---------- |
-| `login()` on `pages.auth.login`        | `POST /api/auth/login`         | —    | —          |
-| `Logout` action on `layout.navigation` | `POST /api/auth/logout`        | yes  | —          |
-| `auth()->user()` in Blade              | `GET /api/auth/session`        | yes  | —          |
-| first-run setup (`/setup`)            | `POST /api/setup`              | —    | only while uninitialized, with the server's `SETUP_KEY`; rate limited |
+| `login()` on `pages.auth.login`        | `POST /api/v1/auth/login`         | —    | —          |
+| `Logout` action on `layout.navigation` | `POST /api/v1/auth/logout`        | yes  | —          |
+| `auth()->user()` in Blade              | `GET /api/v1/auth/session`        | yes  | —          |
+| first-run setup (`/setup`)            | `POST /api/v1/setup`              | —    | only while uninitialized (no users, no installation row) |
 
 First-run setup creates the first Super Admin in one transaction that also
 marks the installation initialized, so a second or concurrent setup is refused
@@ -46,61 +46,61 @@ with 409 and creates nothing. It issues no session. See
 
 | Livewire action                    | Node endpoint                                  | Permission        |
 | ---------------------------------- | ---------------------------------------------- | ----------------- |
-| `programs.index` `with()`          | `GET /api/programs?page=`                      | role: staff       |
-| `programs.index` `save()` (create) | `POST /api/programs`                           | `programs.manage` |
-| `programs.index` `save()` (update) | `PUT /api/programs/:id`                        | `programs.manage` |
-| `programs.index` `toggleActive()`  | `PATCH /api/programs/:id`                      | `programs.manage` |
-| `programs.show` `with()`           | `GET /api/programs/:id/curricula`              | role: staff       |
-| `programs.show` `save()`           | `POST /api/programs/:id/curricula`             | `programs.manage` |
-| `programs.show` `save()` (update)  | `PUT /api/curricula/:id`                       | `programs.manage` |
-| `programs.show` `toggleActive()`   | `PATCH /api/curricula/:id`                     | `programs.manage` |
-| `curricula.show` `with()`          | `GET /api/curricula/:id/subjects`              | role: staff       |
-| `curricula.show` `save()`          | `POST /api/curricula/:id/subjects`             | `subjects.manage` |
-| `curricula.show` `remove()`        | `DELETE /api/curricula/:id/subjects/:entryId`  | `subjects.manage` |
+| `programs.index` `with()`          | `GET /api/v1/programs?page=`                      | role: staff       |
+| `programs.index` `save()` (create) | `POST /api/v1/programs`                           | `programs.manage` |
+| `programs.index` `save()` (update) | `PUT /api/v1/programs/:id`                        | `programs.manage` |
+| `programs.index` `toggleActive()`  | `PATCH /api/v1/programs/:id`                      | `programs.manage` |
+| `programs.show` `with()`           | `GET /api/v1/programs/:id/curricula`              | role: staff       |
+| `programs.show` `save()`           | `POST /api/v1/programs/:id/curricula`             | `programs.manage` |
+| `programs.show` `save()` (update)  | `PUT /api/v1/curricula/:id`                       | `programs.manage` |
+| `programs.show` `toggleActive()`   | `PATCH /api/v1/curricula/:id`                     | `programs.manage` |
+| `curricula.show` `with()`          | `GET /api/v1/curricula/:id/subjects`              | role: staff       |
+| `curricula.show` `save()`          | `POST /api/v1/curricula/:id/subjects`             | `subjects.manage` |
+| `curricula.show` `remove()`        | `DELETE /api/v1/curricula/:id/subjects/:entryId`  | `subjects.manage` |
 
 ### Subjects
 
 | Livewire action                    | Node endpoint              | Permission        |
 | ---------------------------------- | -------------------------- | ----------------- |
-| `subjects.index` `with()`          | `GET /api/subjects?page=`  | role: staff       |
-| `subjects.index` `save()` (create) | `POST /api/subjects`       | `subjects.manage` |
-| `subjects.index` `save()` (update) | `PUT /api/subjects/:id`    | `subjects.manage` |
-| `subjects.index` `toggleActive()`  | `PATCH /api/subjects/:id`  | `subjects.manage` |
+| `subjects.index` `with()`          | `GET /api/v1/subjects?page=`  | role: staff       |
+| `subjects.index` `save()` (create) | `POST /api/v1/subjects`       | `subjects.manage` |
+| `subjects.index` `save()` (update) | `PUT /api/v1/subjects/:id`    | `subjects.manage` |
+| `subjects.index` `toggleActive()`  | `PATCH /api/v1/subjects/:id`  | `subjects.manage` |
 
 ### Students, credentials, enrolment
 
 | Livewire action                        | Node endpoint                              | Permission          |
 | -------------------------------------- | ------------------------------------------ | ------------------- |
-| `students.index` `with()`              | `GET /api/students?page=&search=`          | `students.manage`   |
-| `students.index` `save()` (create)     | `POST /api/students`                       | `students.manage`   |
-| `students.index` `save()` (update)     | `PUT /api/students/:id`                    | `students.manage`   |
-| `enrollment.show` `with()` credentials | `GET /api/students/:id/credentials`        | role: office        |
-| `enrollment.show` `verify()`           | `POST /api/credentials/:id/verify`         | `credentials.verify`|
-| `enrollment.show` `confirmReject()`    | `POST /api/credentials/:id/reject`         | `credentials.verify`|
-| `enrollment.show` `with()` enrolments  | `GET /api/students/:id/enrollments`        | role: office        |
-| `enrollment.show` `saveEnrollment()`   | `POST /api/students/:id/enrollments`       | `students.enroll`   |
-| `confirmEnrollment()` / `confirmDrop()`| `POST /api/enrollments/:id/transition`     | `students.enroll`   |
+| `students.index` `with()`              | `GET /api/v1/students?page=&search=`          | `students.manage`   |
+| `students.index` `save()` (create)     | `POST /api/v1/students`                       | `students.manage`   |
+| `students.index` `save()` (update)     | `PUT /api/v1/students/:id`                    | `students.manage`   |
+| `enrollment.show` `with()` credentials | `GET /api/v1/students/:id/credentials`        | role: office        |
+| `enrollment.show` `verify()`           | `POST /api/v1/credentials/:id/verify`         | `credentials.verify`|
+| `enrollment.show` `confirmReject()`    | `POST /api/v1/credentials/:id/reject`         | `credentials.verify`|
+| `enrollment.show` `with()` enrolments  | `GET /api/v1/students/:id/enrollments`        | role: office        |
+| `enrollment.show` `saveEnrollment()`   | `POST /api/v1/students/:id/enrollments`       | `students.enroll`   |
+| `confirmEnrollment()` / `confirmDrop()`| `POST /api/v1/enrollments/:id/transition`     | `students.enroll`   |
 
 ### Applications
 
 | Livewire action                      | Node endpoint                            | Permission            |
 | ------------------------------------ | ---------------------------------------- | --------------------- |
-| `applications.index` `with()`        | `GET /api/applications?page=&status=`    | role: office          |
-| `applications.index` `save()`        | `POST /api/applications`                 | `applications.review` |
-| `applications.index` `approve()`     | `POST /api/applications/:id/approve`     | `applications.review` |
-| `applications.index` `confirmReturn()`| `POST /api/applications/:id/return`      | `applications.review` |
+| `applications.index` `with()`        | `GET /api/v1/applications?page=&status=`    | role: office          |
+| `applications.index` `save()`        | `POST /api/v1/applications`                 | `applications.review` |
+| `applications.index` `approve()`     | `POST /api/v1/applications/:id/approve`     | `applications.review` |
+| `applications.index` `confirmReturn()`| `POST /api/v1/applications/:id/return`      | `applications.review` |
 
 ### Staff & profile
 
 | Livewire action                      | Node endpoint                             | Permission        |
 | ------------------------------------ | ----------------------------------------- | ----------------- |
-| `staff.index` `with()`               | `GET /api/staff?page=`                    | `accounts.manage` |
-| `staff.index` `save()` (create)      | `POST /api/staff`                         | `accounts.manage` |
-| `staff.index` `save()` (update)      | `PUT /api/staff/:id`                      | `accounts.manage` |
-| `staff.index` `toggleActive()`       | `POST /api/staff/:id/toggle-active`       | `accounts.manage` |
-| `staff.index` `resetPassword()`      | `POST /api/staff/:id/reset-password`      | `accounts.manage` |
-| `updateProfileInformation()`         | `PUT /api/profile`                        | self              |
-| `updatePassword()`                   | `PUT /api/profile/password`               | self              |
+| `staff.index` `with()`               | `GET /api/v1/staff?page=`                    | `accounts.manage` |
+| `staff.index` `save()` (create)      | `POST /api/v1/staff`                         | `accounts.manage` |
+| `staff.index` `save()` (update)      | `PUT /api/v1/staff/:id`                      | `accounts.manage` |
+| `staff.index` `toggleActive()`       | `POST /api/v1/staff/:id/toggle-active`       | `accounts.manage` |
+| `staff.index` `resetPassword()`      | `POST /api/v1/staff/:id/reset-password`      | `accounts.manage` |
+| `updateProfileInformation()`         | `PUT /api/v1/profile`                        | self              |
+| `updatePassword()`                   | `PUT /api/v1/profile/password`               | self              |
 
 ### Administrator accounts and access codes
 
@@ -111,16 +111,16 @@ static Super Admin security code. See [admin-accounts.md](admin-accounts.md).
 
 | Endpoint                                     | Does                                              |
 | -------------------------------------------- | ------------------------------------------------- |
-| `GET /api/admins?page=`                      | List Admin accounts                               |
-| `POST /api/admins`                           | Create one with a temporary password (no code)    |
-| `POST /api/admins/:id/reset-password`        | New temporary password; revokes live codes; no body |
-| `POST /api/admins/:id/status`                | Suspend or reactivate                             |
-| `GET /api/admins/:id/credentials`            | Temporary-password and access-code **status** — no secrets |
-| `POST /api/admins/:id/temporary-password/reveal` | Show a temporary password (`no-store`, audited); 409 once it is no longer temporary |
-| `GET /api/admin-access-codes?page=`          | List codes with status — never the code           |
-| `POST /api/admin-access-codes`               | `{ adminId, expiresInMinutes?, emailAccessCode? }` — issue a code |
-| `GET /api/admin-access-codes/:id`            | View one code's history — never the code          |
-| `POST /api/admin-access-codes/:id/revoke`    | Revoke an ACTIVE code (409 otherwise)             |
+| `GET /api/v1/admins?page=`                      | List Admin accounts                               |
+| `POST /api/v1/admins`                           | Create one with a temporary password (no code)    |
+| `POST /api/v1/admins/:id/reset-password`        | New temporary password; revokes live codes; no body |
+| `POST /api/v1/admins/:id/status`                | Suspend or reactivate                             |
+| `GET /api/v1/admins/:id/credentials`            | Temporary-password and access-code **status** — no secrets |
+| `POST /api/v1/admins/:id/temporary-password/reveal` | Show a temporary password (`no-store`, audited); 409 once it is no longer temporary |
+| `GET /api/v1/admin-access-codes?page=`          | List codes with status — never the code           |
+| `POST /api/v1/admin-access-codes`               | `{ adminId, expiresInMinutes?, emailAccessCode? }` — issue a code |
+| `GET /api/v1/admin-access-codes/:id`            | View one code's history — never the code          |
+| `POST /api/v1/admin-access-codes/:id/revoke`    | Revoke an ACTIVE code (409 otherwise)             |
 
 The create and generate responses carry the plaintext password or code
 **once**; only bcrypt hashes are stored and neither can be fetched again.
@@ -131,12 +131,12 @@ password step and has not been let in — and is authorised by the HttpOnly
 
 | Endpoint                                     | Does                                              |
 | -------------------------------------------- | ------------------------------------------------- |
-| `GET /api/auth/admin-access-code`            | What the verification screen should draw           |
-| `POST /api/auth/admin-access-code`           | Submit the code; on success a session is created   |
-| `DELETE /api/auth/admin-access-code`         | Abandon the half-finished sign-in                  |
-| `POST /api/auth/admin-access-code/request`   | Ask the Super Admins for a new code — **issues none** |
-| `POST /api/auth/change-password`             | Replace a temporary password (with `/verify`, the only routes that accept a caller still carrying `mustChangePassword`) |
-| `POST /api/auth/change-password/verify`      | Live check of the temporary password on the setup screen; changes nothing |
+| `GET /api/v1/auth/admin-access-code`            | What the verification screen should draw           |
+| `POST /api/v1/auth/admin-access-code`           | Submit the code; on success a session is created   |
+| `DELETE /api/v1/auth/admin-access-code`         | Abandon the half-finished sign-in                  |
+| `POST /api/v1/auth/admin-access-code/request`   | Ask the Super Admins for a new code — **issues none** |
+| `POST /api/v1/auth/change-password`             | Replace a temporary password (with `/verify`, the only routes that accept a caller still carrying `mustChangePassword`) |
+| `POST /api/v1/auth/change-password/verify`      | Live check of the temporary password on the setup screen; changes nothing |
 
 "role: staff" means admin, director, coordinator, secretary or teacher.
 "role: office" means admin, director, coordinator or secretary. A

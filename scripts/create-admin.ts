@@ -3,9 +3,9 @@
  *
  * WHY THIS EXISTS
  *
- * First-run setup normally happens in the browser, at /setup, with the
- * server's SETUP_KEY. This is the same step from a shell, for an operator who
- * would rather not set a key or open a browser. It is not a backdoor:
+ * First-run setup normally happens in the browser, at /setup. This is the
+ * same step from a shell, for an operator who would rather not open a
+ * browser. It is not a backdoor:
  *
  *   * it requires shell access AND the database credentials, which is a
  *     strictly higher bar than any web flow;
@@ -32,11 +32,13 @@
 import { createInterface } from 'node:readline';
 import { PrismaClient } from '@prisma/client';
 import { hash as argon2Hash } from '@node-rs/argon2';
-import { resolveDatabaseUrl } from '../src/lib/database-url';
-import { checkInstitutionalEmail } from '../src/lib/institutional-email';
+import { resolveDatabaseUrl } from '../server/src/lib/database-url';
+import { checkInstitutionalEmail } from '../server/src/lib/institutional-email';
 
 const prisma = new PrismaClient({
   ...(resolveDatabaseUrl() ? { datasourceUrl: resolveDatabaseUrl()! } : {}),
+  // Same as src/lib/prisma.ts: the default 5 s is too short over a slow link.
+  transactionOptions: { maxWait: 10_000, timeout: 30_000 },
 });
 
 const USER_MODEL_TYPE = 'App\\Models\\User';

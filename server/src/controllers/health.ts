@@ -1,0 +1,205 @@
+import { databaseUrlSource } from '@/server/lib/database-url';
+import {
+  appUrl,
+  activeTransport,
+  canSendMail,
+  configuredProvider,
+  mailConfigurationProblem,
+  mailConfigurationWarning,
+  mailFromAddress,
+} from '@/server/mail/mailer';
+import { describeDomainPolicy } from '@/server/lib/institutional-email';
+import { autoActivateNewGoogleUsers } from '@/server/services/google-auth-service';
+import { googleConfigured } from '@/server/auth/google/oauth';
+import { describeStaticCodePolicy } from '@/server/auth/super-admin-code';
+import { describeVault } from '@/server/auth/credential-vault';
+import {
+  accessCodeTtlMinutes,
+  accessCodeMaxAttempts,
+  loginChallengeTtlMinutes,
+} from '@/server/auth/admin-access-code';
+
+/**
+ * GET /api/health — operational diagnostics.
+ *
+ * This exists because the first production failure of this application was
+ * a missing DATABASE_URL, and the only symptom was an opaque
+ * "Something went wrong / Reference: 2214728234" on every page that touched
+ * the database. That is unnecessarily hard to diagnose from the outside.
+ *
+ * WHAT IT DISCLOSES, deliberately:
+ *   * whether a trivial query succeeds;
+ *   * the Prisma error CODE if it does not (P1001 unreachable, P1000 auth
+ *     rejected, P2021 missing table, …) — a code, never a message;
+ *   * for each required environment variable, whether it is SET — a boolean,
+ *     never the value.
+ *
+ * WHAT IT NEVER DISCLOSES: any value, connection string, host, credential,
+ * error message or stack trace. The variable names are already public in
+ * .env.example and docs/deployment.md, so their presence leaks nothing an
+ * attacker could not read in the repository.
+ *
+ * It is unauthenticated on purpose: it is needed precisely when nobody can
+ * sign in.
+ */
+
+/** Names only — see the note above. */
+const REQUIRED_ENV = ['DATABASE_URL'] as const;
+const OPTIONAL_ENV = ['SESSION_LIFETIME_MINUTES', 'BCRYPT_ROUNDS'] as const;
+
+function prismaErrorCode(error: unknown): string | null {
+  const e = error as { code?: unknown; name?: unknown };
+  if (typeof e?.code === 'string') return e.code;
+  // Initialization errors carry a name but not always a code.
+  if (typeof e?.name === 'string') return e.name;
+  return null;
+}
+
+export async function GET() {
+  const env: Record<string, boolean> = {};
+  for (const key of [...REQUIRED_ENV, ...OPTIONAL_ENV]) {
+    env[key] = Boolean(process.env[key]);
+  }
+
+  const source = databaseUrlSource();
+
+  /*
+   * "Required" means a usable connection string exists, from either source —
+   * DATABASE_URL, or the Laravel DB_* parts the Vercel project still
+   * carries. Reporting DATABASE_URL as missing while the app is perfectly
+   * connected would be noise.
+   */
+  const missingRequired = source === 'none' ? [...REQUIRED_ENV] : [];
+
+  /*
+   * When a required variable is missing, list the NAMES of the database-ish
+   * variables that ARE present. This distinguishes the three ways it goes
+   * wrong — set on the wrong environment (nothing here), a typo (a
+   * near-miss shows up), or only the old Laravel names surviving (DB_URL,
+   * DB_HOST, …) — without which you are reduced to guessing.
+   *
+   * Names only, never values, and only while something is actually broken:
+   * once the variable is set this disappears from the response.
+   */
+  const databaseEnvNamesPresent =
+    missingRequired.length > 0
+      ? Object.keys(process.env)
+          .filter((k) => /DATABASE|POSTGRES|NEON|^DB_|_URL$/i.test(k))
+          .sort()
+      : undefined;
+
+  let database: 'ok' | 'unreachable' = 'unreachable';
+  let errorCode: string | null = null;
+  let latencyMs: number | null = null;
+  // Whether first-run setup has happened. Not secret: /login says it too.
+  let installation: 'initialized' | 'uninitialized' | 'unknown' = 'unknown';
+
+  const startedAt = Date.now();
+  try {
+    /*
+     * Imported lazily, inside the try. PrismaClient validates its datasource
+     * when it is constructed, so a missing DATABASE_URL throws at module
+     * scope — which would make this endpoint 500 in exactly the situation it
+     * exists to explain. A dynamic import keeps that failure catchable.
+     */
+    const { prisma } = await import('@/server/lib/prisma');
+    await prisma.$queryRaw`SELECT 1`;
+    database = 'ok';
+    latencyMs = Date.now() - startedAt;
+
+    const { isSystemInitialized } = await import('@/server/services/setup-service');
+    installation = (await isSystemInitialized()) ? 'initialized' : 'uninitialized';
+  } catch (error) {
+    errorCode = prismaErrorCode(error);
+    // Full detail goes to the server log only.
+    console.error('[TDMS] Health check: database unreachable.', error);
+  }
+
+  const healthy = database === 'ok' && missingRequired.length === 0;
+
+  return Response.json(
+    {
+      status: healthy ? 'ok' : 'degraded',
+      database,
+      ...(latencyMs !== null ? { latencyMs } : {}),
+      ...(errorCode ? { errorCode } : {}),
+      env,
+      databaseUrlSource: source,
+      installation,
+      /*
+       * Surfaced because a wrong value here breaks every verification and
+       * reset link silently: the mail sends, the link just points somewhere
+       * useless. A Laravel-era APP_URL of http://localhost:8000 would do
+       * exactly that. Public information — it is this deployment's own URL.
+       */
+      appUrl: appUrl(),
+      /*
+       * Enough to place a mail problem without reading the server log, which
+       * is the situation an operator is usually in. Presence booleans and a
+       * hostname only — never a username, a password or an API key. The
+       * hostname is not a secret; it is typically smtp.gmail.com.
+       */
+      mail: {
+        transport: activeTransport(),
+        canSend: canSendMail(),
+        /* What EMAIL_PROVIDER asked for, or null when the choice is derived. */
+        provider: configuredProvider(),
+        senderConfigured: mailFromAddress() !== '',
+        resendApiKey: Boolean(process.env.RESEND_API_KEY),
+        /*
+         * Present so a leftover value can be SEEN rather than deduced. A
+         * deployment carrying MAIL_HOST=127.0.0.1 is exactly the fault that
+         * broke verification, and `transport: "resend"` alongside it is the
+         * evidence it is no longer being used.
+         */
+        smtp: {
+          host: process.env.MAIL_HOST ?? null,
+          port: process.env.MAIL_PORT ?? null,
+          encryption: process.env.MAIL_ENCRYPTION ?? null,
+          credentials: {
+            username: Boolean(process.env.MAIL_USERNAME),
+            password: Boolean(process.env.MAIL_PASSWORD),
+          },
+        },
+        developmentMode: activeTransport() === 'log',
+        /* The fix to make, when there is one. Names variables, never values. */
+        problem: mailConfigurationProblem(),
+        warning: mailConfigurationWarning(),
+      },
+      mailTransport: activeTransport(),
+      /*
+       * Surfaced so an operator can see at a glance whether this deployment
+       * is accepting any Google account. A permissive setting that is only
+       * recorded in a document is a setting nobody notices.
+       */
+      domainPolicy: describeDomainPolicy(),
+      googleSignIn: googleConfigured() ? 'configured' : 'not configured',
+      /*
+       * The Super Admin security code and the Admin access-code policy.
+       *
+       * Only WHETHER the static code is configured, plus the timings — never
+       * the value, its length, a prefix or a digest, any of which would narrow
+       * a guess. "Is it set up" is the question an operator needs answered
+       * when the Admin Accounts screen refuses to issue anything, and it is
+       * not the secret.
+       */
+      adminAccessControl: {
+        superAdminSecurityCode: describeStaticCodePolicy(),
+        // Whether temporary passwords can be shown again. Never the key.
+        temporaryPasswordReveal: describeVault(),
+        accessCodeExpirationMinutes: accessCodeTtlMinutes(),
+        accessCodeMaxAttempts: accessCodeMaxAttempts(),
+        loginChallengeTtlMinutes: loginChallengeTtlMinutes(),
+      },
+      autoActivateNewGoogleUsers: autoActivateNewGoogleUsers(),
+      ...(missingRequired.length > 0 ? { missingRequiredEnv: missingRequired } : {}),
+      ...(databaseEnvNamesPresent ? { databaseEnvNamesPresent } : {}),
+      region: process.env.VERCEL_REGION ?? null,
+      commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
+    },
+    {
+      status: healthy ? 200 : 503,
+      headers: { 'Cache-Control': 'no-store' },
+    },
+  );
+}

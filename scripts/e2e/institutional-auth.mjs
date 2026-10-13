@@ -80,12 +80,12 @@ async function call(path, { method = 'GET', body, jar } = {}) {
 async function catcherBodies() {
   const shapes = [
     {
-      list: `${CATCHER}/api/v1/messages`,
+      list: `${CATCHER}/api/v1/v1/messages`,
       items: (json) => json.messages ?? [],
-      detail: (item) => `${CATCHER}/api/v1/message/${item.ID}`,
+      detail: (item) => `${CATCHER}/api/v1/v1/message/${item.ID}`,
     },
     {
-      list: `${CATCHER}/api/v2/messages`,
+      list: `${CATCHER}/api/v1/v2/messages`,
       items: (json) => json.items ?? [],
       detail: null,
     },
@@ -183,14 +183,14 @@ try {
     });
     adminJar = makeJar();
     adminJar.absorb({ headers: { getSetCookie: () => [`tdms_session=${token}; Path=/`] } });
-    const who = await call('/api/auth/session', { jar: adminJar });
+    const who = await call('/api/v1/auth/session', { jar: adminJar });
     check('administrator session works', who.json?.data?.user?.email === admin.email, JSON.stringify(who.json?.data?.user?.email));
   }
 
   console.log('\n=== Domain is enforced server-side, whatever the client sends ===');
   {
     for (const email of ['someone@gmail.com', 'someone@asiancollege.edu.ph.evil.com', 'someone@notasiancollege.edu.ph']) {
-      const r = await call('/api/staff', {
+      const r = await call('/api/v1/staff', {
         method: 'POST', jar: adminJar,
         body: { name: 'Should Fail', email, role: 'secretary' },
       });
@@ -201,7 +201,7 @@ try {
 
   console.log('\n=== Signing in with a non-institutional address is refused by name ===');
   {
-    const r = await call('/api/auth/login', {
+    const r = await call('/api/v1/auth/login', {
       method: 'POST',
       body: { identifier: 'someone@gmail.com', password: 'whatever', remember: false },
     });
@@ -211,7 +211,7 @@ try {
 
   console.log('\n=== Invite creates a PENDING account with no usable password ===');
   {
-    const r = await call('/api/staff', {
+    const r = await call('/api/v1/staff', {
       method: 'POST', jar: adminJar,
       body: { name: 'E2E Tester', email: TEST_EMAIL, role: 'secretary' },
     });
@@ -232,7 +232,7 @@ try {
 
   console.log('\n=== A pending account cannot sign in ===');
   {
-    const r = await call('/api/auth/login', {
+    const r = await call('/api/v1/auth/login', {
       method: 'POST',
       body: { identifier: TEST_EMAIL, password: TEST_PASSWORD, remember: false },
     });
@@ -248,7 +248,7 @@ try {
     check('verification link found in the delivered mail', Boolean(token));
     if (!token) throw new Error(`no verification token found in the mail at ${CATCHER}`);
 
-    const r = await call('/api/auth/verify-email', { method: 'POST', body: { token } });
+    const r = await call('/api/v1/auth/verify-email', { method: 'POST', body: { token } });
     check('verify 200', r.status === 200, `${r.status} ${r.text.slice(0, 150)}`);
     check('directed to set a password', (r.json?.data?.next ?? '').startsWith('/reset-password?token='), r.json?.data?.next);
     resetToken = new URL(`http://x${r.json.data.next}`).searchParams.get('token');
@@ -261,31 +261,31 @@ try {
     check('status promoted to ACTIVE', row?.status === 'ACTIVE', row?.status);
     check('is_active mirrors status (true)', row?.isActive === true);
 
-    const again = await call('/api/auth/verify-email', { method: 'POST', body: { token } });
+    const again = await call('/api/v1/auth/verify-email', { method: 'POST', body: { token } });
     check('token is single-use', again.status === 400, `${again.status}`);
   }
 
   console.log('\n=== Setting a password completes the invitation ===');
   {
-    const weak = await call('/api/auth/reset-password', {
+    const weak = await call('/api/v1/auth/reset-password', {
       method: 'POST',
       body: { token: resetToken, password: 'short', passwordConfirmation: 'short' },
     });
     check('weak password rejected', weak.status === 422, `${weak.status}`);
 
-    const mismatch = await call('/api/auth/reset-password', {
+    const mismatch = await call('/api/v1/auth/reset-password', {
       method: 'POST',
       body: { token: resetToken, password: TEST_PASSWORD, passwordConfirmation: 'Different#2026x' },
     });
     check('mismatched confirmation rejected', mismatch.status === 422, `${mismatch.status}`);
 
-    const ok = await call('/api/auth/reset-password', {
+    const ok = await call('/api/v1/auth/reset-password', {
       method: 'POST',
       body: { token: resetToken, password: TEST_PASSWORD, passwordConfirmation: TEST_PASSWORD },
     });
     check('password set', ok.status === 200, `${ok.status} ${ok.text.slice(0, 150)}`);
 
-    const replay = await call('/api/auth/reset-password', {
+    const replay = await call('/api/v1/auth/reset-password', {
       method: 'POST',
       body: { token: resetToken, password: TEST_PASSWORD, passwordConfirmation: TEST_PASSWORD },
     });
@@ -295,7 +295,7 @@ try {
   console.log('\n=== The new account can now sign in ===');
   {
     const jar = makeJar();
-    const r = await call('/api/auth/login', {
+    const r = await call('/api/v1/auth/login', {
       method: 'POST', jar,
       body: { identifier: TEST_EMAIL, password: TEST_PASSWORD, remember: false },
     });
@@ -305,7 +305,7 @@ try {
     const dash = await call('/dashboard', { jar });
     check('dashboard renders', dash.status === 200, `${dash.status}`);
 
-    const out = await call('/api/auth/logout', { method: 'POST', jar });
+    const out = await call('/api/v1/auth/logout', { method: 'POST', jar });
     check('logout works', out.status === 200);
   }
 
@@ -313,35 +313,35 @@ try {
   {
     const id = BigInt(createdUserId);
 
-    const off = await call(`/api/staff/${createdUserId}/status`, {
+    const off = await call(`/api/v1/staff/${createdUserId}/status`, {
       method: 'POST', jar: adminJar, body: { status: 'INACTIVE' },
     });
     check('deactivate 200', off.status === 200, `${off.status} ${off.text.slice(0, 120)}`);
 
-    const blocked = await call('/api/auth/login', {
+    const blocked = await call('/api/v1/auth/login', {
       method: 'POST',
       body: { identifier: TEST_EMAIL, password: TEST_PASSWORD, remember: false },
     });
     check('inactive account refused (403)', blocked.status === 403, `${blocked.status}`);
     check('inactive message', blocked.json?.message === 'Your account is inactive. Please contact the administrator.', blocked.json?.message);
 
-    const susp = await call(`/api/staff/${createdUserId}/status`, {
+    const susp = await call(`/api/v1/staff/${createdUserId}/status`, {
       method: 'POST', jar: adminJar, body: { status: 'SUSPENDED' },
     });
     check('suspend 200', susp.status === 200, `${susp.status}`);
-    const suspended = await call('/api/auth/login', {
+    const suspended = await call('/api/v1/auth/login', {
       method: 'POST',
       body: { identifier: TEST_EMAIL, password: TEST_PASSWORD, remember: false },
     });
     check('suspended message differs from inactive', suspended.json?.message?.includes('suspended'), suspended.json?.message);
 
-    const on = await call(`/api/staff/${createdUserId}/status`, {
+    const on = await call(`/api/v1/staff/${createdUserId}/status`, {
       method: 'POST', jar: adminJar, body: { status: 'ACTIVE' },
     });
     check('reactivate 200', on.status === 200, `${on.status}`);
 
     const jar = makeJar();
-    const back = await call('/api/auth/login', {
+    const back = await call('/api/v1/auth/login', {
       method: 'POST', jar,
       body: { identifier: TEST_EMAIL, password: TEST_PASSWORD, remember: false },
     });
@@ -351,14 +351,14 @@ try {
 
   console.log('\n=== Forgot password never reveals whether an account exists ===');
   {
-    const known = await call('/api/auth/forgot-password', { method: 'POST', body: { email: TEST_EMAIL } });
-    const unknown = await call('/api/auth/forgot-password', {
+    const known = await call('/api/v1/auth/forgot-password', { method: 'POST', body: { email: TEST_EMAIL } });
+    const unknown = await call('/api/v1/auth/forgot-password', {
       method: 'POST', body: { email: `nobody${STAMP}@asiancollege.edu.ph` },
     });
     check('known address: 200', known.status === 200, `${known.status}`);
     check('unknown address: identical response', unknown.status === known.status && unknown.json?.data?.message === known.json?.data?.message);
 
-    const offDomain = await call('/api/auth/forgot-password', { method: 'POST', body: { email: 'someone@gmail.com' } });
+    const offDomain = await call('/api/v1/auth/forgot-password', { method: 'POST', body: { email: 'someone@gmail.com' } });
     check('non-institutional address rejected by validation', offDomain.status === 422, `${offDomain.status}`);
   }
 } finally {

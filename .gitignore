@@ -29,14 +29,14 @@ Thumbs.db
 .vercel
 .env*
 
-# Node / Next.js
-/node_modules
-/.next
-/out
+# Node
+node_modules/
+# Build output: the React app and the compiled server
+/client/dist/
+/server/dist/
+*.tsbuildinfo
 # Local development uploads (production stores files in Vercel Blob)
 /.data
-next-env.d.ts
-tsconfig.tsbuildinfo
 
 # db:fresh backups (contain password hashes and personal data)
 /backups/

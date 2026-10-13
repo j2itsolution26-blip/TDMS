@@ -42,7 +42,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PrismaClient } from '@prisma/client';
-import { resolveDatabaseUrl } from '../src/lib/database-url';
+import { resolveDatabaseUrl } from '../server/src/lib/database-url';
 
 const prisma = new PrismaClient({
   ...(resolveDatabaseUrl() ? { datasourceUrl: resolveDatabaseUrl()! } : {}),
@@ -235,7 +235,7 @@ async function main() {
 
   console.log(`\nDone. Users: ${users}. Installation: ${installation === 0 ? 'UNINITIALIZED' : 'INITIALIZED'}.`);
   console.log(`Configuration kept: ${roles} roles, ${permissions} permissions.`);
-  console.log('\nNext: open /setup (with SETUP_KEY set) or run `npm run admin:create`.\n');
+  console.log('\nNext: open /setup or run `npm run admin:create`.\n');
 }
 
 main()

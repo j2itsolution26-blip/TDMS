@@ -86,6 +86,7 @@ const EVENTS: Record<string, EventMeta> = {
 
   // --- Staff and other user accounts
   STAFF_CREATED: { label: 'Staff account created', category: 'user_account', severity: 'activity', adminAction: true },
+  STUDENT_ACCOUNT_CREATED: { label: 'Student account created', category: 'user_account', severity: 'activity', adminAction: true },
   ACCOUNT_UPDATED: { label: 'Account updated', category: 'user_account', severity: 'activity', adminAction: true },
   ACCOUNT_ACTIVE: { label: 'Account activated', category: 'user_account', severity: 'security', adminAction: true },
   ACCOUNT_INACTIVE: { label: 'Account deactivated', category: 'user_account', severity: 'security', adminAction: true },

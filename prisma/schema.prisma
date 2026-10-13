@@ -79,11 +79,10 @@ model User {
   createdAt          DateTime? @map("created_at") @db.Timestamp(0)
   updatedAt          DateTime? @map("updated_at") @db.Timestamp(0)
 
-  /// Eloquent declared hasOne(Student), but students.user_id carries no
-  /// unique index in the live database, so a one-to-one here would demand
-  /// a schema change. Modelled as a list and narrowed to the first row in
-  /// the service layer — exactly what Eloquent's hasOne does at runtime.
-  students                   Student[]                 @relation("StudentAccount")
+  /// The student record this login belongs to, if it is a student's.
+  /// One-to-one since migration 20261013000000_student_account_link:
+  /// students.user_id is unique, so one login can never serve two records.
+  student                    Student?                  @relation("StudentAccount")
   sessions                   Session[]
   emailVerificationTokens    EmailVerificationToken[]
   passwordResetRequests      PasswordResetRequest[]
@@ -524,7 +523,7 @@ model CurriculumSubject {
 
 model Student {
   id             BigInt    @id @default(autoincrement())
-  userId         BigInt?   @map("user_id")
+  userId         BigInt?   @unique(map: "students_user_id_unique") @map("user_id")
   studentNumber  String    @unique(map: "students_student_number_unique") @map("student_number") @db.VarChar(255)
   firstName      String    @map("first_name") @db.VarChar(255)
   middleName     String?   @map("middle_name") @db.VarChar(255)

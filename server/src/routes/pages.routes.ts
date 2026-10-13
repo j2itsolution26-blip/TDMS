@@ -7,6 +7,7 @@ import { loadAcademicReviews } from '@/server/controllers/pages/app/academic-rev
 import { loadAdminAccessCodes } from '@/server/controllers/pages/app/admin-access-codes';
 import { loadAssessmentBatch, loadAssessmentCalendar, loadAssessmentCandidate, loadAssessmentReportPrint, loadAssessmentReports, loadAssessmentResults } from '@/server/controllers/pages/app/assessment';
 import { loadAnnouncements, loadInventory, loadPurchases } from '@/server/controllers/pages/app/supplies';
+import { loadStudentAccounts } from '@/server/controllers/pages/app/student-accounts';
 import { loadAdmins } from '@/server/controllers/pages/app/admins';
 import { loadApplications } from '@/server/controllers/pages/app/applications';
 import { loadAuditLogs } from '@/server/controllers/pages/app/audit-logs';
@@ -80,6 +81,7 @@ export function registerPageRoutes(app: FastifyInstance): void {
   mountPage(app, '/assessment/reports', loadAssessmentReports);
   mountPage(app, '/assessment/reports/print', loadAssessmentReportPrint);
   mountPage(app, '/audit-logs', loadAuditLogs);
+  mountPage(app, '/student-accounts', loadStudentAccounts);
   mountPage(app, '/calendar', loadCalendar);
   mountPage(app, '/class-setup', loadClassSetup);
   mountPage(app, '/curricula/:id', loadCurriculaId);

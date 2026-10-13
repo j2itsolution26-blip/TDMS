@@ -17,6 +17,7 @@ import {
   suppliesPolicy,
   announcementPolicy,
   hasAnyRole,
+  studentAccountPolicy,
 } from '@/server/auth/policies';
 import { getNotificationSummary } from '@/server/services/teaching/notifications';
 import { dashboardRoleFor } from '@/server/services/dashboard-service';
@@ -157,6 +158,9 @@ export async function loadAppShell(_request: PageRequest) {
   }
   if (userPolicy.viewAny(user)) {
     items.push({ label: 'Staff', href: '/staff', match: ['/staff'], icon: 'staff', group: 'people' });
+  }
+  if (studentAccountPolicy.viewAny(user)) {
+    items.push({ label: 'Student Accounts', href: '/student-accounts', match: ['/student-accounts'], icon: 'students', group: 'people' });
   }
   /*
    * Super Admin only, and the page re-checks the same policy. Hiding a nav

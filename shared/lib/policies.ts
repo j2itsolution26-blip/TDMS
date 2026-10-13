@@ -246,6 +246,16 @@ export const userPolicy = {
   delete: () => false,
 };
 
+/**
+ * Student login accounts: created by whoever manages accounts (the Admin,
+ * `accounts.manage`), only for a student whose enrollment is Enrolled. The
+ * enrollment check lives in the service, so it holds for direct API calls.
+ */
+export const studentAccountPolicy = {
+  viewAny: (u: AuthUser) => managesStaff(u),
+  create: (u: AuthUser) => managesStaff(u),
+};
+
 // --- AdminAccountPolicy ----------------------------------------------------
 
 /**

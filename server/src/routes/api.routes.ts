@@ -108,10 +108,11 @@ import * as c103 from '@/server/controllers/status-requests';
 import * as c104 from '@/server/controllers/status-requests/_id/decide';
 import * as c105 from '@/server/controllers/students';
 import * as c106 from '@/server/controllers/students/_id';
-import * as c107 from '@/server/controllers/students/_id/credentials';
-import * as c108 from '@/server/controllers/students/_id/enrollments';
-import * as c109 from '@/server/controllers/subjects';
-import * as c110 from '@/server/controllers/subjects/_id';
+import * as c107 from '@/server/controllers/students/_id/account';
+import * as c108 from '@/server/controllers/students/_id/credentials';
+import * as c109 from '@/server/controllers/students/_id/enrollments';
+import * as c110 from '@/server/controllers/subjects';
+import * as c111 from '@/server/controllers/subjects/_id';
 
 /**
  * Every REST endpoint, as METHOD /api/v1/<path> -> controller.
@@ -262,12 +263,13 @@ export function registerApiRoutes(app: FastifyInstance): void {
   mount(app, 'POST', `${API_PREFIX}/students`, c105.POST);
   mount(app, 'GET', `${API_PREFIX}/students/:id`, c106.GET);
   mount(app, 'PUT', `${API_PREFIX}/students/:id`, c106.PUT);
-  mount(app, 'GET', `${API_PREFIX}/students/:id/credentials`, c107.GET);
-  mount(app, 'GET', `${API_PREFIX}/students/:id/enrollments`, c108.GET);
-  mount(app, 'POST', `${API_PREFIX}/students/:id/enrollments`, c108.POST);
-  mount(app, 'GET', `${API_PREFIX}/subjects`, c109.GET);
-  mount(app, 'POST', `${API_PREFIX}/subjects`, c109.POST);
-  mount(app, 'GET', `${API_PREFIX}/subjects/:id`, c110.GET);
-  mount(app, 'PUT', `${API_PREFIX}/subjects/:id`, c110.PUT);
-  mount(app, 'PATCH', `${API_PREFIX}/subjects/:id`, c110.PATCH);
+  mount(app, 'POST', `${API_PREFIX}/students/:id/account`, c107.POST);
+  mount(app, 'GET', `${API_PREFIX}/students/:id/credentials`, c108.GET);
+  mount(app, 'GET', `${API_PREFIX}/students/:id/enrollments`, c109.GET);
+  mount(app, 'POST', `${API_PREFIX}/students/:id/enrollments`, c109.POST);
+  mount(app, 'GET', `${API_PREFIX}/subjects`, c110.GET);
+  mount(app, 'POST', `${API_PREFIX}/subjects`, c110.POST);
+  mount(app, 'GET', `${API_PREFIX}/subjects/:id`, c111.GET);
+  mount(app, 'PUT', `${API_PREFIX}/subjects/:id`, c111.PUT);
+  mount(app, 'PATCH', `${API_PREFIX}/subjects/:id`, c111.PATCH);
 }

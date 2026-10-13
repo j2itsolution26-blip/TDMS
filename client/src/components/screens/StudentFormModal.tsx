@@ -5,6 +5,7 @@ import Modal from '@/components/Modal';
 import Combobox, { type ComboboxOption } from '@/components/Combobox';
 import { STUDENT_STATUSES, STUDENT_STATUS_LABELS, type StudentStatus } from '@shared/types/domain';
 import { toDateInput } from '@shared/lib/dates';
+import { YEAR_LEVELS } from '@shared/lib/teaching';
 import { localDayKey } from '@shared/lib/institution-time';
 import { EARLIEST_BIRTH_DATE, dateOfBirthProblem, phoneProblem } from '@shared/lib/student-rules';
 import type { CurriculumOption, ProgramOption, StudentRow } from './StudentsScreen';
@@ -349,7 +350,7 @@ export default function StudentFormModal({
                 <select id="st-yearLevel" className={`${FIELD} ${fieldBorder(!!e.yearLevel)}`} value={form.yearLevel}
                   onChange={(ev) => set('yearLevel', Number(ev.target.value))}
                   aria-invalid={!!e.yearLevel || undefined} aria-describedby={describe('st-yearLevel', e.yearLevel)}>
-                  {[1, 2, 3, 4].map((y) => <option key={y} value={y}>Year {y}</option>)}
+                  {YEAR_LEVELS.map((y) => <option key={y} value={y}>Year {y}</option>)}
                 </select>
               </Field>
               <Field id="st-status" label="Student Status" required error={e.status}>

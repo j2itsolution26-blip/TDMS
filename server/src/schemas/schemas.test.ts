@@ -72,14 +72,23 @@ describe('Laravel rule parity', () => {
     expect(subjectSchema.safeParse({ ...base, subjectType: 'seminar', defaultUnits: 3 }).success).toBe(false);
   });
 
-  it('limits student year level to 1-4', () => {
+  it('limits student year level to the three diploma years', () => {
     const base = {
       firstName: 'A', middleName: '', lastName: 'B', email: '', phone: '',
       dateOfBirth: '', programId: '1', curriculumId: '2', status: 'active', enrollmentDate: '',
     };
-    expect(studentSchema.safeParse({ ...base, yearLevel: 4 }).success).toBe(true);
-    expect(studentSchema.safeParse({ ...base, yearLevel: 5 }).success).toBe(false);
-    expect(studentSchema.safeParse({ ...base, yearLevel: 0 }).success).toBe(false);
+    for (const y of [1, 2, 3]) expect(studentSchema.safeParse({ ...base, yearLevel: y }).success).toBe(true);
+    for (const y of [0, 4, 5]) expect(studentSchema.safeParse({ ...base, yearLevel: y }).success).toBe(false);
+    expect(studentSchema.safeParse({ ...base, yearLevel: 4 }).error?.flatten().fieldErrors.yearLevel).toEqual(['Choose Year 1, 2 or 3.']);
+  });
+
+  it('limits enrollment and curriculum year level to the three diploma years', () => {
+    const enrol = { studentId: '1', curriculumId: '1', semester: 1, schoolYear: '2026-2027' };
+    expect(enrollmentSchema.safeParse({ ...enrol, yearLevel: 3 }).success).toBe(true);
+    expect(enrollmentSchema.safeParse({ ...enrol, yearLevel: 4 }).success).toBe(false);
+    const entry = { curriculumId: '1', subjectId: '5', semester: 1, units: 3 };
+    expect(curriculumSubjectSchema.safeParse({ ...entry, yearLevel: 3 }).success).toBe(true);
+    expect(curriculumSubjectSchema.safeParse({ ...entry, yearLevel: 4 }).success).toBe(false);
   });
 
   it('turns empty optional strings into null', () => {

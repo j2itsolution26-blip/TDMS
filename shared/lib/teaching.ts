@@ -284,8 +284,14 @@ export function yearLevelLabel(level: number): string {
   return `${level}${suffix} Year`;
 }
 
-/** A diploma runs three years, so sections are opened for 1st to 3rd Year only. */
-export const SECTION_YEAR_LEVELS = [1, 2, 3] as const;
+/**
+ * A diploma runs three years. Every year level TDMS records — a student's,
+ * an enrollment's, a curriculum subject's, a section's — is 1, 2 or 3.
+ */
+export const YEAR_LEVELS = [1, 2, 3] as const;
+export const MAX_YEAR_LEVEL = 3;
+/** Sections are opened for the same three years. */
+export const SECTION_YEAR_LEVELS = YEAR_LEVELS;
 
 /**
  * How a section is named everywhere: "DIT-1 · 1st Year · Section A".

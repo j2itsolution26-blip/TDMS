@@ -10,6 +10,11 @@ import {
 import { checkInstitutionalEmail, allowedDomain } from '@/server/lib/institutional-email';
 import { passwordProblems } from '@shared/lib/password-policy';
 import { dateOfBirthProblem, phoneProblem } from '@shared/lib/student-rules';
+import { MAX_YEAR_LEVEL } from '@shared/lib/teaching';
+
+/** A diploma runs three years (shared/lib/teaching.ts YEAR_LEVELS). */
+const YEAR_LEVEL_MESSAGE = 'Choose Year 1, 2 or 3.';
+const yearLevelSchema = z.coerce.number({ invalid_type_error: YEAR_LEVEL_MESSAGE }).int(YEAR_LEVEL_MESSAGE).min(1, YEAR_LEVEL_MESSAGE).max(MAX_YEAR_LEVEL, YEAR_LEVEL_MESSAGE);
 
 /**
  * Any address that will belong to a TDMS account goes through this, not
@@ -244,7 +249,7 @@ export const curriculumSubjectSchema = z
     curriculumId: idSchema,
     subjectId: idSchema,
     prerequisiteSubjectId: idSchema.nullable().optional(),
-    yearLevel: z.coerce.number().int().min(1).max(4),
+    yearLevel: yearLevelSchema,
     semester: z.coerce.number().int().min(1).max(2),
     units: z.coerce.number().min(0).max(99),
   })
@@ -282,7 +287,7 @@ export const studentSchema = z.object({
   dateOfBirth: studentDateOfBirth,
   programId: idSchema,
   curriculumId: idSchema,
-  yearLevel: z.coerce.number().int().min(1).max(4),
+  yearLevel: yearLevelSchema,
   status: studentStatusSchema,
   enrollmentDate: nullableDate,
 });
@@ -333,7 +338,7 @@ export const enrollmentSchema = z.object({
     .trim()
     .regex(/^\d{4}-\d{4}$/, 'Use the format 2025-2026.'),
   semester: z.coerce.number().int().min(1).max(2),
-  yearLevel: z.coerce.number().int().min(1).max(4),
+  yearLevel: yearLevelSchema,
 });
 
 export const enrollmentTransitionSchema = z.object({

@@ -7,6 +7,7 @@ import {
   Card, PageHeader, EmptyState, FieldError,
   BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT_CLASS, LABEL_CLASS,
 } from '@/components/ui';
+import { MAX_YEAR_LEVEL } from '@shared/lib/teaching';
 
 /** Port of livewire/curricula/show.blade.php. */
 
@@ -172,7 +173,7 @@ export default function CurriculumDetailScreen({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <label className={LABEL_CLASS} htmlFor="cs-year">Year Level</label>
-              <input id="cs-year" type="number" min={1} max={4} className={INPUT_CLASS} value={form.yearLevel}
+              <input id="cs-year" type="number" min={1} max={MAX_YEAR_LEVEL} className={INPUT_CLASS} value={form.yearLevel}
                 onChange={(e) => setForm({ ...form, yearLevel: Number(e.target.value) })} required />
               <FieldError messages={errors.yearLevel} />
             </div>

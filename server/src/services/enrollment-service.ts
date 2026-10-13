@@ -2,7 +2,7 @@ import { prisma } from '@/server/lib/prisma';
 import { AppError, NotFoundError } from '@/server/lib/http';
 import type { z } from 'zod';
 import type { enrollmentSchema } from '@/server/schemas/schemas';
-import { hasAllRequiredCredentialsVerified } from './student-service';
+import { ensureCredentialChecklist, hasAllRequiredCredentialsVerified } from './student-service';
 import { recordAudit, actorLabel, type AuditContext } from './audit-log';
 import { ENROLLMENT_STATUS_LABELS, ENROLLMENT_TRANSITIONS, type AuthUser, type EnrollmentStatus } from '@shared/types/domain';
 
@@ -16,6 +16,7 @@ import { ENROLLMENT_STATUS_LABELS, ENROLLMENT_TRANSITIONS, type AuthUser, type E
 // --- Credentials -----------------------------------------------------------
 
 export async function listStudentCredentials(studentId: bigint) {
+  await ensureCredentialChecklist(studentId);
   const rows = await prisma.studentCredential.findMany({
     where: { studentId },
     include: { requirement: true, verifier: true, submitter: true },

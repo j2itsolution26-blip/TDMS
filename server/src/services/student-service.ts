@@ -111,7 +111,7 @@ export async function createStudent(input: z.infer<typeof studentSchema>) {
     try {
       return await prisma.$transaction(async (tx) => {
         const studentNumber = await nextStudentNumber(tx);
-        return tx.student.create({
+        const student = await tx.student.create({
           data: {
             studentNumber,
             firstName: input.firstName,
@@ -129,6 +129,9 @@ export async function createStudent(input: z.infer<typeof studentSchema>) {
             updatedAt: new Date(),
           },
         });
+        // Its document checklist, in the same transaction.
+        await ensureCredentialChecklist(student.id, tx);
+        return student;
       });
     } catch (error) {
       if (isUniqueViolation(error, 'student_number') && attempt < 4) continue;
@@ -234,6 +237,33 @@ async function assertProgramAndCurriculumAgree(programId: bigint, curriculumId: 
  * A requirement counts when it is active, required, and either global
  * (program_id IS NULL) or attached to this student's program.
  */
+/**
+ * Make sure a student has a checklist row for every document that applies to
+ * them (active requirements, global or for their program), adding any that
+ * are missing as `missing`. Existing rows are never changed.
+ *
+ * The checklist used to be created only when an admissions application was
+ * approved, so a student added directly through Add Student had none — and
+ * with nothing to verify, their enrollment could never be approved. Called
+ * when a student is created and whenever their documents are listed, so
+ * records created before this fix fill in the first time they are opened.
+ * Idempotent: the (student, requirement) unique index backs skipDuplicates.
+ */
+export async function ensureCredentialChecklist(studentId: bigint, db: Prisma.TransactionClient | typeof prisma = prisma): Promise<number> {
+  const student = await db.student.findUnique({ where: { id: studentId }, select: { programId: true } });
+  if (!student) return 0;
+  const requirements = await db.credentialRequirement.findMany({
+    where: { isActive: true, OR: [{ programId: null }, { programId: student.programId }] },
+    select: { id: true },
+  });
+  if (requirements.length === 0) return 0;
+  const { count } = await db.studentCredential.createMany({
+    data: requirements.map((r) => ({ studentId, credentialRequirementId: r.id, status: 'missing', createdAt: new Date(), updatedAt: new Date() })),
+    skipDuplicates: true,
+  });
+  return count;
+}
+
 export async function hasAllRequiredCredentialsVerified(studentId: bigint): Promise<boolean> {
   const student = await prisma.student.findUnique({
     where: { id: studentId },

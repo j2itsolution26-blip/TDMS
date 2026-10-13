@@ -144,6 +144,29 @@ try {
   }
   check('the guarded enrollment is still pending', (await statusOf(eGuard)) === 'pending');
 
+  console.log('\nA student added directly, with no document checklist (the Andy case)');
+  const direct = await prisma.student.create({ data: { studentNumber: `${M}-6`, firstName: 'Andy', lastName: `Direct${M}`, programId: program.id, curriculumId: cur.id, yearLevel: 1, status: 'active', createdAt: new Date() } });
+  created.students.push(direct.id);
+  const eDirect = await enrol(direct);
+  check('starts with no checklist rows', (await prisma.studentCredential.count({ where: { studentId: direct.id } })) === 0);
+  if (required.length) check('approval is refused while nothing is verified', (await decide('secretary', eDirect, 'enrolled')).status === 422);
+  const list = await api('secretary', 'GET', `/students/${direct.id}/credentials`);
+  check('opening the documents creates the checklist', list.status === 200 && list.data?.length >= required.length, list.data?.length);
+  check('opening it again adds nothing more', (await api('secretary', 'GET', `/students/${direct.id}/credentials`)).data?.length === list.data?.length);
+  for (const c of list.data ?? []) {
+    const v = await api('secretary', 'POST', `/credentials/${c.id}/verify`, { remarks: null });
+    if (v.status !== 200) check(`verifying ${c.requirement.name}`, false, v.json);
+  }
+  const approveDirect = await decide('secretary', eDirect, 'enrolled');
+  check('once verified, the Secretary approves it', approveDirect.status === 200 && (await statusOf(eDirect)) === 'enrolled', approveDirect.json);
+  const enrolledTab = (await api('secretary', 'GET', '/pages/enrollments?status=enrolled')).data?.data?.rows ?? [];
+  const pendingTab = (await api('secretary', 'GET', '/pages/enrollments?status=pending')).data?.data?.rows ?? [];
+  check('it moves from Pending to Enrolled', enrolledTab.some((r) => r.id === eDirect) && !pendingTab.some((r) => r.id === eDirect));
+  const viaForm = await api('secretary', 'POST', '/students', { firstName: 'Form', middleName: '', lastName: `Made${M}`, email: '', phone: '', dateOfBirth: '', programId: program.id.toString(), curriculumId: cur.id.toString(), yearLevel: 1, status: 'active', enrollmentDate: '' });
+  const formId = viaForm.data?.id ?? (await prisma.student.findFirst({ where: { lastName: `Made${M}` } }))?.id?.toString();
+  if (formId) created.students.push(BigInt(formId));
+  check('a student created through Add Student gets the checklist at once', (await prisma.studentCredential.count({ where: { studentId: BigInt(formId) } })) >= required.length, viaForm.json?.message);
+
   console.log('\nAudit');
   const actions = (await prisma.auditLog.findMany({ where: { createdAt: { gte: started }, target: { contains: M } }, select: { action: true } })).map((x) => x.action);
   check('approvals, rejections and drops are in the audit log', ['ENROLLMENT_APPROVED', 'ENROLLMENT_REJECTED', 'ENROLLMENT_DROPPED'].every((x) => actions.includes(x)), [...new Set(actions)]);

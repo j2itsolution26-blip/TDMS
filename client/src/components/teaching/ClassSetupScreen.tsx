@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import Modal from '@/components/Modal';
 import { api } from '@/lib/api-client';
-import { DAY_NAMES, SECTION_CAPACITY, SECTION_YEAR_LEVELS, SEMESTER_LABELS, yearLevelLabel } from '@shared/lib/teaching';
+import { DAY_NAMES, SECTION_YEAR_LEVELS, SEMESTER_LABELS, yearLevelLabel } from '@shared/lib/teaching';
 import { useAction } from './client-kit';
 import SectionRoster from './SectionRoster';
+import SectionsManagement from './SectionsManagement';
+import { useRouter } from '@/lib/navigation';
 import { BTN, BTN_SECONDARY, BTN_SMALL, Card, Chip, Empty, Field, Flash, INPUT, TD, TH, Table } from './kit';
 
 interface Setup {
@@ -35,10 +37,28 @@ type ClassRow = Setup['classes'][number];
  * with a Diploma Instructor and a weekly schedule. The instructor assignment
  * is what gives an Instructor access to a class and its students.
  */
-export default function ClassSetupScreen({ setup, schoolYearId, archived }: { setup: Setup; schoolYearId: string; archived: boolean }) {
-  const [tab, setTab] = useState<'sections' | 'classes'>('classes');
+export type SetupTab = 'sections' | 'classes';
+
+export default function ClassSetupScreen({ setup, schoolYearId, yearLabel, archived, tab, onTab, newSection }: {
+  setup: Setup;
+  schoolYearId: string;
+  yearLabel: string;
+  archived: boolean;
+  /** The open tab lives in the URL (?tab=), so the page header can follow it. */
+  tab: SetupTab;
+  onTab: (tab: SetupTab) => void;
+  /** Bumped by the page header's New Section button. */
+  newSection: number;
+}) {
   const act = useAction();
+  const router = useRouter();
   const [sectionForm, setSectionForm] = useState(false);
+  // A success message that clears itself, like a toast.
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const announce = (message: string) => { setToast(message); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(null), 5000); };
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
+  useEffect(() => { if (newSection > 0 && !archived) setSectionForm(true); }, [newSection, archived]);
   const [roster, setRoster] = useState<string | null>(null);
   const [classForm, setClassForm] = useState<ClassRow | 'new' | null>(null);
 
@@ -46,42 +66,24 @@ export default function ClassSetupScreen({ setup, schoolYearId, archived }: { se
     <div className="space-y-4">
       <div role="tablist" aria-label="Setup" className="inline-flex rounded-xl border border-tdms-hairline bg-white p-1">
         {(['classes', 'sections'] as const).map((t) => (
-          <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`rounded-lg px-4 py-2 text-sm font-semibold ${tab === t ? 'bg-tdms-text text-white' : 'text-tdms-ink hover:bg-tdms-bg'}`}>
+          <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => onTab(t)} className={`rounded-lg px-4 py-2 text-sm font-semibold ${tab === t ? 'bg-tdms-text text-white' : 'text-tdms-ink hover:bg-tdms-bg'}`}>
             {t === 'classes' ? `Classes (${setup.classes.length})` : `Sections (${setup.sections.length})`}
           </button>
         ))}
       </div>
+      {toast && <div className="fixed bottom-5 right-5 z-40 max-w-sm" role="status"><Flash kind="success">{toast}</Flash></div>}
       {act.notice && <Flash kind="success">{act.notice}</Flash>}
       {act.error && <Flash kind="error">{act.error}</Flash>}
 
       {tab === 'sections' ? (
-        <Card padded={false} title="Sections" description="A program's year level, named, for this school year. Each student is in one section per year." actions={!archived ? <button type="button" className={BTN} onClick={() => setSectionForm(true)}><Plus className="h-4 w-4" aria-hidden="true" /> New section</button> : null}>
-          {setup.sections.length === 0 ? (
-            <div className="px-5 pb-5 sm:px-6"><Empty title="No sections yet" description="Create a section, add its students, then create its classes." /></div>
-          ) : (
-            <Table label="Sections" head={<><th scope="col" className={TH}>Section</th><th scope="col" className={TH}>Program</th><th scope="col" className={TH}>Students</th><th scope="col" className={TH}>Classes</th><th scope="col" className={TH}><span className="sr-only">Actions</span></th></>}>
-              {setup.sections.map((s) => (
-                <tr key={s.id}>
-                  <td className={`${TD} font-semibold`}>{s.label}</td>
-                  <td className={TD}>{s.program.name}</td>
-                  <td className={`${TD} tabular-nums`}>
-                    {s.students}/{SECTION_CAPACITY}
-                    {s.students >= SECTION_CAPACITY && <span className="ml-2 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-inset ring-red-200">Full</span>}
-                  </td>
-                  <td className={`${TD} tabular-nums`}>{s.classes}</td>
-                  <td className={`${TD} whitespace-nowrap text-right`}>
-                    <div className="flex justify-end gap-1.5">
-                      <button type="button" className={BTN_SMALL} onClick={() => setRoster(s.id)}>Roster</button>
-                      {!archived && s.students === 0 && s.classes === 0 && (
-                        <button type="button" className={BTN_SMALL} disabled={act.busy} onClick={() => window.confirm(`Delete section ${s.label}?`) && act.run(() => api.del(`/api/v1/sections/${s.id}`), { success: 'Section deleted.' })}>Delete</button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </Table>
-          )}
-        </Card>
+        <SectionsManagement
+          sections={setup.sections}
+          archived={archived}
+          yearLabel={yearLabel}
+          onStudents={(id) => setRoster(id)}
+          onNewSection={() => setSectionForm(true)}
+          onDeleted={(message) => { announce(message); router.refresh(); }}
+        />
       ) : (
         <Card padded={false} title="Classes" description="A subject taught to a section in a semester, by a Diploma Instructor." actions={!archived && setup.sections.length > 0 ? <button type="button" className={BTN} onClick={() => setClassForm('new')}><Plus className="h-4 w-4" aria-hidden="true" /> New class</button> : null}>
           {setup.classes.length === 0 ? (
@@ -112,7 +114,7 @@ export default function ClassSetupScreen({ setup, schoolYearId, archived }: { se
       )}
 
       <Modal open={sectionForm} onClose={() => setSectionForm(false)} title="New section">
-        <SectionForm setup={setup} schoolYearId={schoolYearId} onDone={() => setSectionForm(false)} />
+        <SectionForm setup={setup} schoolYearId={schoolYearId} onDone={(created) => { setSectionForm(false); if (created) announce(`Section ${created} created.`); }} />
       </Modal>
       <Modal open={roster !== null} onClose={() => setRoster(null)} title="Section Roster" subtitle="Students placed in this section for the school year." maxWidth="sm:max-w-[1040px]" appearance="fluent">
         {roster && <SectionRoster sectionId={roster} archived={archived} />}
@@ -124,11 +126,11 @@ export default function ClassSetupScreen({ setup, schoolYearId, archived }: { se
   );
 }
 
-function SectionForm({ setup, schoolYearId, onDone }: { setup: Setup; schoolYearId: string; onDone: () => void }) {
+function SectionForm({ setup, schoolYearId, onDone }: { setup: Setup; schoolYearId: string; onDone: (created?: string) => void }) {
   const { busy, error, errors, run } = useAction();
   const [f, setF] = useState({ programId: setup.programs[0]?.id ?? '', yearLevel: '1', name: '' });
   return (
-    <form className="space-y-4" onSubmit={async (e) => { e.preventDefault(); if (await run(() => api.post('/api/v1/sections', { ...f, schoolYearId }), { success: 'Section created.' })) onDone(); }}>
+    <form className="space-y-4" onSubmit={async (e) => { e.preventDefault(); if (await run(() => api.post('/api/v1/sections', { ...f, schoolYearId }), { success: 'Section created.' })) onDone(f.name.trim()); }}>
       <Field label="Program" htmlFor="sec-prog" error={errors.programId}>
         <select id="sec-prog" className={INPUT} value={f.programId} onChange={(e) => setF({ ...f, programId: e.target.value })}>
           {setup.programs.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}
@@ -145,7 +147,7 @@ function SectionForm({ setup, schoolYearId, onDone }: { setup: Setup; schoolYear
         </Field>
       </div>
       {error && !Object.keys(errors).length && <Flash kind="error">{error}</Flash>}
-      <div className="flex justify-end gap-2"><button type="button" className={BTN_SECONDARY} onClick={onDone}>Cancel</button><button type="submit" className={BTN} disabled={busy}>Create</button></div>
+      <div className="flex justify-end gap-2"><button type="button" className={BTN_SECONDARY} onClick={() => onDone()}>Cancel</button><button type="submit" className={BTN} disabled={busy}>Create</button></div>
     </form>
   );
 }

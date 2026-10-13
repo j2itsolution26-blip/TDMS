@@ -230,7 +230,7 @@ export default function SectionRoster({ sectionId, archived }: { sectionId: stri
             {cap.available === 0 ? (
               <div className="flex gap-2 px-4 py-6 text-sm text-red-800">
                 <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <p>This section has reached its maximum of {cap.capacity} students. Remove a student, or use another section, to place more.</p>
+                <p>This section has reached its maximum capacity of {cap.capacity} students. Create another section to accommodate additional students.</p>
               </div>
             ) : data.candidates.length === 0 ? (
               <div className="flex gap-2 px-4 py-6 text-sm text-muted">
@@ -282,7 +282,7 @@ export default function SectionRoster({ sectionId, archived }: { sectionId: stri
               </p>
               <button type="button" className={BTN_PRIMARY} disabled={busy || picked.size === 0 || tooMany || cap.available === 0} aria-busy={busy} onClick={add}>
                 {busy && picked.size > 0 ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <UserPlus className="h-4 w-4" aria-hidden="true" />}
-                {busy && picked.size > 0 ? 'Adding…' : 'Add to Section'}
+                {busy && picked.size > 0 ? 'Adding…' : 'Add Selected Students'}
               </button>
             </footer>
           </section>

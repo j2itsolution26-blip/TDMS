@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import Modal from '@/components/Modal';
 import { api } from '@/lib/api-client';
 import { DAY_NAMES, SECTION_YEAR_LEVELS, SEMESTER_LABELS, yearLevelLabel } from '@shared/lib/teaching';
 import { useAction } from './client-kit';
+import SectionRoster from './SectionRoster';
 import { BTN, BTN_SECONDARY, BTN_SMALL, Card, Chip, Empty, Field, Flash, INPUT, TD, TH, Table } from './kit';
 
 interface Setup {
@@ -110,8 +111,8 @@ export default function ClassSetupScreen({ setup, schoolYearId, archived }: { se
       <Modal open={sectionForm} onClose={() => setSectionForm(false)} title="New section">
         <SectionForm setup={setup} schoolYearId={schoolYearId} onDone={() => setSectionForm(false)} />
       </Modal>
-      <Modal open={roster !== null} onClose={() => setRoster(null)} title="Section roster" maxWidth="sm:max-w-3xl">
-        {roster && <RosterEditor sectionId={roster} archived={archived} />}
+      <Modal open={roster !== null} onClose={() => setRoster(null)} title="Section Roster" subtitle="Students placed in this section for the school year." maxWidth="sm:max-w-[1040px]" appearance="fluent">
+        {roster && <SectionRoster sectionId={roster} archived={archived} />}
       </Modal>
       <Modal open={classForm !== null} onClose={() => setClassForm(null)} title={classForm === 'new' ? 'New class' : 'Edit class'} maxWidth="sm:max-w-3xl">
         {classForm !== null && <ClassForm setup={setup} cls={classForm === 'new' ? null : classForm} onDone={() => setClassForm(null)} />}
@@ -143,89 +144,6 @@ function SectionForm({ setup, schoolYearId, onDone }: { setup: Setup; schoolYear
       {error && !Object.keys(errors).length && <Flash kind="error">{error}</Flash>}
       <div className="flex justify-end gap-2"><button type="button" className={BTN_SECONDARY} onClick={onDone}>Cancel</button><button type="submit" className={BTN} disabled={busy}>Create</button></div>
     </form>
-  );
-}
-
-interface RosterData {
-  section: { id: string; label: string; yearLevel: number };
-  members: { id: string; studentNumber: string; name: string; status: string }[];
-  candidates: { id: string; studentNumber: string; name: string; status: string; yearLevel: number | null }[];
-}
-
-function RosterEditor({ sectionId, archived }: { sectionId: string; archived: boolean }) {
-  const act = useAction();
-  const [data, setData] = useState<RosterData | null>(null);
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [query, setQuery] = useState('');
-
-  async function load() {
-    const r = await api.get<RosterData>(`/api/v1/sections/${sectionId}`);
-    if (r.ok) setData(r.data);
-    else act.setError(r.message);
-  }
-  useEffect(() => {
-    void load();
-  }, [sectionId]);
-
-  if (!data) return <p className="text-sm text-tdms-muted">{act.error ?? 'Loading…'}</p>;
-  const candidates = data.candidates.filter((c) => !query || `${c.name} ${c.studentNumber}`.toLowerCase().includes(query.toLowerCase()));
-
-  return (
-    <div className="space-y-4">
-      <p className="text-sm font-semibold">{data.section.label} · {data.members.length} students</p>
-      {act.notice && <Flash kind="success">{act.notice}</Flash>}
-      {act.error && <Flash kind="error">{act.error}</Flash>}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <section>
-          <h3 className="mb-2 text-[13px] font-bold">In this section</h3>
-          <ul className="max-h-80 divide-y divide-tdms-hairline overflow-y-auto rounded-xl border border-tdms-hairline">
-            {data.members.length === 0 && <li className="px-3 py-3 text-sm text-tdms-muted">No students yet.</li>}
-            {data.members.map((m) => (
-              <li key={m.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-                <span><span className="font-semibold">{m.name}</span> <span className="text-xs text-tdms-muted">{m.studentNumber}</span></span>
-                {!archived && (
-                  <button type="button" className={BTN_SMALL} aria-label={`Remove ${m.name}`} disabled={act.busy} onClick={async () => { if (await act.run(() => api.del(`/api/v1/sections/${sectionId}/students?studentId=${m.id}`))) void load(); }}>
-                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-        {!archived && (
-          <section>
-            <h3 className="mb-2 text-[13px] font-bold">Add students (not yet in a section this year)</h3>
-            <input className={`${INPUT} mb-2`} placeholder="Search…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search students to add" />
-            <ul className="max-h-64 divide-y divide-tdms-hairline overflow-y-auto rounded-xl border border-tdms-hairline">
-              {candidates.length === 0 && <li className="px-3 py-3 text-sm text-tdms-muted">No students available.</li>}
-              {candidates.map((c) => (
-                <li key={c.id}>
-                  <label className="flex cursor-pointer items-center gap-2.5 px-3 py-2 text-sm hover:bg-tdms-bg">
-                    <input type="checkbox" className="rounded border-tdms-hairline text-tdms-text focus:ring-tdms-text" checked={picked.has(c.id)} onChange={() => setPicked((p) => { const n = new Set(p); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })} />
-                    <span className="min-w-0 flex-1"><span className="font-semibold">{c.name}</span> <span className="text-xs text-tdms-muted">{c.studentNumber}{c.yearLevel ? ` · Year ${c.yearLevel}` : ''}</span></span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-            <button
-              type="button"
-              className={`${BTN} mt-3`}
-              disabled={act.busy || picked.size === 0}
-              onClick={async () => {
-                const r = await act.run(() => api.post<{ added: number; skipped: number }>(`/api/v1/sections/${sectionId}/students`, { studentIds: [...picked] }));
-                if (r) {
-                  act.setNotice(`Added ${r.added} student${r.added === 1 ? '' : 's'}. Their instructors were notified.`);
-                  setPicked(new Set());
-                  void load();
-                }
-              }}
-            >
-              Add {picked.size || ''} to section
-            </button>
-          </section>
-        )}
-      </div>
-    </div>
   );
 }
 

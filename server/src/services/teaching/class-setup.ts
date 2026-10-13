@@ -159,28 +159,39 @@ export async function deleteSection(user: AuthUser, id: bigint, context?: AuditC
   await recordAudit({ action: 'SECTION_DELETED', actor: actorLabel(user), target: `Section ${section.name}`, context });
 }
 
+/** Who may join a section: a student of its program who is still studying. */
+const ROSTER_STATUSES = ['active', 'applicant'];
+
 export async function sectionRoster(id: bigint) {
   const section = await prisma.section.findUnique({
     where: { id },
-    select: { id: true, schoolYearId: true, programId: true, yearLevel: true, name: true, program: { select: { code: true } } },
+    select: {
+      id: true, schoolYearId: true, programId: true, yearLevel: true, name: true,
+      program: { select: { code: true, name: true } },
+      schoolYear: { select: { label: true, status: true } },
+    },
   });
   if (!section) throw new NotFoundError('Section not found.');
 
-  const [members, candidates] = await Promise.all([
+  const [members, candidates, elsewhere] = await Promise.all([
     prisma.sectionStudent.findMany({
       where: { sectionId: id },
-      select: { student: { select: { id: true, studentNumber: true, firstName: true, lastName: true, status: true } } },
+      select: { student: { select: { id: true, studentNumber: true, firstName: true, lastName: true, status: true, yearLevel: true } } },
     }),
     // Students of the section's program not yet in any section this year.
     prisma.student.findMany({
       where: {
         programId: section.programId,
-        status: { in: ['active', 'applicant'] },
+        status: { in: ROSTER_STATUSES },
         sectionMemberships: { none: { schoolYearId: section.schoolYearId } },
       },
       orderBy: [{ yearLevel: 'asc' }, { lastName: 'asc' }],
       take: 300,
       select: { id: true, studentNumber: true, firstName: true, lastName: true, yearLevel: true, status: true },
+    }),
+    // Students of this program already placed in another section this year — not offered, but counted, so the screen can say why.
+    prisma.sectionStudent.count({
+      where: { schoolYearId: section.schoolYearId, sectionId: { not: id }, student: { programId: section.programId, status: { in: ROSTER_STATUSES } } },
     }),
   ]);
 
@@ -193,12 +204,34 @@ export async function sectionRoster(id: bigint) {
   });
 
   return {
-    section: { id: section.id.toString(), label: sectionLabel(section.program.code, section.yearLevel, section.name), yearLevel: section.yearLevel },
+    section: {
+      id: section.id.toString(),
+      label: sectionLabel(section.program.code, section.yearLevel, section.name),
+      yearLevel: section.yearLevel,
+      name: section.name,
+      program: { code: section.program.code, name: section.program.name },
+      schoolYear: section.schoolYear.label,
+      archived: section.schoolYear.status === 'ARCHIVED',
+    },
     members: members.map((m) => shape(m.student)).sort((a, b) => a.name.localeCompare(b.name)),
     candidates: candidates.map(shape),
+    assignedElsewhere: elsewhere,
   };
 }
 
+/**
+ * Add students to a section. Every rule is checked here, whatever the screen
+ * offered:
+ *
+ *   * each student must exist, belong to the section's program and still be
+ *     studying (active or applicant) — otherwise nothing is added (422);
+ *   * one section per student per school year (unique index): a student
+ *     already in this section is left as is, and one in another section is
+ *     never moved — they are reported back by name and section, so the office
+ *     can remove them there first;
+ *   * the count reported is what the database actually inserted, so two
+ *     simultaneous requests cannot both claim the same students.
+ */
 export async function addSectionStudents(user: AuthUser, id: bigint, studentIds: bigint[], context?: AuditContext) {
   const section = await prisma.section.findUnique({
     where: { id },
@@ -207,28 +240,36 @@ export async function addSectionStudents(user: AuthUser, id: bigint, studentIds:
   if (!section) throw new NotFoundError('Section not found.');
   assertWritableYear(section.schoolYear);
 
-  const students = await prisma.student.findMany({ where: { id: { in: studentIds } }, select: { id: true } });
-  if (students.length !== studentIds.length) throw new AppError('One or more students were not found.', 422);
-
-  const taken = await prisma.sectionStudent.findMany({
-    where: { schoolYearId: section.schoolYearId, studentId: { in: studentIds } },
-    select: { studentId: true },
+  const unique = [...new Set(studentIds.map(String))].map(BigInt);
+  const students = await prisma.student.findMany({
+    where: { id: { in: unique } },
+    select: { id: true, studentNumber: true, firstName: true, lastName: true, programId: true, status: true },
   });
-  const takenIds = new Set(taken.map((t) => t.studentId.toString()));
-  const toAdd = studentIds.filter((sid) => !takenIds.has(sid.toString()));
+  if (students.length !== unique.length) throw new AppError('One or more students were not found.', 422);
+  const ineligible = students.filter((s) => s.programId !== section.programId || !ROSTER_STATUSES.includes(s.status));
+  if (ineligible.length > 0) {
+    const names = ineligible.map((s) => `${s.studentNumber} (${s.firstName} ${s.lastName})`).join(', ');
+    throw new AppError(`Only active students of ${section.program.code} can join this section: ${names}.`, 422, { studentIds: [`Not eligible: ${names}`] });
+  }
 
   const label = sectionLabel(section.program.code, section.yearLevel, section.name);
-  await prisma.$transaction(async (tx) => {
-    await tx.sectionStudent.createMany({
+  const { added, conflicts, already } = await prisma.$transaction(async (tx) => {
+    const placed = await tx.sectionStudent.findMany({
+      where: { schoolYearId: section.schoolYearId, studentId: { in: unique } },
+      select: { studentId: true, sectionId: true, section: { select: { name: true, yearLevel: true, program: { select: { code: true } } } } },
+    });
+    const placedIds = new Set(placed.map((p) => p.studentId.toString()));
+    const toAdd = unique.filter((sid) => !placedIds.has(sid.toString()));
+    const result = await tx.sectionStudent.createMany({
       data: toAdd.map((studentId) => ({ sectionId: id, studentId, schoolYearId: section.schoolYearId })),
       skipDuplicates: true,
     });
     // "New student enrollment in assigned class" — for each instructor of the section.
     const instructorIds = section.classes.map((c) => c.instructorId).filter((x): x is bigint => x !== null);
-    if (toAdd.length > 0) {
+    if (result.count > 0) {
       await notifyUsers(tx, instructorIds, {
         type: 'class.students-added',
-        title: `${toAdd.length} student${toAdd.length === 1 ? '' : 's'} added to ${label}`,
+        title: `${result.count} student${result.count === 1 ? '' : 's'} added to ${label}`,
         body: `Your class roster for section ${label} has changed.`,
         href: '/teaching/classes',
       });
@@ -239,16 +280,27 @@ export async function addSectionStudents(user: AuthUser, id: bigint, studentIds:
         href: '/dashboard',
       });
     }
+    const who = (sid: bigint) => students.find((s) => s.id === sid)!;
+    return {
+      added: result.count,
+      already: placed.filter((p) => p.sectionId === id).length,
+      conflicts: placed
+        .filter((p) => p.sectionId !== id)
+        .map((p) => {
+          const s = who(p.studentId);
+          return { studentNumber: s.studentNumber, name: `${s.lastName}, ${s.firstName}`, section: sectionLabel(p.section.program.code, p.section.yearLevel, p.section.name) };
+        }),
+    };
   });
 
   await recordAudit({
     action: 'SECTION_STUDENTS_ADDED',
     actor: actorLabel(user),
     target: `${label} (${section.schoolYear.label})`,
-    details: { added: toAdd.length, alreadyInASection: takenIds.size },
+    details: { added, alreadyInThisSection: already, inAnotherSection: conflicts.length },
     context,
   });
-  return { added: toAdd.length, skipped: takenIds.size };
+  return { added, skipped: already + conflicts.length, already, conflicts };
 }
 
 /** Removing a student keeps every attendance record and score they already have. */

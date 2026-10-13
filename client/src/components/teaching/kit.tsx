@@ -113,7 +113,8 @@ export const TD = 'px-4 py-3 text-sm text-tdms-ink first:pl-5 last:pr-5 sm:first
 
 export function Table({ label, head, children }: { label: string; head: ReactNode; children: ReactNode }) {
   return (
-    <div className="overflow-x-auto" role="region" aria-label={label} tabIndex={0}>
+    // `relative` keeps screen-reader-only header labels inside the scroll box; without it they sat past it and widened the page on phones.
+    <div className="relative overflow-x-auto" role="region" aria-label={label} tabIndex={0}>
       <table className="min-w-full divide-y divide-tdms-hairline">
         <thead className="bg-tdms-bg/60">
           <tr>{head}</tr>

@@ -12,6 +12,6 @@ export const POST = withErrorHandling(async (request: Request, { params }: Param
   authorize(enrollmentPolicy.transition(user));
   const { id } = await params;
   const input = await parseJson(request, enrollmentTransitionSchema);
-  await transitionEnrollment(idSchema.parse(id), input.status, BigInt(user.id), input.reason);
+  await transitionEnrollment(idSchema.parse(id), input.status, user, input.reason, requestContext(request));
   return ok({ status: input.status });
 });

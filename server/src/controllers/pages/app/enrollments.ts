@@ -1,19 +1,17 @@
 import { requireUser, authorizePage } from '@/server/auth/current-user';
 import { enrollmentPolicy, studentPolicy } from '@/server/auth/policies';
 import { listAllEnrollments } from '@/server/services/enrollment-service';
-import { ENROLLMENT_STATUSES } from '@shared/types/domain';
+import { ENROLLMENT_STATUSES, ENROLLMENT_STATUS_LABELS } from '@shared/types/domain';
 import type { PageRequest } from '@/server/controllers/pages/types';
 
 /**
  * Enrollments — every student's term enrollments in one list.
  *
- * Read-only, under the same policy as each student's enrollment tab
- * (enrollmentPolicy.viewAny). Approving or dropping still happens on the
- * student's record, where the check for verified credentials lives; each row
- * links there.
+ * Viewing follows enrollmentPolicy.viewAny. Whoever may decide enrollments
+ * (enrollmentPolicy.transition) reviews, approves and rejects pending ones
+ * right here; the server re-checks the permission, the status and the
+ * required documents on every decision.
  */
-
-const STATUS_LABELS: Record<string, string> = { pending: 'Pending', enrolled: 'Enrolled', dropped: 'Dropped' };
 
 export async function loadEnrollments({ query }: PageRequest) {
   const user = await requireUser();
@@ -25,7 +23,11 @@ export async function loadEnrollments({ query }: PageRequest) {
   const data = await listAllEnrollments({ page: Number.isFinite(parsed) && parsed > 0 ? parsed : 1, status: status || undefined });
   const canOpenStudent = studentPolicy.view(user);
 
-  const filters = [{ value: '', label: 'All' }, ...ENROLLMENT_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] ?? s }))];
+  const all = Object.values(data.counts).reduce((n, c) => n + c, 0);
+  const filters = [
+    { value: '', label: 'All', count: all },
+    ...ENROLLMENT_STATUSES.map((s) => ({ value: s, label: ENROLLMENT_STATUS_LABELS[s], count: data.counts[s] ?? 0 })),
+  ];
 
-  return { canOpenStudent, data, filters, status };
+  return { canOpenStudent, canDecide: enrollmentPolicy.transition(user), data, filters, status };
 }

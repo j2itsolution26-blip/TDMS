@@ -8,6 +8,7 @@ import {
   BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_SUCCESS, BUTTON_DANGER, INPUT_CLASS, LABEL_CLASS,
 } from '@/components/ui';
 import { formatDate } from '@shared/lib/dates';
+import { MAX_YEAR_LEVEL } from '@shared/lib/teaching';
 
 /** Port of livewire/enrollment/show.blade.php. */
 
@@ -73,6 +74,8 @@ export default function EnrollmentScreen({
 
   const [dropping, setDropping] = useState<string | null>(null);
   const [dropReason, setDropReason] = useState('');
+  // A pending enrollment is rejected; an enrolled one is dropped. Both need a reason.
+  const [dropAs, setDropAs] = useState<'dropped' | 'rejected'>('dropped');
 
   function reset() { setFlash(null); setFlashError(null); setErrors({}); }
 
@@ -109,6 +112,8 @@ export default function EnrollmentScreen({
   }
 
   async function confirmEnrollment(enrollment: EnrollmentRow) {
+    if (busy) return;
+    if (!window.confirm(`Approve this enrollment for SY ${enrollment.schoolYear}, semester ${enrollment.semester}? The student becomes Enrolled. This cannot be undone.`)) return;
     setBusy(true); reset();
     const result = await api.post(`/api/v1/enrollments/${enrollment.id}/transition`, {
       status: 'enrolled', reason: '',
@@ -128,12 +133,12 @@ export default function EnrollmentScreen({
     if (!dropping) return;
     setBusy(true); reset();
     const result = await api.post(`/api/v1/enrollments/${dropping}/transition`, {
-      status: 'dropped', reason: dropReason,
+      status: dropAs, reason: dropReason,
     });
     setBusy(false);
     if (!result.ok) { setErrors(result.errors ?? {}); if (!result.errors) setFlashError(result.message); return; }
     setDropping(null); setDropReason('');
-    setFlash('Enrollment dropped.');
+    setFlash(dropAs === 'rejected' ? 'Enrollment rejected.' : 'Enrollment dropped.');
     router.refresh();
   }
 
@@ -269,14 +274,14 @@ export default function EnrollmentScreen({
                             Confirm Enrollment
                           </button>
                           <button type="button" disabled={busy} className={BUTTON_SECONDARY}
-                            onClick={() => { reset(); setDropping(e.id); setDropReason(''); }}>
-                            Drop
+                            onClick={() => { reset(); setDropAs('rejected'); setDropping(e.id); setDropReason(''); }}>
+                            Reject
                           </button>
                         </div>
                       )}
                       {canEnroll && e.status === 'enrolled' && (
                         <button type="button" disabled={busy} className={BUTTON_SECONDARY}
-                          onClick={() => { reset(); setDropping(e.id); setDropReason(''); }}>
+                          onClick={() => { reset(); setDropAs('dropped'); setDropping(e.id); setDropReason(''); }}>
                           Drop
                         </button>
                       )}
@@ -326,7 +331,7 @@ export default function EnrollmentScreen({
             </div>
             <div>
               <label className={LABEL_CLASS} htmlFor="en-level">Year Level</label>
-              <input id="en-level" type="number" min={1} max={4} className={INPUT_CLASS} value={enrollForm.yearLevel}
+              <input id="en-level" type="number" min={1} max={MAX_YEAR_LEVEL} className={INPUT_CLASS} value={enrollForm.yearLevel}
                 onChange={(e) => setEnrollForm({ ...enrollForm, yearLevel: Number(e.target.value) })} required />
               <FieldError messages={errors.yearLevel} />
             </div>
@@ -339,7 +344,7 @@ export default function EnrollmentScreen({
       </Modal>
 
       {/* Drop enrollment */}
-      <Modal open={dropping !== null} onClose={() => setDropping(null)} title="Drop Enrollment" maxWidth="sm:max-w-lg">
+      <Modal open={dropping !== null} onClose={() => setDropping(null)} title={dropAs === 'rejected' ? 'Reject Enrollment' : 'Drop Enrollment'} maxWidth="sm:max-w-lg">
         <form onSubmit={confirmDrop} className="space-y-4">
           <div>
             <label className={LABEL_CLASS} htmlFor="drop-reason">Reason</label>
@@ -349,7 +354,7 @@ export default function EnrollmentScreen({
           </div>
           <div className="flex justify-end gap-3">
             <button type="button" className={BUTTON_SECONDARY} onClick={() => setDropping(null)}>Cancel</button>
-            <button type="submit" className={BUTTON_DANGER} disabled={busy}>{busy ? 'Dropping…' : 'Drop'}</button>
+            <button type="submit" className={BUTTON_DANGER} disabled={busy}>{dropAs === 'rejected' ? (busy ? 'Rejecting…' : 'Reject') : (busy ? 'Dropping…' : 'Drop')}</button>
           </div>
         </form>
       </Modal>

@@ -39,7 +39,8 @@
     "test:instructor": "node scripts/e2e/diploma-instructor.mjs",
     "test:assessment": "node scripts/e2e/assessment-center.mjs",
     "test:pdf-gaps": "node scripts/e2e/pdf-gaps.mjs",
-    "test:staff-roles": "node scripts/e2e/staff-roles.mjs"
+    "test:staff-roles": "node scripts/e2e/staff-roles.mjs",
+    "test:enrollment": "node scripts/e2e/enrollment-approval.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

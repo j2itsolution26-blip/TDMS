@@ -3,6 +3,8 @@ import { AppError, NotFoundError } from '@/server/lib/http';
 import type { z } from 'zod';
 import type { enrollmentSchema } from '@/server/schemas/schemas';
 import { hasAllRequiredCredentialsVerified } from './student-service';
+import { recordAudit, actorLabel, type AuditContext } from './audit-log';
+import { ENROLLMENT_STATUS_LABELS, ENROLLMENT_TRANSITIONS, type AuthUser, type EnrollmentStatus } from '@shared/types/domain';
 
 /**
  * Enrolment and credential verification.
@@ -137,7 +139,7 @@ export async function listAllEnrollments(options: { page?: number; status?: stri
   const page = options.page ?? 1;
   const where = options.status ? { status: options.status } : {};
 
-  const [rows, total] = await Promise.all([
+  const [rows, total, byStatus] = await Promise.all([
     prisma.enrollment.findMany({
       where,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -150,35 +152,77 @@ export async function listAllEnrollments(options: { page?: number; status?: stri
         yearLevel: true,
         status: true,
         createdAt: true,
+        approvedAt: true,
+        approver: { select: { name: true } },
+        curriculum: { select: { versionLabel: true } },
+        // The latest decision, for who rejected or dropped it, when and why.
+        statusHistory: { orderBy: { id: 'desc' }, take: 1, select: { toStatus: true, reason: true, createdAt: true, actor: { select: { name: true } } } },
         student: {
           select: {
             id: true,
             studentNumber: true,
             firstName: true,
             lastName: true,
-            program: { select: { code: true } },
+            programId: true,
+            yearLevel: true,
+            program: { select: { code: true, name: true } },
           },
         },
       },
     }),
     prisma.enrollment.count({ where }),
+    prisma.enrollment.groupBy({ by: ['status'], _count: { _all: true } }),
   ]);
 
+  // Required documents of the students whose enrollment is still pending, in two queries.
+  const pending = rows.filter((e) => e.status === 'pending');
+  const programIds = [...new Set(pending.map((e) => e.student.programId))];
+  const requirements = pending.length
+    ? await prisma.credentialRequirement.findMany({
+        where: { isActive: true, isRequired: true, OR: [{ programId: null }, { programId: { in: programIds } }] },
+        select: { id: true, name: true, programId: true },
+        orderBy: { name: 'asc' },
+      })
+    : [];
+  const verified = pending.length
+    ? await prisma.studentCredential.findMany({
+        where: { studentId: { in: pending.map((e) => e.student.id) }, status: 'verified', credentialRequirementId: { in: requirements.map((r) => r.id) } },
+        select: { studentId: true, credentialRequirementId: true },
+      })
+    : [];
+
+  const documentsFor = (studentId: bigint, programId: bigint) => {
+    const required = requirements.filter((r) => r.programId === null || r.programId === programId);
+    const done = new Set(verified.filter((v) => v.studentId === studentId).map((v) => v.credentialRequirementId.toString()));
+    const missing = required.filter((r) => !done.has(r.id.toString())).map((r) => r.name);
+    return { required: required.length, verified: required.length - missing.length, missing };
+  };
+
   return {
-    rows: rows.map((e) => ({
-      id: e.id.toString(),
-      schoolYear: e.schoolYear,
-      semester: e.semester,
-      yearLevel: e.yearLevel,
-      status: e.status,
-      createdAt: e.createdAt?.toISOString() ?? null,
-      student: {
-        id: e.student.id.toString(),
-        studentNumber: e.student.studentNumber,
-        name: `${e.student.firstName} ${e.student.lastName}`,
-        programCode: e.student.program.code,
-      },
-    })),
+    rows: rows.map((e) => {
+      const last = e.statusHistory[0];
+      return {
+        id: e.id.toString(),
+        schoolYear: e.schoolYear,
+        semester: e.semester,
+        yearLevel: e.yearLevel,
+        status: e.status,
+        createdAt: e.createdAt?.toISOString() ?? null,
+        curriculum: e.curriculum?.versionLabel ?? null,
+        approvedAt: e.approvedAt?.toISOString() ?? null,
+        approver: e.approver?.name ?? null,
+        decision: last && last.toStatus === e.status ? { by: last.actor?.name ?? null, at: last.createdAt.toISOString(), reason: last.reason } : null,
+        documents: e.status === 'pending' ? documentsFor(e.student.id, e.student.programId) : null,
+        student: {
+          id: e.student.id.toString(),
+          studentNumber: e.student.studentNumber,
+          name: `${e.student.firstName} ${e.student.lastName}`,
+          programCode: e.student.program.code,
+          programName: e.student.program.name,
+        },
+      };
+    }),
+    counts: Object.fromEntries(byStatus.map((g) => [g.status, g._count._all])) as Record<string, number>,
     page,
     total,
     lastPage: Math.max(1, Math.ceil(total / ENROLLMENTS_PAGE_SIZE)),
@@ -222,21 +266,47 @@ export async function createEnrollment(input: z.infer<typeof enrollmentSchema>) 
 }
 
 /**
- * Port of Enrollment::transitionTo().
+ * Decide an enrollment: approve it (enrolled), reject it, or drop an enrolled
+ * one. Port of Enrollment::transitionTo(), tightened:
  *
- * The credential gate is checked BEFORE the transaction opens, exactly as
- * Laravel did, so a student with outstanding paperwork cannot be marked
- * enrolled. Moving to `enrolled` also stamps the approver and flips the
- * student to `active`; every transition is appended to the history table.
+ *   * only the moves in ENROLLMENT_TRANSITIONS are allowed, so an approved
+ *     enrollment cannot be approved again, and a rejected or dropped one
+ *     cannot be revived;
+ *   * the update is conditional on the status it was read in, inside the
+ *     transaction, so two people deciding at once cannot both win;
+ *   * rejecting and dropping need a reason, kept in the status history;
+ *   * approving still needs every required document verified, and stamps the
+ *     approver and flips the student to `active`, as before;
+ *   * every decision is written to the audit log.
  */
 export async function transitionEnrollment(
   id: bigint,
-  toStatus: string,
-  actorId: bigint,
+  toStatus: EnrollmentStatus,
+  actor: AuthUser,
   reason: string | null = null,
+  context?: AuditContext,
 ) {
-  const enrollment = await prisma.enrollment.findUnique({ where: { id } });
+  const enrollment = await prisma.enrollment.findUnique({
+    where: { id },
+    include: { student: { select: { id: true, studentNumber: true, firstName: true, lastName: true } } },
+  });
   if (!enrollment) throw new NotFoundError('Enrollment not found.');
+
+  const from = enrollment.status as EnrollmentStatus;
+  const allowed = ENROLLMENT_TRANSITIONS[from] ?? [];
+  if (!allowed.includes(toStatus)) {
+    throw new AppError(
+      from === toStatus
+        ? `This enrollment is already ${ENROLLMENT_STATUS_LABELS[from]?.toLowerCase() ?? from}.`
+        : `A ${ENROLLMENT_STATUS_LABELS[from]?.toLowerCase() ?? from} enrollment cannot be ${toStatus === 'enrolled' ? 'approved' : ENROLLMENT_STATUS_LABELS[toStatus]?.toLowerCase() ?? toStatus}.`,
+      409,
+      undefined,
+      'ENROLLMENT_ALREADY_DECIDED',
+    );
+  }
+  if ((toStatus === 'rejected' || toStatus === 'dropped') && !reason?.trim()) {
+    throw new AppError('Give a reason.', 422, { reason: ['Give a reason.'] });
+  }
 
   if (toStatus === 'enrolled') {
     const ready = await hasAllRequiredCredentialsVerified(enrollment.studentId);
@@ -245,11 +315,10 @@ export async function transitionEnrollment(
     }
   }
 
+  const actorId = BigInt(actor.id);
   await prisma.$transaction(async (tx) => {
-    const from = enrollment.status;
-
-    await tx.enrollment.update({
-      where: { id },
+    const done = await tx.enrollment.updateMany({
+      where: { id, status: from },
       data: {
         status: toStatus,
         approvedBy: toStatus === 'enrolled' ? actorId : enrollment.approvedBy,
@@ -257,15 +326,12 @@ export async function transitionEnrollment(
         updatedAt: new Date(),
       },
     });
+    if (done.count !== 1) {
+      throw new AppError('This enrollment was just decided by someone else. Reload to see it.', 409, undefined, 'ENROLLMENT_ALREADY_DECIDED');
+    }
 
     await tx.enrollmentStatusHistory.create({
-      data: {
-        enrollmentId: id,
-        fromStatus: from,
-        toStatus,
-        changedBy: actorId,
-        reason,
-      },
+      data: { enrollmentId: id, fromStatus: from, toStatus, changedBy: actorId, reason: reason?.trim() || null },
     });
 
     if (toStatus === 'enrolled') {
@@ -274,6 +340,15 @@ export async function transitionEnrollment(
         data: { status: 'active', updatedAt: new Date() },
       });
     }
+  });
+
+  const action = toStatus === 'enrolled' ? 'ENROLLMENT_APPROVED' : toStatus === 'rejected' ? 'ENROLLMENT_REJECTED' : 'ENROLLMENT_DROPPED';
+  await recordAudit({
+    action,
+    actor: actorLabel(actor),
+    target: `Enrollment: ${enrollment.student.studentNumber} (${enrollment.student.firstName} ${enrollment.student.lastName}), SY ${enrollment.schoolYear} semester ${enrollment.semester}`,
+    details: { enrollment_id: id.toString(), from, to: toStatus, ...(reason?.trim() ? { reason: reason.trim() } : {}) },
+    context,
   });
 }
 

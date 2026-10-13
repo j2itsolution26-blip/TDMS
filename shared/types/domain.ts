@@ -62,7 +62,20 @@ export const ACCOUNT_STATUS_BADGE: Record<AccountStatus, string> = {
   SUSPENDED: 'rejected',
 };
 
-export const ENROLLMENT_STATUSES = ['pending', 'enrolled', 'dropped'] as const;
+export const ENROLLMENT_STATUSES = ['pending', 'enrolled', 'rejected', 'dropped'] as const;
+
+/**
+ * The decisions an enrollment can take. A pending enrollment is approved
+ * (enrolled) or rejected; an enrolled one can later be dropped. Rejected and
+ * dropped are final, and nothing goes back to pending — so a decision cannot
+ * be made twice, or quietly undone.
+ */
+export const ENROLLMENT_TRANSITIONS: Record<(typeof ENROLLMENT_STATUSES)[number], readonly (typeof ENROLLMENT_STATUSES)[number][]> = {
+  pending: ['enrolled', 'rejected'],
+  enrolled: ['dropped'],
+  rejected: [],
+  dropped: [],
+};
 
 export type SubjectType = (typeof SUBJECT_TYPES)[number];
 export type StudentStatus = (typeof STUDENT_STATUSES)[number];
@@ -208,6 +221,7 @@ export const CREDENTIAL_STATUS_LABELS: Record<CredentialStatus, string> = {
 export const ENROLLMENT_STATUS_LABELS: Record<EnrollmentStatus, string> = {
   pending: 'Pending',
   enrolled: 'Enrolled',
+  rejected: 'Rejected',
   dropped: 'Dropped',
 };
 

@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 import { prisma } from '@/server/lib/prisma';
 import { AppError, NotFoundError } from '@/server/lib/http';
-import { DAY_SHORT, formatClock, sectionLabel } from '@shared/lib/teaching';
+import { DAY_SHORT, formatClock, sectionCapacity, sectionLabel, SECTION_CAPACITY } from '@shared/lib/teaching';
 import type { AuthUser } from '@shared/types/domain';
 import { USER_MODEL_TYPE } from '@/server/auth/rbac';
 import { actorLabel, recordAudit, type AuditContext } from '@/server/services/audit-log';
@@ -216,6 +216,7 @@ export async function sectionRoster(id: bigint) {
     members: members.map((m) => shape(m.student)).sort((a, b) => a.name.localeCompare(b.name)),
     candidates: candidates.map(shape),
     assignedElsewhere: elsewhere,
+    capacity: sectionCapacity(members.length),
   };
 }
 
@@ -230,7 +231,14 @@ export async function sectionRoster(id: bigint) {
  *     never moved — they are reported back by name and section, so the office
  *     can remove them there first;
  *   * the count reported is what the database actually inserted, so two
- *     simultaneous requests cannot both claim the same students.
+ *     simultaneous requests cannot both claim the same students;
+ *   * a section holds at most SECTION_CAPACITY students. The section row is
+ *     locked (SELECT … FOR UPDATE) for the rest of the transaction before its
+ *     members are counted, so additions to one section run one after another
+ *     and each sees the others' students — two Admins cannot overfill it.
+ *     Asking for more than the free slots refuses the whole request (409
+ *     SECTION_CAPACITY) rather than adding some and dropping the rest; a
+ *     section already over the limit accepts nobody until it is brought down.
  */
 export async function addSectionStudents(user: AuthUser, id: bigint, studentIds: bigint[], context?: AuditContext) {
   const section = await prisma.section.findUnique({
@@ -254,12 +262,26 @@ export async function addSectionStudents(user: AuthUser, id: bigint, studentIds:
 
   const label = sectionLabel(section.program.code, section.yearLevel, section.name);
   const { added, conflicts, already } = await prisma.$transaction(async (tx) => {
+    // Serialise every addition to this section, then count with the lock held.
+    await tx.$queryRaw`SELECT id FROM sections WHERE id = ${id} FOR UPDATE`;
+    const current = await tx.sectionStudent.count({ where: { sectionId: id } });
+
     const placed = await tx.sectionStudent.findMany({
       where: { schoolYearId: section.schoolYearId, studentId: { in: unique } },
       select: { studentId: true, sectionId: true, section: { select: { name: true, yearLevel: true, program: { select: { code: true } } } } },
     });
     const placedIds = new Set(placed.map((p) => p.studentId.toString()));
     const toAdd = unique.filter((sid) => !placedIds.has(sid.toString()));
+
+    const cap = sectionCapacity(current);
+    if (toAdd.length > cap.available) {
+      const why = cap.over
+        ? `${label} already has ${current} students, more than its limit of ${SECTION_CAPACITY}. Remove students before adding more.`
+        : cap.available === 0
+          ? `${label} is full (${SECTION_CAPACITY} of ${SECTION_CAPACITY} students).`
+          : `${label} has ${cap.available} slot${cap.available === 1 ? '' : 's'} left (${current} of ${SECTION_CAPACITY}); you selected ${toAdd.length}. Select at most ${cap.available}.`;
+      throw new AppError(why, 409, { studentIds: [why] }, 'SECTION_CAPACITY');
+    }
     const result = await tx.sectionStudent.createMany({
       data: toAdd.map((studentId) => ({ sectionId: id, studentId, schoolYearId: section.schoolYearId })),
       skipDuplicates: true,

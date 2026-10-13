@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import Modal from '@/components/Modal';
 import { api } from '@/lib/api-client';
-import { DAY_NAMES, SECTION_YEAR_LEVELS, SEMESTER_LABELS, yearLevelLabel } from '@shared/lib/teaching';
+import { DAY_NAMES, SECTION_CAPACITY, SECTION_YEAR_LEVELS, SEMESTER_LABELS, yearLevelLabel } from '@shared/lib/teaching';
 import { useAction } from './client-kit';
 import SectionRoster from './SectionRoster';
 import { BTN, BTN_SECONDARY, BTN_SMALL, Card, Chip, Empty, Field, Flash, INPUT, TD, TH, Table } from './kit';
@@ -64,7 +64,10 @@ export default function ClassSetupScreen({ setup, schoolYearId, archived }: { se
                 <tr key={s.id}>
                   <td className={`${TD} font-semibold`}>{s.label}</td>
                   <td className={TD}>{s.program.name}</td>
-                  <td className={`${TD} tabular-nums`}>{s.students}</td>
+                  <td className={`${TD} tabular-nums`}>
+                    {s.students}/{SECTION_CAPACITY}
+                    {s.students >= SECTION_CAPACITY && <span className="ml-2 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-inset ring-red-200">Full</span>}
+                  </td>
                   <td className={`${TD} tabular-nums`}>{s.classes}</td>
                   <td className={`${TD} whitespace-nowrap text-right`}>
                     <div className="flex justify-end gap-1.5">

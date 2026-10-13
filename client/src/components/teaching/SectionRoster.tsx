@@ -3,7 +3,7 @@ import { CheckCircle2, GraduationCap, Info, Loader2, Search, Trash2, UserPlus, U
 import { Avatar } from '@/components/ui';
 import { api } from '@/lib/api-client';
 import { useRouter } from '@/lib/navigation';
-import { yearLevelLabel } from '@shared/lib/teaching';
+import { yearLevelLabel, type SectionCapacity } from '@shared/lib/teaching';
 import { FOCUS } from './kit';
 
 /**
@@ -23,6 +23,7 @@ interface RosterData {
   members: Person[];
   candidates: Person[];
   assignedElsewhere: number;
+  capacity: SectionCapacity;
 }
 interface AddResult { added: number; already: number; conflicts: { studentNumber: string; name: string; section: string }[] }
 
@@ -66,6 +67,8 @@ export default function SectionRoster({ sectionId, archived }: { sectionId: stri
   }
 
   const readOnly = archived || data.section.archived;
+  const cap = data.capacity;
+  const tooMany = picked.size > cap.available;
   const toggle = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const visibleIds = candidates.map((c) => c.id);
   const allVisiblePicked = visibleIds.length > 0 && visibleIds.every((id) => picked.has(id));
@@ -75,7 +78,12 @@ export default function SectionRoster({ sectionId, archived }: { sectionId: stri
     setBusy(true); setError(null); setResult(null); setRemoved(null);
     const r = await api.post<AddResult>(`/api/v1/sections/${sectionId}/students`, { studentIds: [...picked] });
     setBusy(false);
-    if (!r.ok) { setError(r.message); return; }
+    if (!r.ok) {
+      setError(r.message);
+      // Someone else may have just filled it: show the section as it is now.
+      if (r.code === 'SECTION_CAPACITY') await load();
+      return;
+    }
     setResult(r.data);
     setPicked(new Set());
     await load();
@@ -111,8 +119,28 @@ export default function SectionRoster({ sectionId, archived }: { sectionId: stri
         <dl className="grid grid-cols-3 gap-4 border-t border-slate-200 pt-3 text-sm sm:flex sm:gap-6 sm:border-0 sm:pt-0">
           <div><dt className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">Year level</dt><dd className="font-semibold text-ink">{yearLevelLabel(data.section.yearLevel)}</dd></div>
           <div><dt className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">Section</dt><dd className="font-semibold text-ink">{data.section.name}</dd></div>
-          <div><dt className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">Students</dt><dd className="font-semibold tabular-nums text-ink">{data.members.length}</dd></div>
+          <div><dt className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">Students</dt><dd className="font-semibold tabular-nums text-ink">{cap.count}/{cap.capacity}</dd></div>
         </dl>
+      </div>
+
+      {/* Capacity */}
+      <div className="space-y-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+          <p className="text-ink">
+            <span className="font-semibold tabular-nums">{cap.count}/{cap.capacity}</span> students
+            <span className="text-muted"> · {cap.available === 0 ? 'no slots available' : `${cap.available} slot${cap.available === 1 ? '' : 's'} available`}</span>
+          </p>
+          {cap.level === 'full' && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700 ring-1 ring-inset ring-red-200">Section Full</span>
+          )}
+          {cap.level === 'near' && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800 ring-1 ring-inset ring-amber-200">Nearly full</span>
+          )}
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-label="Section capacity" aria-valuemin={0} aria-valuemax={cap.capacity} aria-valuenow={cap.count} aria-valuetext={`${cap.count} of ${cap.capacity} students`}>
+          <div className={`h-full rounded-full ${cap.level === 'full' ? 'bg-red-500' : cap.level === 'near' ? 'bg-amber-500' : 'bg-primary-600'}`} style={{ width: `${Math.min(100, (cap.count / cap.capacity) * 100)}%` }} />
+        </div>
+        {cap.over && <p className="text-xs font-medium text-red-700">This section has more students than its limit of {cap.capacity}. No one can be added until it is brought down; nobody is removed automatically.</p>}
       </div>
 
       {/* Results of the last action */}
@@ -199,7 +227,12 @@ export default function SectionRoster({ sectionId, archived }: { sectionId: stri
               </div>
             </header>
 
-            {data.candidates.length === 0 ? (
+            {cap.available === 0 ? (
+              <div className="flex gap-2 px-4 py-6 text-sm text-red-800">
+                <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <p>This section has reached its maximum of {cap.capacity} students. Remove a student, or use another section, to place more.</p>
+              </div>
+            ) : data.candidates.length === 0 ? (
               <div className="flex gap-2 px-4 py-6 text-sm text-muted">
                 <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                 <p>
@@ -243,8 +276,11 @@ export default function SectionRoster({ sectionId, archived }: { sectionId: stri
             )}
 
             <footer className="mt-auto flex items-center justify-between gap-3 border-t border-slate-200 px-4 py-3">
-              <p className="text-sm text-muted" aria-live="polite"><span className="font-semibold tabular-nums text-ink">{picked.size}</span> selected</p>
-              <button type="button" className={BTN_PRIMARY} disabled={busy || picked.size === 0} aria-busy={busy} onClick={add}>
+              <p className={`text-sm ${tooMany ? 'font-medium text-red-700' : 'text-muted'}`} aria-live="polite">
+                <span className="font-semibold tabular-nums">{picked.size}</span> selected · {cap.available} slot{cap.available === 1 ? '' : 's'} left
+                {tooMany && <span className="block text-xs">Select at most {cap.available}.</span>}
+              </p>
+              <button type="button" className={BTN_PRIMARY} disabled={busy || picked.size === 0 || tooMany || cap.available === 0} aria-busy={busy} onClick={add}>
                 {busy && picked.size > 0 ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <UserPlus className="h-4 w-4" aria-hidden="true" />}
                 {busy && picked.size > 0 ? 'Adding…' : 'Add to Section'}
               </button>

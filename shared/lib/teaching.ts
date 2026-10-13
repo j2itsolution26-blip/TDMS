@@ -294,6 +294,36 @@ export const MAX_YEAR_LEVEL = 3;
 export const SECTION_YEAR_LEVELS = YEAR_LEVELS;
 
 /**
+ * The most students one section may hold — per section, whatever its program,
+ * year level or school year. The single definition: the server enforces it
+ * (services/teaching/class-setup.ts) and the screens display it.
+ */
+export const SECTION_CAPACITY = 25;
+/** From this many students a section shows as nearly full. */
+export const SECTION_NEARLY_FULL = 20;
+
+export interface SectionCapacity {
+  count: number;
+  capacity: number;
+  /** Never negative, even for a section that is already over capacity. */
+  available: number;
+  /** 'open' below SECTION_NEARLY_FULL, then 'near', then 'full' at capacity (and above it). */
+  level: 'open' | 'near' | 'full';
+  /** More students than the capacity — possible only for sections filled before the limit existed. */
+  over: boolean;
+}
+
+export function sectionCapacity(count: number, capacity = SECTION_CAPACITY): SectionCapacity {
+  return {
+    count,
+    capacity,
+    available: Math.max(0, capacity - count),
+    level: count >= capacity ? 'full' : count >= SECTION_NEARLY_FULL ? 'near' : 'open',
+    over: count > capacity,
+  };
+}
+
+/**
  * How a section is named everywhere: "DIT-1 · 1st Year · Section A".
  * The separators matter — a program code ending in a digit ("DIT-1") would
  * otherwise run into the year ("DIT-1 1st Year" reads as "DIT-11st Year").

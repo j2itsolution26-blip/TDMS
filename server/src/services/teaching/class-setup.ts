@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 import { prisma } from '@/server/lib/prisma';
 import { AppError, NotFoundError } from '@/server/lib/http';
-import { DAY_SHORT, formatClock, yearLevelLabel } from '@shared/lib/teaching';
+import { DAY_SHORT, formatClock, sectionLabel } from '@shared/lib/teaching';
 import type { AuthUser } from '@shared/types/domain';
 import { USER_MODEL_TYPE } from '@/server/auth/rbac';
 import { actorLabel, recordAudit, type AuditContext } from '@/server/services/audit-log';
@@ -89,7 +89,7 @@ export async function classSetupOverview(schoolYearId: bigint) {
       id: s.id.toString(),
       name: s.name,
       yearLevel: s.yearLevel,
-      label: `${s.program.code} ${yearLevelLabel(s.yearLevel)} · Section ${s.name}`,
+      label: sectionLabel(s.program.code, s.yearLevel, s.name),
       program: { id: s.program.id.toString(), code: s.program.code, name: s.program.name },
       students: s._count.students,
       classes: s._count.classes,
@@ -103,7 +103,7 @@ export async function classSetupOverview(schoolYearId: bigint) {
       instructorId: c.instructorId?.toString() ?? null,
       instructorName: c.instructor?.name ?? null,
       subject: { id: c.subject.id.toString(), code: c.subject.code, title: c.subject.title },
-      section: { id: c.section.id.toString(), label: `${c.section.program.code} ${c.section.yearLevel}-${c.section.name}` },
+      section: { id: c.section.id.toString(), label: sectionLabel(c.section.program.code, c.section.yearLevel, c.section.name) },
       schedules: c.schedules,
       scheduleText: c.schedules.map((s) => `${DAY_SHORT[s.dayOfWeek]} ${formatClock(s.startTime)}–${formatClock(s.endTime)}`).join(', '),
     })),
@@ -129,7 +129,7 @@ export async function createSection(user: AuthUser, input: z.output<typeof secti
   await recordAudit({
     action: 'SECTION_CREATED',
     actor: actorLabel(user),
-    target: `Section ${program.code} ${input.yearLevel}-${input.name} (${year.label})`,
+    target: `${sectionLabel(program.code, input.yearLevel, input.name)} (${year.label})`,
     context,
   });
   return section;
@@ -193,7 +193,7 @@ export async function sectionRoster(id: bigint) {
   });
 
   return {
-    section: { id: section.id.toString(), label: `${section.program.code} ${section.yearLevel}-${section.name}`, yearLevel: section.yearLevel },
+    section: { id: section.id.toString(), label: sectionLabel(section.program.code, section.yearLevel, section.name), yearLevel: section.yearLevel },
     members: members.map((m) => shape(m.student)).sort((a, b) => a.name.localeCompare(b.name)),
     candidates: candidates.map(shape),
   };
@@ -217,7 +217,7 @@ export async function addSectionStudents(user: AuthUser, id: bigint, studentIds:
   const takenIds = new Set(taken.map((t) => t.studentId.toString()));
   const toAdd = studentIds.filter((sid) => !takenIds.has(sid.toString()));
 
-  const label = `${section.program.code} ${section.yearLevel}-${section.name}`;
+  const label = sectionLabel(section.program.code, section.yearLevel, section.name);
   await prisma.$transaction(async (tx) => {
     await tx.sectionStudent.createMany({
       data: toAdd.map((studentId) => ({ sectionId: id, studentId, schoolYearId: section.schoolYearId })),
@@ -244,7 +244,7 @@ export async function addSectionStudents(user: AuthUser, id: bigint, studentIds:
   await recordAudit({
     action: 'SECTION_STUDENTS_ADDED',
     actor: actorLabel(user),
-    target: `Section ${label} (${section.schoolYear.label})`,
+    target: `${label} (${section.schoolYear.label})`,
     details: { added: toAdd.length, alreadyInASection: takenIds.size },
     context,
   });
@@ -278,7 +278,7 @@ export async function createClass(user: AuthUser, input: z.output<typeof classSc
   if (clash) throw new AppError('This section already has that subject this semester.', 422, { subjectId: ['Already offered to this section this semester.'] });
 
   const instructor = input.instructorId ? await requireInstructorAccount(input.instructorId) : null;
-  const label = `${subject.title} — ${section.program.code} ${section.yearLevel}-${section.name}`;
+  const label = `${subject.title} — ${sectionLabel(section.program.code, section.yearLevel, section.name)}`;
 
   const cls = await prisma.$transaction(async (tx) => {
     const created = await tx.classOffering.create({
@@ -324,7 +324,7 @@ export async function updateClass(user: AuthUser, id: bigint, input: z.output<ty
 
   const instructor = input.instructorId ? await requireInstructorAccount(input.instructorId) : null;
   const changedInstructor = (instructor?.id ?? null)?.toString() !== cls.instructorId?.toString();
-  const label = `${cls.subject.title} — ${cls.section.program.code} ${cls.section.yearLevel}-${cls.section.name}`;
+  const label = `${cls.subject.title} — ${sectionLabel(cls.section.program.code, cls.section.yearLevel, cls.section.name)}`;
 
   await prisma.$transaction(async (tx) => {
     await tx.classOffering.update({

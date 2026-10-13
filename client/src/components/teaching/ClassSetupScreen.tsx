@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import Modal from '@/components/Modal';
 import { api } from '@/lib/api-client';
-import { DAY_NAMES, SEMESTER_LABELS, yearLevelLabel } from '@shared/lib/teaching';
+import { DAY_NAMES, SECTION_YEAR_LEVELS, SEMESTER_LABELS, yearLevelLabel } from '@shared/lib/teaching';
 import { useAction } from './client-kit';
 import { BTN, BTN_SECONDARY, BTN_SMALL, Card, Chip, Empty, Field, Flash, INPUT, TD, TH, Table } from './kit';
 
@@ -133,7 +133,7 @@ function SectionForm({ setup, schoolYearId, onDone }: { setup: Setup; schoolYear
       <div className="grid grid-cols-2 gap-4">
         <Field label="Year level" htmlFor="sec-year" error={errors.yearLevel}>
           <select id="sec-year" className={INPUT} value={f.yearLevel} onChange={(e) => setF({ ...f, yearLevel: e.target.value })}>
-            {[1, 2, 3, 4].map((y) => <option key={y} value={y}>{yearLevelLabel(y)}</option>)}
+            {SECTION_YEAR_LEVELS.map((y) => <option key={y} value={y}>{yearLevelLabel(y)}</option>)}
           </select>
         </Field>
         <Field label="Section name" htmlFor="sec-name" error={errors.name}>

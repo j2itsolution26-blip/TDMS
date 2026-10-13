@@ -284,6 +284,18 @@ export function yearLevelLabel(level: number): string {
   return `${level}${suffix} Year`;
 }
 
+/** A diploma runs three years, so sections are opened for 1st to 3rd Year only. */
+export const SECTION_YEAR_LEVELS = [1, 2, 3] as const;
+
+/**
+ * How a section is named everywhere: "DIT-1 · 1st Year · Section A".
+ * The separators matter — a program code ending in a digit ("DIT-1") would
+ * otherwise run into the year ("DIT-1 1st Year" reads as "DIT-11st Year").
+ */
+export function sectionLabel(programCode: string, yearLevel: number, name: string): string {
+  return `${programCode} · ${yearLevelLabel(yearLevel)} · Section ${name}`;
+}
+
 // --- Badges -----------------------------------------------------------------------
 
 export const BADGES = {

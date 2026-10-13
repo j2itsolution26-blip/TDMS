@@ -59,7 +59,8 @@ export const semesterSchema = z.object({ semester: z.coerce.number().int().min(1
 export const sectionSchema = z.object({
   schoolYearId: idSchema,
   programId: idSchema,
-  yearLevel: z.coerce.number().int().min(1).max(6),
+  // A diploma runs three years (SECTION_YEAR_LEVELS).
+  yearLevel: z.coerce.number().int('Choose 1st, 2nd or 3rd Year.').min(1, 'Choose 1st, 2nd or 3rd Year.').max(3, 'Choose 1st, 2nd or 3rd Year.'),
   name: required(50),
 });
 

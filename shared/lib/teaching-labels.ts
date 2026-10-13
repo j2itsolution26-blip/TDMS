@@ -1,4 +1,4 @@
-import { yearLevelLabel } from './teaching';
+import { sectionLabel } from './teaching';
 
 /**
  * How a class and a student are named on screen. Shared, so a screen and the
@@ -21,7 +21,7 @@ export function classHeading(cls: LabelledClass) {
   return {
     subject: cls.subject.title,
     subjectCode: cls.subject.code,
-    detail: `${cls.section.program.code} · ${yearLevelLabel(cls.section.yearLevel)} · Section ${cls.section.name}`,
+    detail: sectionLabel(cls.section.program.code, cls.section.yearLevel, cls.section.name),
     program: cls.section.program.name,
   };
 }

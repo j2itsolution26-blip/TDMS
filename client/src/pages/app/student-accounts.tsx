@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import Link from '@/lib/link';
 import Modal from '@/components/Modal';
-import { Alert, Badge, BUTTON_PRIMARY, BUTTON_SECONDARY, Card, EmptyState, FieldError, INPUT_CLASS, LABEL_CLASS, PageHeader, Pagination } from '@/components/ui';
+import { Alert, Avatar, Badge, BUTTON_PRIMARY, BUTTON_SECONDARY, Card, EmptyState, INPUT_CLASS, LABEL_CLASS, PageHeader, Pagination } from '@/components/ui';
+import StudentAccountModal from '@/components/screens/StudentAccountModal';
 import { api } from '@/lib/api-client';
 import { useRouter } from '@/lib/navigation';
 import { Page } from '@/lib/page-data';
@@ -15,88 +16,21 @@ const STATE_TONE: Record<string, string> = { NONE: 'pending', ACTIVE: 'active', 
 /** The temporary password, shown once with a copy button. */
 function OneTimePassword({ email, password, name }: { email: string; password: string; name: string }) {
   const [copied, setCopied] = useState(false);
+  const [reveal, setReveal] = useState(false);
   return (
     <div className="space-y-3">
-      <Alert type="success" title={`Account created for ${name}`}>Give these to the student in person. The password is shown only now; they must change it at their first sign-in.</Alert>
+      <Alert type="success" title={`New temporary password for ${name}`}>Give it to the student in person. It is shown only now; they must change it at their next sign-in.</Alert>
       <dl className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
         <div><dt className="text-xs font-medium uppercase text-slate-500">Sign in with</dt><dd className="font-medium text-navy-900">{email}</dd></div>
         <div>
           <dt className="text-xs font-medium uppercase text-slate-500">Temporary password</dt>
           <dd className="flex items-center gap-3">
-            <code className="rounded bg-white px-2 py-1 font-mono text-base text-navy-900 ring-1 ring-slate-200">{password}</code>
-            <button type="button" className={BUTTON_SECONDARY} onClick={async () => { await navigator.clipboard?.writeText(password); setCopied(true); }}>{copied ? 'Copied' : 'Copy'}</button>
+            <code className="rounded bg-white px-2 py-1 font-mono text-base text-navy-900 ring-1 ring-slate-200" aria-live="polite">{reveal ? password : '•'.repeat(Math.min(password.length, 16))}</code>
+            <button type="button" className={BUTTON_SECONDARY} aria-pressed={reveal} onClick={() => setReveal((v) => !v)}>{reveal ? 'Hide' : 'Show'}</button>
+            <button type="button" className={BUTTON_SECONDARY} onClick={async () => { try { await navigator.clipboard.writeText(password); setCopied(true); } catch { setReveal(true); } }}>{copied ? 'Copied' : 'Copy'}</button>
           </dd>
         </div>
       </dl>
-    </div>
-  );
-}
-
-function CreateAccount({ row, onClose }: { row: Row; onClose: () => void }) {
-  const router = useRouter();
-  const [email, setEmail] = useState(row.email ?? '');
-  const [busy, setBusy] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [errors, setErrors] = useState<Record<string, string[]>>({});
-  const [created, setCreated] = useState<{ email: string; temporaryPassword: string } | null>(null);
-
-  async function create() {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    setErrors({});
-    const result = await api.post<{ email: string; temporaryPassword: string }>(`/api/v1/students/${row.id}/account`, { email: email || null });
-    setBusy(false);
-    if (!result.ok) {
-      setErrors(result.errors ?? {});
-      setError(result.message);
-      setConfirming(false);
-      if (result.code === 'ACCOUNT_ALREADY_EXISTS' || result.code === 'STUDENT_NOT_ENROLLED') router.refresh();
-      return;
-    }
-    setCreated(result.data);
-    router.refresh();
-  }
-
-  if (created) {
-    return (
-      <div className="space-y-4">
-        <OneTimePassword email={created.email} password={created.temporaryPassword} name={row.name} />
-        <div className="flex justify-end"><button type="button" className={BUTTON_PRIMARY} onClick={onClose}>Done</button></div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <dl className="grid gap-3 sm:grid-cols-2 text-sm">
-        <div><dt className="text-xs font-medium uppercase text-slate-500">Student</dt><dd className="text-navy-900">{row.name} · {row.studentNumber}</dd></div>
-        <div><dt className="text-xs font-medium uppercase text-slate-500">Program</dt><dd className="text-navy-900">{row.program.code} — {row.program.name}</dd></div>
-        <div><dt className="text-xs font-medium uppercase text-slate-500">Enrolled</dt><dd className="text-navy-900">{row.term ?? '—'} · Year {row.yearLevel}</dd></div>
-        <div><dt className="text-xs font-medium uppercase text-slate-500">Role</dt><dd className="text-navy-900">Student</dd></div>
-      </dl>
-      <div>
-        <label className={LABEL_CLASS} htmlFor="sa-email">Sign-in email</label>
-        <input id="sa-email" type="email" className={INPUT_CLASS} value={email} onChange={(e) => { setEmail(e.target.value); setConfirming(false); }} placeholder="student@example.com" />
-        <FieldError messages={errors.email} />
-        <p className="mt-1 text-xs text-slate-500">Taken from the student record; change it if they will sign in with another address.</p>
-      </div>
-      {error && !Object.keys(errors).length && <Alert type="danger">{error}</Alert>}
-      {!confirming ? (
-        <div className="flex justify-end gap-2">
-          <button type="button" className={BUTTON_SECONDARY} onClick={onClose}>Cancel</button>
-          <button type="button" className={BUTTON_PRIMARY} disabled={busy || !email.trim()} onClick={() => setConfirming(true)}>Create Student Account…</button>
-        </div>
-      ) : (
-        <div className="space-y-3 rounded-xl border border-green-200 bg-green-50 p-4">
-          <p className="text-sm text-navy-900">Create a student login for <b>{row.name}</b> with <b>{email}</b>? A temporary password is generated and shown once; the student must change it at first sign-in.</p>
-          <div className="flex justify-end gap-2">
-            <button type="button" className={BUTTON_SECONDARY} disabled={busy} onClick={() => setConfirming(false)}>Back</button>
-            <button type="button" className={BUTTON_PRIMARY} disabled={busy} onClick={create}>{busy ? 'Creating…' : 'Yes, create account'}</button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -194,7 +128,8 @@ function View(d: Data) {
           <EmptyState title="No enrolled students match" description="Only students with an approved (Enrolled) enrollment are listed here." />
         ) : (
           <>
-            <div className="overflow-x-auto">
+            {/* `relative`: contains the screen-reader-only header label, which would otherwise sit past the scroll box and widen the page on phones. */}
+            <div className="relative overflow-x-auto">
               <table className="min-w-full divide-y divide-border">
                 <thead className="bg-slate-50">
                   <tr>
@@ -205,8 +140,13 @@ function View(d: Data) {
                   {d.rows.map((r) => (
                     <tr key={r.id}>
                       <td className="px-6 py-3.5 text-sm">
-                        <Link href={`/students/${r.id}/enrollment`} className="font-medium text-primary-700 hover:underline">{r.name}</Link>
-                        <p className="text-xs text-slate-500">{r.studentNumber}</p>
+                        <div className="flex items-center gap-3">
+                          <Avatar name={r.name} size="sm" />
+                          <div className="min-w-0">
+                            <Link href={`/students/${r.id}/enrollment`} className="font-medium text-primary-700 hover:underline">{r.name}</Link>
+                            <p className="text-xs text-slate-500 tabular-nums">{r.studentNumber}</p>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-6 py-3.5 text-sm text-slate-600">{r.program.code}</td>
                       <td className="px-6 py-3.5 text-sm text-slate-600">{r.term ?? '—'}<p className="text-xs text-slate-500">Year {r.yearLevel}</p></td>
@@ -229,8 +169,8 @@ function View(d: Data) {
         )}
       </Card>
 
-      <Modal open={dialog !== null} onClose={() => setDialog(null)} title={dialog?.kind === 'create' ? 'Create Student Account' : 'Student Account'} subtitle={dialog ? `${dialog.row.name} · ${dialog.row.studentNumber}` : undefined}>
-        {dialog?.kind === 'create' && <CreateAccount key={dialog.row.id} row={dialog.row} onClose={() => setDialog(null)} />}
+      <StudentAccountModal student={dialog?.kind === 'create' ? dialog.row : null} onClose={() => setDialog(null)} />
+      <Modal open={dialog?.kind === 'reset'} onClose={() => setDialog(null)} title="Student Account" subtitle={dialog ? `${dialog.row.name} · ${dialog.row.studentNumber}` : undefined}>
         {dialog?.kind === 'reset' && <ResetPassword key={dialog.row.id} row={dialog.row} onClose={() => setDialog(null)} />}
       </Modal>
     </div>

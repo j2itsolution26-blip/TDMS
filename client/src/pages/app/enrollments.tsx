@@ -179,7 +179,8 @@ function View({ canOpenStudent, canDecide, data, filters, status }: Data) {
           />
         ) : (
           <>
-            <div className="overflow-x-auto">
+            {/* `relative`: contains the screen-reader-only header label, which would otherwise sit past the scroll box and widen the page on phones. */}
+            <div className="relative overflow-x-auto">
               <table className="min-w-full divide-y divide-border">
                 <thead className="bg-slate-50">
                   <tr>

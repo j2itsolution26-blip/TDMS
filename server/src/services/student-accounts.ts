@@ -118,6 +118,7 @@ export async function listStudentAccounts(f: StudentAccountFilters) {
         yearLevel: s.yearLevel,
         program: s.program,
         term: s.enrollments[0] ? `SY ${s.enrollments[0].schoolYear} · Semester ${s.enrollments[0].semester}` : null,
+        enrollment: s.enrollments[0] ? { schoolYear: s.enrollments[0].schoolYear, semester: s.enrollments[0].semester, status: 'enrolled' as const } : null,
         account: s.user
           ? { id: s.user.id.toString(), email: s.user.email, lastLoginAt: s.user.lastLoginAt?.toISOString() ?? null, createdAt: s.user.createdAt?.toISOString() ?? null }
           : null,

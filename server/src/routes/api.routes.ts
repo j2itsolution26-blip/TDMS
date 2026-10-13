@@ -98,6 +98,7 @@ import * as c93 from '@/server/controllers/school-years/_id/semester';
 import * as c94 from '@/server/controllers/sections';
 import * as c95 from '@/server/controllers/sections/_id';
 import * as c96 from '@/server/controllers/sections/_id/students';
+import * as c96b from '@/server/controllers/sections/_id/students/_studentId';
 import * as c97 from '@/server/controllers/setup';
 import * as c98 from '@/server/controllers/setup/status';
 import * as c99 from '@/server/controllers/staff';
@@ -250,6 +251,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
   mount(app, 'DELETE', `${API_PREFIX}/sections/:id`, c95.DELETE);
   mount(app, 'POST', `${API_PREFIX}/sections/:id/students`, c96.POST);
   mount(app, 'DELETE', `${API_PREFIX}/sections/:id/students`, c96.DELETE);
+  mount(app, 'GET', `${API_PREFIX}/sections/:id/students/:studentId`, c96b.GET);
   mount(app, 'POST', `${API_PREFIX}/setup`, c97.POST);
   mount(app, 'GET', `${API_PREFIX}/setup/status`, c98.GET);
   mount(app, 'GET', `${API_PREFIX}/staff`, c99.GET);

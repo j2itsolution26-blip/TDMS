@@ -43,7 +43,8 @@
     "test:enrollment": "node scripts/e2e/enrollment-approval.mjs",
     "test:student-accounts": "node scripts/e2e/student-accounts.mjs",
     "test:roster": "node scripts/e2e/section-roster.mjs",
-    "test:capacity": "node scripts/e2e/section-capacity.mjs"
+    "test:capacity": "node scripts/e2e/section-capacity.mjs",
+    "test:student-profile": "node scripts/e2e/section-student-profile.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

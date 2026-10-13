@@ -1,10 +1,11 @@
-import { useEffect, useId, useMemo, useState } from 'react';
-import { CheckCircle2, GraduationCap, Info, Loader2, Search, Trash2, UserPlus, Users } from 'lucide-react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { CheckCircle2, ChevronRight, GraduationCap, Info, Loader2, Search, Trash2, UserPlus, Users } from 'lucide-react';
 import { Avatar } from '@/components/ui';
 import { api } from '@/lib/api-client';
 import { useRouter } from '@/lib/navigation';
 import { yearLevelLabel, type SectionCapacity } from '@shared/lib/teaching';
 import { FOCUS } from './kit';
+import StudentInfoPanel from './StudentInfoPanel';
 
 /**
  * Section Roster — who is in a section, and adding more.
@@ -45,6 +46,9 @@ export default function SectionRoster({ sectionId, archived }: { sectionId: stri
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AddResult | null>(null);
   const [removed, setRemoved] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
+  // Stable, so the drawer's key listener is not re-bound on every render.
+  const closeInfo = useCallback(() => setViewing(null), []);
 
   async function load() {
     const r = await api.get<RosterData>(`/api/v1/sections/${sectionId}`);
@@ -181,13 +185,26 @@ export default function SectionRoster({ sectionId, archived }: { sectionId: stri
           ) : (
             <ul className="max-h-[22rem] divide-y divide-slate-100 overflow-y-auto">
               {data.members.map((m) => (
-                <li key={m.id} className="flex items-center gap-3 px-4 py-2.5">
-                  <Avatar name={displayName(m.name)} size="sm" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-ink">{displayName(m.name)}</p>
-                    <p className="text-xs tabular-nums text-muted">{m.studentNumber}{m.yearLevel ? ` · Year ${m.yearLevel}` : ''}</p>
-                  </div>
-                  {!readOnly && (removing === m.id ? (
+                // The whole row opens Student Information; the button inside is
+                // what keyboards and screen readers reach (Enter/Space), and where focus
+                // returns when the panel closes.
+                <li key={m.id} className="group flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors hover:bg-emerald-50/70" onClick={(e) => { e.currentTarget.querySelector('button')?.focus(); setViewing(m.id); }}>
+                  <button
+                    type="button"
+                    className={`flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left ${FOCUS}`}
+                    aria-label={`View ${displayName(m.name)}’s information`}
+                    title="View student information"
+                    onClick={(e) => { e.stopPropagation(); setViewing(m.id); }}
+                  >
+                    <Avatar name={displayName(m.name)} size="sm" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-ink group-hover:text-emerald-800">{displayName(m.name)}</span>
+                      <span className="block text-xs tabular-nums text-muted">{m.studentNumber}{m.yearLevel ? ` · Year ${m.yearLevel}` : ''}</span>
+                    </span>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 group-hover:text-emerald-700" aria-hidden="true" />
+                  </button>
+                  {/* Removal stays its own action: clicks here never open the panel. */}
+                  {!readOnly && <span onClick={(e) => e.stopPropagation()}>{removing === m.id ? (
                     <span className="flex items-center gap-1.5">
                       <button type="button" className={`${BTN_QUIET} border-red-200 text-red-700 hover:bg-red-50`} disabled={busy} onClick={() => remove(m)} autoFocus>
                         {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : null} Remove
@@ -198,7 +215,7 @@ export default function SectionRoster({ sectionId, archived }: { sectionId: stri
                     <button type="button" className={BTN_QUIET} aria-label={`Remove ${displayName(m.name)} from this section`} disabled={busy} onClick={() => setRemoving(m.id)}>
                       <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                     </button>
-                  ))}
+                  )}</span>}
                 </li>
               ))}
             </ul>
@@ -288,6 +305,8 @@ export default function SectionRoster({ sectionId, archived }: { sectionId: stri
           </section>
         )}
       </div>
+
+      <StudentInfoPanel sectionId={sectionId} studentId={viewing} onClose={closeInfo} />
     </div>
   );
 }

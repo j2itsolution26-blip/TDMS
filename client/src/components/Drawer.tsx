@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 /**
  * A right-side panel over the page — event details, mobile filters.
@@ -9,6 +10,9 @@ import { useEffect, useId, useRef, type ReactNode } from 'react';
  *     Shift+Tab wrap), and returns to whatever opened it on close;
  *   * Escape, the close button and the backdrop all close it;
  *   * the page behind does not scroll while it is open.
+ *
+ * Rendered into document.body, like Modal, so it covers the viewport even when
+ * opened from inside a dialog (an ancestor transform would otherwise box it in).
  */
 
 const FOCUSABLE =
@@ -45,6 +49,8 @@ export default function Drawer({
     function onKey(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         event.preventDefault();
+        // A drawer opened over a dialog closes alone; the dialog behind stays.
+        event.stopPropagation();
         onClose();
         return;
       }
@@ -75,7 +81,7 @@ export default function Drawer({
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-ink/40" onClick={onClose} aria-hidden="true" />
       <div
@@ -104,6 +110,7 @@ export default function Drawer({
         <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
         {footer && <footer className="border-t border-border px-5 py-3">{footer}</footer>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

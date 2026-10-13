@@ -8,6 +8,7 @@ import { actorLabel, recordAudit, type AuditContext } from '@/server/services/au
 import type { classSchema, classUpdateSchema, sectionSchema } from '@/server/schemas/teaching';
 import { notifyStudents, notifyUsers } from './notifications';
 import { assertWritableYear } from './school-years';
+import { studentCredentialPolicy, studentPolicy } from '@/server/auth/policies';
 
 /**
  * Class setup — the Admin's and Coordinator's side of the module.
@@ -324,6 +325,98 @@ export async function addSectionStudents(user: AuthUser, id: bigint, studentIds:
   });
   return { added, skipped: already + conflicts.length, already, conflicts };
 }
+
+/**
+ * One student of a section, for the roster's Student Information panel.
+ *
+ * Opened by whoever manages the roster (manageClasses), and only for a
+ * student who is in this section — anyone else is a 404, so the endpoint
+ * cannot be used to look students up. What it returns follows the existing
+ * policies rather than widening them:
+ *
+ *   * placement and academic details (program, curriculum, year level,
+ *     section, school year, enrollment) — everyone who may open the roster;
+ *   * personal details and the login account's status — only roles that may
+ *     read student records (studentPolicy.view: Admin, Director, Secretary);
+ *   * documents — only roles that may view student documents.
+ *
+ * Restricted parts are left out and named in `restricted`. Never returned:
+ * passwords, tokens, the QR token or document files.
+ */
+export async function sectionStudentProfile(user: AuthUser, sectionId: bigint, studentId: bigint) {
+  const membership = await prisma.sectionStudent.findFirst({
+    where: { sectionId, studentId },
+    select: {
+      createdAt: true,
+      section: { select: { name: true, yearLevel: true, program: { select: { code: true } }, schoolYear: { select: { label: true, currentSemester: true } } } },
+    },
+  });
+  if (!membership) throw new NotFoundError('That student is not in this section.');
+
+  const canRecords = studentPolicy.view(user);
+  const canDocuments = studentCredentialPolicy.viewAny(user);
+  const yearLabel = membership.section.schoolYear.label;
+
+  const [student, enrollments, credentials] = await Promise.all([
+    prisma.student.findUnique({
+      where: { id: studentId },
+      select: {
+        id: true, studentNumber: true, firstName: true, middleName: true, lastName: true, email: true, phone: true,
+        dateOfBirth: true, yearLevel: true, status: true, enrollmentDate: true,
+        program: { select: { code: true, name: true } },
+        curriculum: { select: { versionLabel: true, effectiveSchoolYear: true } },
+        user: { select: { email: true, status: true, mustChangePassword: true, createdAt: true, lastLoginAt: true } },
+      },
+    }),
+    prisma.enrollment.findMany({
+      where: { studentId },
+      orderBy: [{ schoolYear: 'desc' }, { semester: 'desc' }],
+      take: 6,
+      select: { schoolYear: true, semester: true, yearLevel: true, status: true, approvedAt: true, approver: { select: { name: true } } },
+    }),
+    canDocuments
+      ? prisma.studentCredential.findMany({
+          where: { studentId },
+          select: { status: true, version: true, submittedAt: true, verifiedAt: true, requirement: { select: { name: true, isRequired: true } }, verifier: { select: { name: true } } },
+        })
+      : Promise.resolve([]),
+  ]);
+  if (!student) throw new NotFoundError('Student not found.');
+
+  const iso = (d: Date | null | undefined) => d?.toISOString() ?? null;
+  const thisYear = enrollments.find((e) => e.schoolYear === yearLabel) ?? null;
+  const restricted: ('personal' | 'documents' | 'account')[] = [];
+  if (!canRecords) restricted.push('personal', 'account');
+  if (!canDocuments) restricted.push('documents');
+
+  return {
+    id: student.id.toString(),
+    studentNumber: student.studentNumber,
+    name: [student.firstName, student.middleName, student.lastName].filter(Boolean).join(' '),
+    status: student.status,
+    program: student.program,
+    curriculum: student.curriculum ? { version: student.curriculum.versionLabel, effective: student.curriculum.effectiveSchoolYear } : null,
+    yearLevel: student.yearLevel,
+    section: { label: sectionLabel(membership.section.program.code, membership.section.yearLevel, membership.section.name), schoolYear: yearLabel, currentSemester: membership.section.schoolYear.currentSemester, placedAt: iso(membership.createdAt) },
+    enrollment: thisYear ? { schoolYear: thisYear.schoolYear, semester: thisYear.semester, yearLevel: thisYear.yearLevel, status: thisYear.status, approvedAt: iso(thisYear.approvedAt), approvedBy: thisYear.approver?.name ?? null } : null,
+    enrollmentHistory: enrollments.map((e) => ({ schoolYear: e.schoolYear, semester: e.semester, yearLevel: e.yearLevel, status: e.status })),
+    personal: canRecords
+      ? { firstName: student.firstName, middleName: student.middleName, lastName: student.lastName, dateOfBirth: student.dateOfBirth ? student.dateOfBirth.toISOString().slice(0, 10) : null, email: student.email, phone: student.phone, enrollmentDate: student.enrollmentDate ? student.enrollmentDate.toISOString().slice(0, 10) : null }
+      : null,
+    documents: canDocuments
+      ? credentials
+          .map((c) => ({ name: c.requirement.name, required: c.requirement.isRequired, status: c.status, version: c.version, submittedAt: iso(c.submittedAt), verifiedAt: iso(c.verifiedAt), verifiedBy: c.verifier?.name ?? null }))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      : null,
+    account: canRecords
+      ? student.user
+        ? { exists: true as const, email: student.user.email, status: student.user.status, passwordChangeRequired: student.user.mustChangePassword, createdAt: iso(student.user.createdAt), lastSignIn: iso(student.user.lastLoginAt) }
+        : { exists: false as const }
+      : null,
+    restricted,
+  };
+}
+export type SectionStudentProfile = Awaited<ReturnType<typeof sectionStudentProfile>>;
 
 /** Removing a student keeps every attendance record and score they already have. */
 export async function removeSectionStudent(user: AuthUser, id: bigint, studentId: bigint, context?: AuditContext) {

@@ -99,7 +99,7 @@ function Breakdown({ chart }: { chart: ChartPanel }) {
  * for "Others", and every segment named in the legend with its count and
  * percentage — the colour is never the only way to tell parts apart.
  */
-const DONUT_COLOURS = ['#006B4F', '#2F9E74', '#6FC2A0', '#0B4A36', '#A8DCC5'];
+const DONUT_COLOURS = ['#087F5B', '#2563EB', '#7C3AED', '#D97706', '#E05B67'];
 const OTHERS_COLOUR = '#94A3B8';
 
 function Donut({ chart }: { chart: ChartPanel }) {

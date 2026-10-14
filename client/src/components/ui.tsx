@@ -24,7 +24,7 @@ export function Card({
   className?: string;
 }) {
   return (
-    <div className={cx('bg-card border border-border rounded-xl shadow-card', padding, className)}>
+    <div className={cx('bg-card border border-border rounded-2xl shadow-card', padding, className)}>
       {children}
     </div>
   );
@@ -41,7 +41,7 @@ export function Card({
  * their -50 backgrounds.
  */
 const BADGE_TONES: Record<string, string> = {
-  positive: 'bg-green-50 text-green-800 ring-green-600/20',
+  positive: 'bg-primary-50 text-primary-800 ring-primary-600/20',
   attention: 'bg-amber-50 text-amber-800 ring-amber-600/25',
   negative: 'bg-red-50 text-red-700 ring-red-600/20',
   info: 'bg-blue-50 text-blue-700 ring-blue-600/20',
@@ -49,7 +49,7 @@ const BADGE_TONES: Record<string, string> = {
 };
 
 const DOT: Record<string, string> = {
-  positive: 'bg-green-600',
+  positive: 'bg-primary-600',
   attention: 'bg-amber-500',
   negative: 'bg-red-600',
   info: 'bg-blue-600',
@@ -102,7 +102,7 @@ export function Avatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'md'
   return (
     <div
       className={cx(
-        'shrink-0 rounded-full bg-indigo-600 text-white font-semibold flex items-center justify-center',
+        'shrink-0 rounded-full bg-gradient-to-br from-primary-500 to-forest text-white font-semibold flex items-center justify-center',
         sizeClasses,
       )}
     >
@@ -125,7 +125,7 @@ export function PageHeader({
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 className="text-2xl sm:text-[28px] font-semibold text-ink leading-tight">{title}</h1>
+        <h1 className="text-2xl sm:text-[28px] font-bold tracking-[-0.02em] text-ink leading-tight">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
       </div>
       {actions && <div className="flex items-center gap-3">{actions}</div>}
@@ -204,19 +204,19 @@ export function Alert({
 // The Blade versions were one-liners delegating to Tailwind classes.
 
 export const BUTTON_PRIMARY =
-  'inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50';
+  'inline-flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50';
 
 export const BUTTON_SECONDARY =
-  'inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50';
+  'inline-flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2 text-sm font-semibold text-ink shadow-sm transition hover:bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50';
 
 export const BUTTON_DANGER =
-  'inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50';
+  'inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50';
 
 export const BUTTON_SUCCESS =
-  'inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50';
+  'inline-flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50';
 
 export const INPUT_CLASS =
-  'block w-full rounded-lg border-slate-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500';
+  'block w-full rounded-xl border-border text-sm text-ink shadow-sm focus:border-primary-600 focus:ring-primary-600';
 
 export const LABEL_CLASS = 'block text-sm font-medium text-slate-700';
 

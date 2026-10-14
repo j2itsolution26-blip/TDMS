@@ -31,6 +31,15 @@ const HINT_TONE: Record<NonNullable<Kpi['tone']>, string> = {
   attention: 'text-amber-800',
 };
 
+/** The KPI accents, by what a figure counts (the same rule as RoleDashboardParts). */
+const KPI_ACCENT: Record<DashboardIconName, string> = {
+  programs: 'bg-primary-50 text-primary-600', active: 'bg-primary-50 text-primary-600', health: 'bg-primary-50 text-primary-600', shield: 'bg-primary-50 text-primary-600',
+  students: 'bg-accent-blue-50 text-accent-blue', users: 'bg-accent-blue-50 text-accent-blue', staff: 'bg-accent-blue-50 text-accent-blue', profile: 'bg-accent-blue-50 text-accent-blue', session: 'bg-accent-blue-50 text-accent-blue',
+  applications: 'bg-accent-blue-50 text-accent-blue', enrollment: 'bg-accent-blue-50 text-accent-blue', documents: 'bg-accent-blue-50 text-accent-blue',
+  subjects: 'bg-accent-violet-50 text-accent-violet', curricula: 'bg-accent-violet-50 text-accent-violet', units: 'bg-accent-violet-50 text-accent-violet',
+  calendar: 'bg-sky-50 text-sky-700', audit: 'bg-slate-100 text-slate-600', keys: 'bg-slate-100 text-slate-600',
+};
+
 export function KpiCard({ kpi, size = 'default' }: { kpi: Kpi; size?: 'default' | 'large' }) {
   const value = typeof kpi.value === 'number' ? kpi.value.toLocaleString('en-US') : kpi.value;
   const large = size === 'large';
@@ -40,7 +49,7 @@ export function KpiCard({ kpi, size = 'default' }: { kpi: Kpi; size?: 'default' 
     <>
       <span className="flex items-start gap-3">
         <span
-          className={`flex shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600 ${large ? 'h-12 w-12' : 'h-10 w-10'}`}
+          className={`flex shrink-0 items-center justify-center rounded-xl ${kpi.tone === 'attention' ? 'bg-accent-amber-50 text-accent-amber' : KPI_ACCENT[kpi.icon]} ${large ? 'h-12 w-12' : 'h-10 w-10'}`}
         >
           <DashboardIcon name={kpi.icon} className={large ? 'h-6 w-6' : 'h-5 w-5'} />
         </span>
@@ -79,10 +88,10 @@ export function KpiCard({ kpi, size = 'default' }: { kpi: Kpi; size?: 'default' 
     </>
   );
 
-  const shell = `flex h-full flex-col rounded-xl border border-border bg-card shadow-card ${large ? 'p-5' : 'p-4'}`;
+  const shell = `flex h-full flex-col rounded-2xl border border-border bg-card shadow-card ${large ? 'p-5' : 'p-4'}`;
 
   return kpi.href ? (
-    <Link href={kpi.href} className={`${shell} transition-colors hover:border-primary-200 ${FOCUS}`}>
+    <Link href={kpi.href} className={`${shell} transition hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-card-hover motion-reduce:transform-none ${FOCUS}`}>
       {body}
     </Link>
   ) : (

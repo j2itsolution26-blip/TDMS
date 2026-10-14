@@ -39,18 +39,31 @@ const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
  * TEXT uses amber-700 (#B45309, 5.02:1).
  */
 
+/*
+ * 2026-10 refresh — the enterprise palette:
+ *   primary emerald #087F5B (primary-600) on white ...... 5.0:1
+ *   sidebar #104C3A · mint #E7F7EF · canvas #F4F7F5 · border #E1EAE5
+ *   text #152B35 on canvas ............................... 13.6:1
+ *   secondary text #5E716A on canvas / white ............. 4.8 / 5.2:1 — the
+ *     brief's #647770 measures 4.4:1 on the canvas, just short of AA
+ *   accents: blue #2563EB, violet #7C3AED, amber #D97706, coral #E05B67 —
+ *     fills and icons; their TEXT uses the darker -700 shade (see `accent`).
+ * Tailwind's `emerald-*` is aliased to the same scale, so every green in the
+ * application is one green.
+ */
 const primary = {
-  DEFAULT: '#006B4F',
-  50: '#EAF7F1',
-  100: '#D3EEE2',
-  200: '#A8DCC5',
-  300: '#6FC2A0',
-  400: '#2F9E74',
-  500: '#087A59',
-  600: '#006B4F',
-  700: '#005A42',
-  800: '#074B36',
-  900: '#073B2A',
+  DEFAULT: '#087F5B',
+  50: '#E7F7EF',
+  100: '#CDEFDF',
+  200: '#9EDDC2',
+  300: '#62C49E',
+  400: '#2BA77C',
+  500: '#11916A',
+  600: '#087F5B',
+  700: '#076A4C',
+  800: '#08563F',
+  900: '#0B3D2E',
+  950: '#062A1F',
 };
 
 export default {
@@ -65,8 +78,8 @@ export default {
           'Inter',
           ...defaultTheme.fontFamily.sans,
         ],
-        /** The signed-in workspace (shell and dashboard). */
-        jakarta: ['"Plus Jakarta Sans"', '"Segoe UI"', ...defaultTheme.fontFamily.sans],
+        /** The signed-in workspace (shell, dashboards and every module). */
+        jakarta: ['Inter', '"Segoe UI Variable"', '"Segoe UI"', ...defaultTheme.fontFamily.sans],
         /** The sign-in page's "Skills for a Better Tomorrow" tagline only. */
         script: ['"Great Vibes"', '"Segoe Script"', 'cursive'],
       },
@@ -74,15 +87,33 @@ export default {
         primary,
         /** The navigation surface. */
         forest: {
-          DEFAULT: '#073B2A',
-          light: '#0B4A36',
+          DEFAULT: '#104C3A',
+          light: '#14594A',
+          dark: '#0B3A2C',
           line: 'rgba(255,255,255,0.10)',
         },
-        ink: '#102A43',
-        muted: '#5B697C',
+        ink: '#152B35',
+        muted: '#5E716A',
 
         // Compatibility aliases — see the note above.
         indigo: primary,
+        emerald: primary,
+        /** KPI and chart accents, by meaning (see the dashboard parts). */
+        accent: {
+          emerald: '#087F5B',
+          blue: '#2563EB',
+          'blue-700': '#1D4ED8',
+          'blue-50': '#EFF4FF',
+          violet: '#7C3AED',
+          'violet-700': '#6D28D9',
+          'violet-50': '#F4EFFE',
+          amber: '#D97706',
+          'amber-700': '#B45309',
+          'amber-50': '#FEF6E7',
+          coral: '#E05B67',
+          'coral-700': '#B4323F',
+          'coral-50': '#FDEFF0',
+        },
         navy: {
           DEFAULT: '#102A43',
           50: '#F5F8F7',
@@ -94,8 +125,8 @@ export default {
           600: '#243B53',
           700: '#1B3246',
           800: '#152C40',
-          900: '#102A43',
-          950: '#0B1F33',
+          900: '#152B35',
+          950: '#0E1F27',
         },
 
         brand: { blue: '#2563EB' },
@@ -132,20 +163,20 @@ export default {
          *   deep  #0E4D37 on mint #3DDC97 ...... 5.6:1 (the sidebar's mint button)
          */
         tdms: {
-          deep: '#0E4D37',
-          deeper: '#093626',
-          green: '#16A06A',
-          mint: '#3DDC97',
-          ink: '#0F2A2E',
-          muted: '#5C6E71',
-          text: '#0E7A50',
-          bg: '#F3F6F5',
-          wash: '#E9F8F0',
-          hairline: '#E8EEEB',
+          deep: '#104C3A',
+          deeper: '#0B3A2C',
+          green: '#087F5B',
+          mint: '#34C38F',
+          ink: '#152B35',
+          muted: '#5E716A',
+          text: '#087F5B',
+          bg: '#F4F7F5',
+          wash: '#E7F7EF',
+          hairline: '#E1EAE5',
         },
-        surface: '#F5F8F7',
+        surface: '#F4F7F5',
         card: '#FFFFFF',
-        border: '#DCE7E2',
+        border: '#E1EAE5',
         success: '#16803C',
         warning: '#D97706',
         danger: '#DC2626',
@@ -153,9 +184,10 @@ export default {
       },
       boxShadow: {
         // Restrained: a hairline lift, not a floating card.
-        card: '0 1px 2px rgba(16, 42, 67, 0.04), 0 1px 3px rgba(16, 42, 67, 0.06)',
+        card: '0 1px 2px rgba(21, 43, 53, 0.04), 0 2px 8px -2px rgba(21, 43, 53, 0.06)',
+        'card-hover': '0 2px 4px rgba(21, 43, 53, 0.05), 0 12px 28px -12px rgba(21, 43, 53, 0.18)',
         // The workspace card: a 1px hairline ring and a large diffuse shadow, no border.
-        soft: '0 0 0 1px #E8EEEB, 0 1px 2px rgba(15, 42, 46, 0.04), 0 14px 36px -14px rgba(15, 42, 46, 0.14)',
+        soft: '0 0 0 1px #E1EAE5, 0 1px 2px rgba(15, 42, 46, 0.04), 0 14px 36px -14px rgba(15, 42, 46, 0.14)',
         'soft-lg': '0 0 0 1px #E1E9E5, 0 2px 4px rgba(15, 42, 46, 0.05), 0 22px 48px -16px rgba(15, 42, 46, 0.24)',
       },
     },

@@ -309,11 +309,47 @@ export interface DirectorWorkspace extends WorkspaceBase {
   graduation: GraduationRow[] | null;
 }
 
+/** One school term's enrollment records, by outcome — a real count per term. */
+export interface TermEnrollment {
+  key: string;
+  /** "2026-2027 · 1st Semester" */
+  label: string;
+  enrolled: number;
+  pending: number;
+  /** Rejected or dropped. */
+  other: number;
+}
+
+/** A status breakdown with a link to the list it summarises. */
+export interface StatusMix {
+  key: string;
+  title: string;
+  href: string;
+  segments: WorkSegment[];
+}
+
+/** Sections and seats per program and year level, for one school year. */
+export interface SectionLoad {
+  schoolYear: string;
+  programs: {
+    id: string;
+    code: string;
+    name: string;
+    levels: { level: number; sections: number; students: number; capacity: number }[];
+  }[];
+}
+
 export interface CoordinatorWorkspace extends WorkspaceBase {
   kind: 'coordinator';
   tasks: WorkItem[];
   readiness: ProgramReadiness[] | null;
   progress: WorkProgress[] | null;
+  /** The latest terms with enrollment records, oldest first; null when not permitted. */
+  enrollmentTrend: TermEnrollment[] | null;
+  /** Applications and enrollment by status, each only when permitted. */
+  statusMix: StatusMix[];
+  /** The active school year's sections; null when not permitted or no active year. */
+  sectionLoad: SectionLoad | null;
 }
 
 export interface SecretaryWorkspace extends WorkspaceBase {

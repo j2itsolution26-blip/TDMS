@@ -9,7 +9,10 @@ import {
   studentCredentialPolicy,
   studentPolicy,
   subjectPolicy,
+  teachingPolicy,
 } from '@/server/auth/policies';
+import { MAX_YEAR_LEVEL, SECTION_CAPACITY, SEMESTER_LABELS } from '@shared/lib/teaching';
+import { APPLICATION_STATUS_LABELS, ENROLLMENT_STATUS_LABELS } from '@shared/types/domain';
 import type { AuthUser } from '@shared/types/domain';
 import type {
   CoordinatorWorkspace,
@@ -21,6 +24,9 @@ import type {
   ProgramReadiness,
   QuickLink,
   SecretaryWorkspace,
+  SectionLoad,
+  StatusMix,
+  TermEnrollment,
   WorkItem,
   WorkMetric,
   WorkProgress,
@@ -87,7 +93,7 @@ async function applicationStatuses() {
 async function enrollmentStatuses() {
   const rows = await prisma.enrollment.groupBy({ by: ['status'], _count: { _all: true } });
   const c = byStatus(rows);
-  return { pending: c.pending ?? 0, enrolled: c.enrolled ?? 0, dropped: c.dropped ?? 0 };
+  return { pending: c.pending ?? 0, enrolled: c.enrolled ?? 0, rejected: c.rejected ?? 0, dropped: c.dropped ?? 0 };
 }
 
 async function credentialStatuses() {
@@ -494,16 +500,112 @@ export async function coordinatorWorkspace(user: AuthUser): Promise<CoordinatorW
       .map((p) => ({ id: `program-${p.id}`, title: 'Program updated', icon: 'programs' as const, subtitle: `${p.code} · ${p.name}`, at: p.updatedAt!.toISOString(), href: `/programs/${p.id}` })),
   ];
 
+  const charts = await coordinatorCharts(user, apps, enroll);
+
   return {
     kind: 'coordinator',
     metrics,
     tasks,
     readiness,
     progress: programRows ? progress : null,
+    ...charts,
     activity,
     quickActions: links(user, ['programs', 'subjects', 'applications', 'enrollments']),
     notTracked: ['Competencies'],
   };
+}
+
+/**
+ * The Coordinator's charts, from the same records as the figures above:
+ *
+ *   * enrollment records per school term (the latest six terms that have any),
+ *     split into enrolled, pending and rejected/dropped — the one real trend;
+ *   * applications and enrollment by status (the counts already taken above);
+ *   * the active school year's sections per program and year level, with the
+ *     students placed and the seats they hold (25 per section) — the same
+ *     counts Classes & Sections shows, gated by the same policy.
+ *
+ * Grouped counts only, and no per-section lookups.
+ */
+async function coordinatorCharts(
+  user: AuthUser,
+  apps: Awaited<ReturnType<typeof applicationStatuses>> | null,
+  enroll: Awaited<ReturnType<typeof enrollmentStatuses>> | null,
+): Promise<Pick<CoordinatorWorkspace, 'enrollmentTrend' | 'statusMix' | 'sectionLoad'>> {
+  const canEnroll = enrollmentPolicy.viewAny(user);
+  const canSections = teachingPolicy.manageClasses(user);
+
+  const [terms, activeYear] = await Promise.all([
+    canEnroll ? prisma.enrollment.groupBy({ by: ['schoolYear', 'semester', 'status'], _count: { _all: true } }) : null,
+    canSections ? prisma.schoolYear.findFirst({ where: { status: 'ACTIVE' }, orderBy: { startsOn: 'desc' }, select: { id: true, label: true } }) : null,
+  ]);
+  const sections = activeYear
+    ? await prisma.section.findMany({
+        where: { schoolYearId: activeYear.id },
+        select: { yearLevel: true, program: { select: { id: true, code: true, name: true } }, _count: { select: { students: true } } },
+      })
+    : null;
+
+  let enrollmentTrend: TermEnrollment[] | null = null;
+  if (terms) {
+    const byTerm = new Map<string, TermEnrollment & { year: string; semester: number }>();
+    for (const t of terms) {
+      const key = `${t.schoolYear}-${t.semester}`;
+      const row = byTerm.get(key) ?? {
+        key, year: t.schoolYear, semester: t.semester,
+        label: `${t.schoolYear} · ${SEMESTER_LABELS[t.semester] ?? `Semester ${t.semester}`}`,
+        enrolled: 0, pending: 0, other: 0,
+      };
+      if (t.status === 'enrolled') row.enrolled += t._count._all;
+      else if (t.status === 'pending') row.pending += t._count._all;
+      else row.other += t._count._all;
+      byTerm.set(key, row);
+    }
+    enrollmentTrend = [...byTerm.values()]
+      .sort((a, b) => a.year.localeCompare(b.year) || a.semester - b.semester)
+      .slice(-6)
+      .map(({ key, label, enrolled, pending, other }) => ({ key, label, enrolled, pending, other }));
+  }
+
+  const statusMix: StatusMix[] = [];
+  if (apps) {
+    statusMix.push({ key: 'applications', title: 'Applications', href: '/applications', segments: [
+      { key: 'submitted', label: APPLICATION_STATUS_LABELS.submitted, value: apps.submitted, tone: 'attention', href: '/applications?status=submitted' },
+      { key: 'under_review', label: APPLICATION_STATUS_LABELS.under_review, value: apps.underReview, tone: 'info', href: '/applications?status=under_review' },
+      { key: 'approved', label: APPLICATION_STATUS_LABELS.approved, value: apps.approved, tone: 'success', href: '/applications?status=approved' },
+      { key: 'returned', label: APPLICATION_STATUS_LABELS.returned, value: apps.returned, tone: 'failed', href: '/applications?status=returned' },
+    ] });
+  }
+  if (enroll) {
+    statusMix.push({ key: 'enrollments', title: 'Enrollment', href: '/enrollments', segments: [
+      { key: 'pending', label: ENROLLMENT_STATUS_LABELS.pending, value: enroll.pending, tone: 'attention', href: '/enrollments?status=pending' },
+      { key: 'enrolled', label: ENROLLMENT_STATUS_LABELS.enrolled, value: enroll.enrolled, tone: 'success', href: '/enrollments?status=enrolled' },
+      { key: 'rejected', label: ENROLLMENT_STATUS_LABELS.rejected, value: enroll.rejected, tone: 'failed', href: '/enrollments?status=rejected' },
+      { key: 'dropped', label: ENROLLMENT_STATUS_LABELS.dropped, value: enroll.dropped, tone: 'neutral', href: '/enrollments?status=dropped' },
+    ] });
+  }
+
+  let sectionLoad: SectionLoad | null = null;
+  if (activeYear && sections) {
+    const programs = new Map<string, SectionLoad['programs'][number]>();
+    for (const s of sections) {
+      const id = s.program.id.toString();
+      const row = programs.get(id) ?? {
+        id, code: s.program.code, name: s.program.name,
+        levels: Array.from({ length: MAX_YEAR_LEVEL }, (_, i) => ({ level: i + 1, sections: 0, students: 0, capacity: 0 })),
+      };
+      const level = row.levels[s.yearLevel - 1];
+      if (level) {
+        level.sections += 1;
+        level.students += s._count.students;
+        level.capacity += SECTION_CAPACITY;
+      }
+      programs.set(id, row);
+    }
+    sectionLoad = { schoolYear: activeYear.label, programs: [...programs.values()].sort((a, b) => a.code.localeCompare(b.code)) };
+  }
+
+  return { enrollmentTrend, statusMix, sectionLoad };
 }
 
 // --- Secretary -----------------------------------------------------------------------------

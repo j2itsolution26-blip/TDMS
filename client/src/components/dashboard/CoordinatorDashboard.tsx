@@ -16,19 +16,23 @@ import {
   toneOf,
 } from './RoleDashboardParts';
 import SubjectsPerProgramTable from './SubjectsPerProgramTable';
+import { EnrollmentTrendChart, SectionLoadChart, StatusMixChart } from './CoordinatorCharts';
 
 /**
  * The TVET Coordinator — academic and curriculum operations.
  * "Is the academic structure ready and properly managed?"
  *
- *   header · KPI row
+ *   welcome banner · KPI row
+ *   charts ............. Enrollment by Term · Applications & Enrollment Status
+ *   sections ........... Sections by Year Level (active school year, seats filled)
  *   primary ............ Coordinator Tasks · Academic Setup Progress
  *   readiness .......... one card per program: curriculum, subjects, terms, enrollment
  *   secondary .......... Subjects per Program (sortable) · Recent Academic Activity
  *   quick actions
  *
- * A Coordinator may not see student records, so nothing here counts or names
- * a student.
+ * A Coordinator may not see student records, so nothing here names a student.
+ * The only student figures are the seats filled per year level — the counts the
+ * Coordinator already manages in Classes & Sections.
  */
 
 function Check({ ok, children }: { ok: boolean; children: React.ReactNode }) {
@@ -108,6 +112,27 @@ export default function CoordinatorDashboard({
       <DashboardHeader firstName={firstName} greeting={greeting} date={date} roleLabel="TVET Coordinator" description={description} />
 
       <MetricGrid metrics={w.metrics} />
+
+      {(w.enrollmentTrend || w.statusMix.length > 0) && (
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+          {w.enrollmentTrend && (
+            <SectionCard id="enrollment-trend" title="Enrollment by Term" description="Enrollment records in the latest school terms, by outcome" action={{ label: 'Enrollments', href: '/enrollments' }} className={w.statusMix.length > 0 ? 'xl:col-span-3' : 'xl:col-span-5'}>
+              <EnrollmentTrendChart terms={w.enrollmentTrend} />
+            </SectionCard>
+          )}
+          {w.statusMix.length > 0 && (
+            <SectionCard id="status-mix" title="Applications & Enrollment Status" description="Every record, by its current status" className={w.enrollmentTrend ? 'xl:col-span-2' : 'xl:col-span-5'}>
+              <StatusMixChart mixes={w.statusMix} narrow={Boolean(w.enrollmentTrend)} />
+            </SectionCard>
+          )}
+        </div>
+      )}
+
+      {w.sectionLoad && (
+        <SectionCard id="section-load" title="Sections by Year Level" description={`Sections and seats filled in school year ${w.sectionLoad.schoolYear} — 25 students per section`} action={{ label: 'Classes & Sections', href: '/class-setup?tab=sections' }}>
+          <SectionLoadChart load={w.sectionLoad} />
+        </SectionCard>
+      )}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
         <SectionCard id="coordinator-tasks" title="Coordinator Tasks" description="Academic work waiting to be done" className="xl:col-span-3">

@@ -112,16 +112,16 @@ export default function QrScanner({ onCode, paused = false, repeatMs = 4000 }: {
 
   return (
     <div>
-      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-[#062a1d]">
+      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-primary-950">
         {on ? (
           <>
             <video ref={video} className="h-full w-full object-cover" playsInline muted aria-label="Camera preview" />
             <div aria-hidden="true" className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <div className={`h-3/5 w-3/5 max-w-[280px] rounded-3xl border-4 ${paused ? 'border-white/40' : 'border-[#3DDC97]'} shadow-[0_0_0_9999px_rgba(0,0,0,0.25)]`} />
+              <div className={`h-3/5 w-3/5 max-w-[280px] rounded-3xl border-4 ${paused ? 'border-white/40' : 'border-primary-300'} shadow-[0_0_0_9999px_rgba(0,0,0,0.25)]`} />
             </div>
           </>
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-[#BFE6D4]">
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-primary-100">
             <Camera className="h-10 w-10" aria-hidden="true" />
             <p className="text-sm">Turn on the camera and hold each student&apos;s QR code inside the frame.</p>
           </div>

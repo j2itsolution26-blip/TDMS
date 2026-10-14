@@ -28,6 +28,8 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Presentation,
   QrCode,
   ScanLine,
@@ -68,7 +70,9 @@ import type { PendingItem } from '@shared/types/dashboard';
  *
  * RESPONSIVE
  *
- *   ≥ 1024px  a 292px floating sidebar, inset 16px from the window edges
+ *   ≥ 1024px  a 292px floating sidebar, inset 16px from the window edges —
+ *             or, collapsed with the top bar's button, the icon rail
+ *             (remembered per browser)
  *   768–1023  an icon rail; every icon keeps its name as its accessible label
  *   < 768px   a drawer behind the menu button
  */
@@ -137,7 +141,7 @@ const GROUP_LABELS: Record<NavGroup, string> = {
 };
 
 const STROKE = 1.9;
-const FOCUS_DARK = 'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3DDC97] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0E4D37]';
+const FOCUS_DARK = 'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-2 focus-visible:ring-offset-forest';
 const FOCUS_LIGHT = 'focus:outline-none focus-visible:ring-2 focus-visible:ring-tdms-text focus-visible:ring-offset-2 focus-visible:ring-offset-tdms-bg';
 
 export interface SetupSummary {
@@ -164,13 +168,13 @@ function initialsOf(name: string): string {
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <span className="flex items-center gap-3">
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-gradient-to-br from-[#3DDC97] to-[#16A06A] text-white shadow-[0_8px_24px_-6px_rgba(61,220,151,0.65)]">
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-gradient-to-br from-primary-400 to-primary-600 text-white shadow-[0_8px_24px_-8px_rgba(52,195,143,0.7)] ring-1 ring-inset ring-white/15">
         <GraduationCap className="h-6 w-6" strokeWidth={STROKE} aria-hidden="true" />
       </span>
       {!compact && (
         <span className="min-w-0">
           <span className="block text-lg font-extrabold leading-tight tracking-[-0.02em] text-white">TDMS</span>
-          <span className="block truncate text-xs leading-tight text-[#BFE6D4]">Diploma Management</span>
+          <span className="block truncate text-xs leading-tight text-primary-100">Diploma Management</span>
         </span>
       )}
     </span>
@@ -183,9 +187,9 @@ function ProgressRing({ percent, size = 48 }: { percent: number; size?: number }
     <span
       aria-hidden="true"
       className="relative flex shrink-0 items-center justify-center rounded-full"
-      style={{ width: size, height: size, background: `conic-gradient(#3DDC97 ${percent * 3.6}deg, rgba(255,255,255,0.14) 0deg)` }}
+      style={{ width: size, height: size, background: `conic-gradient(#34C38F ${percent * 3.6}deg, rgba(255,255,255,0.14) 0deg)` }}
     >
-      <span className="absolute inset-[5px] rounded-full bg-[#0B4430]" />
+      <span className="absolute inset-[5px] rounded-full bg-forest-dark" />
       <span className="relative text-[11px] font-bold text-white">{percent}%</span>
     </span>
   );
@@ -199,7 +203,7 @@ function SetupCard({ setup, onNavigate }: { setup: SetupSummary; onNavigate?: ()
         <ProgressRing percent={percent} />
         <div className="min-w-0">
           <p className="text-sm font-bold text-white">Setup in progress</p>
-          <p className="text-xs text-[#BFE6D4]">
+          <p className="text-xs text-primary-100">
             {setup.completed} of {setup.total} steps complete
           </p>
         </div>
@@ -207,7 +211,7 @@ function SetupCard({ setup, onNavigate }: { setup: SetupSummary; onNavigate?: ()
       <Link
         href={setup.href}
         onClick={onNavigate}
-        className={`mt-3.5 block w-full rounded-xl bg-[#3DDC97] py-2.5 text-center text-sm font-bold text-[#0E4D37] transition hover:bg-[#5BE5A9] ${FOCUS_DARK}`}
+        className={`mt-3.5 block w-full rounded-xl bg-primary-50 py-2.5 text-center text-sm font-bold text-forest transition hover:bg-white ${FOCUS_DARK}`}
       >
         Continue setup
       </Link>
@@ -238,11 +242,11 @@ function SidebarLink({
         compact ? 'h-12 w-12 justify-center' : 'px-3.5 py-2.5'
       } ${
         active
-          ? 'bg-white text-[#0E4D37] shadow-[0_8px_20px_-8px_rgba(0,0,0,0.45)]'
-          : 'text-[#BFE6D4] hover:bg-white/[0.08] hover:text-white'
+          ? 'bg-white text-forest shadow-[0_8px_20px_-8px_rgba(0,0,0,0.45)]'
+          : 'text-primary-100/90 hover:bg-white/[0.08] hover:text-white'
       }`}
     >
-      <Icon className={`h-5 w-5 shrink-0 ${active ? 'text-[#16A06A]' : ''}`} strokeWidth={STROKE} aria-hidden="true" />
+      <Icon className={`h-5 w-5 shrink-0 ${active ? 'text-primary-600' : 'text-primary-200 group-hover:text-white'}`} strokeWidth={STROKE} aria-hidden="true" />
       {!compact && <span className="truncate">{item.label}</span>}
     </Link>
   );
@@ -266,7 +270,7 @@ function Sidebar({
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
       {/* A faint mint glow in the bottom-left corner. */}
-      <div aria-hidden="true" className="pointer-events-none absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-[#3DDC97]/20 blur-3xl" />
+      <div aria-hidden="true" className="pointer-events-none absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-primary-400/20 blur-3xl" />
 
       <div className={`relative flex shrink-0 items-center ${compact ? 'justify-center px-2 pb-4 pt-6' : 'px-6 pb-5 pt-7'}`}>
         <Link href="/dashboard" onClick={onNavigate} className={`rounded-[14px] ${FOCUS_DARK}`} aria-label="TDMS — go to dashboard">
@@ -274,13 +278,13 @@ function Sidebar({
         </Link>
       </div>
 
-      <nav aria-label="Main" className={`relative flex-1 overflow-y-auto ${compact ? 'px-2' : 'px-4'} pb-4`}>
+      <nav aria-label="Main" className={`relative flex-1 overflow-y-auto [scrollbar-color:rgba(255,255,255,0.22)_transparent] [scrollbar-width:thin] ${compact ? 'px-2' : 'px-4'} pb-4`}>
         {groups.map((group, gi) => (
           <div key={group.key} className={gi > 0 ? (compact ? 'mt-3 border-t border-white/10 pt-3' : 'mt-6') : 'mt-2'}>
             {compact ? (
               <h2 className="sr-only">{GROUP_LABELS[group.key]}</h2>
             ) : (
-              <h2 className="mb-2 px-3.5 text-[11px] font-bold uppercase tracking-[0.12em] text-[#8FC7AE]">{GROUP_LABELS[group.key]}</h2>
+              <h2 className="mb-2 px-3.5 text-[11px] font-bold uppercase tracking-[0.12em] text-primary-200/80">{GROUP_LABELS[group.key]}</h2>
             )}
             <ul className={`space-y-1 ${compact ? 'flex flex-col items-center' : ''}`}>
               {group.items.map((item) => (
@@ -754,7 +758,7 @@ function UserMenu({ user }: { user: { name: string; email: string; roleLabel: st
         aria-label={`Account menu for ${user.name}, ${user.roleLabel}`}
         className={`flex h-12 items-center gap-3 rounded-[14px] bg-white pl-1.5 pr-3 shadow-soft transition hover:shadow-soft-lg ${FOCUS_LIGHT}`}
       >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] bg-gradient-to-br from-[#16A06A] to-[#0E4D37] text-[13px] font-bold text-white">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] bg-gradient-to-br from-primary-500 to-forest text-[13px] font-bold text-white">
           {initialsOf(user.name)}
         </span>
         <span className="hidden text-left md:block">
@@ -815,6 +819,14 @@ export default function Navigation({
 }) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Desktop only: the sidebar folded to its icon rail. A per-browser preference.
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return window.localStorage.getItem('tdms.sidebar') === 'collapsed'; } catch { return false; }
+  });
+  const toggleCollapsed = () => setCollapsed((c) => {
+    try { window.localStorage.setItem('tdms.sidebar', c ? 'expanded' : 'collapsed'); } catch { /* private mode */ }
+    return !c;
+  });
   const closeButton = useRef<HTMLButtonElement>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
 
@@ -850,13 +862,13 @@ export default function Navigation({
       {/* Desktop: the floating sidebar. Tablet: the icon rail. */}
       <aside
         aria-label="Sidebar"
-        className="fixed bottom-4 left-4 top-4 z-40 hidden w-[88px] rounded-[24px] bg-gradient-to-b from-[#0E4D37] to-[#093626] shadow-[0_24px_48px_-24px_rgba(9,54,38,0.7)] md:block lg:hidden"
+        className={`fixed bottom-4 left-4 top-4 z-40 hidden w-[88px] rounded-[24px] bg-gradient-to-b from-forest-light via-forest to-forest-dark shadow-[0_24px_48px_-24px_rgba(11,58,44,0.7)] md:block ${collapsed ? '' : 'lg:hidden'}`}
       >
         <Sidebar items={items} isActive={isActive} setup={setup} compact />
       </aside>
       <aside
         aria-label="Sidebar"
-        className="fixed bottom-4 left-4 top-4 z-40 hidden w-[292px] rounded-[24px] bg-gradient-to-b from-[#0E4D37] to-[#093626] shadow-[0_24px_48px_-24px_rgba(9,54,38,0.7)] lg:block"
+        className={`fixed bottom-4 left-4 top-4 z-40 hidden w-[292px] rounded-[24px] bg-gradient-to-b from-forest-light via-forest to-forest-dark shadow-[0_24px_48px_-24px_rgba(11,58,44,0.7)] ${collapsed ? '' : 'lg:block'}`}
       >
         <Sidebar items={items} isActive={isActive} setup={setup} />
       </aside>
@@ -864,13 +876,13 @@ export default function Navigation({
       {/* Mobile: the drawer. */}
       {drawerOpen && (
         <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
-          <div className="fixed inset-0 bg-[#062a1d]/60 backdrop-blur-[2px]" onClick={() => setDrawerOpen(false)} aria-hidden="true" />
-          <aside className="fixed bottom-3 left-3 top-3 z-50 w-[292px] max-w-[calc(100vw-1.5rem)] rounded-[24px] bg-gradient-to-b from-[#0E4D37] to-[#093626] shadow-2xl">
+          <div className="fixed inset-0 bg-primary-950/60 backdrop-blur-[2px]" onClick={() => setDrawerOpen(false)} aria-hidden="true" />
+          <aside className="fixed bottom-3 left-3 top-3 z-50 w-[292px] max-w-[calc(100vw-1.5rem)] rounded-[24px] bg-gradient-to-b from-forest-light via-forest to-forest-dark shadow-2xl">
             <button
               ref={closeButton}
               type="button"
               onClick={() => setDrawerOpen(false)}
-              className={`absolute right-3 top-6 z-10 rounded-xl p-2 text-[#BFE6D4] hover:bg-white/10 hover:text-white ${FOCUS_DARK}`}
+              className={`absolute right-3 top-6 z-10 rounded-xl p-2 text-primary-100 hover:bg-white/10 hover:text-white ${FOCUS_DARK}`}
               aria-label="Close navigation"
             >
               <X className="h-5 w-5" strokeWidth={STROKE} aria-hidden="true" />
@@ -880,7 +892,7 @@ export default function Navigation({
         </div>
       )}
 
-      <div className="relative md:pl-[120px] lg:pl-[324px]">
+      <div className={`relative transition-[padding] duration-200 md:pl-[120px] ${collapsed ? '' : 'lg:pl-[324px]'}`}>
         <header className="mx-auto flex h-[88px] max-w-[1600px] items-center gap-3 px-4 sm:px-6 lg:px-8">
           <button
             ref={menuButton}
@@ -891,6 +903,19 @@ export default function Navigation({
             aria-expanded={drawerOpen}
           >
             <Menu className="h-5 w-5" strokeWidth={STROKE} aria-hidden="true" />
+          </button>
+
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            className={`${ICON_BUTTON} hidden shrink-0 lg:flex`}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-pressed={collapsed}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed
+              ? <PanelLeftOpen className="h-5 w-5" strokeWidth={STROKE} aria-hidden="true" />
+              : <PanelLeftClose className="h-5 w-5" strokeWidth={STROKE} aria-hidden="true" />}
           </button>
 
           <div className="min-w-0 max-w-[520px] flex-1">

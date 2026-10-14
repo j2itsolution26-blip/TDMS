@@ -39,10 +39,10 @@ import GreetingHeading from './GreetingHeading';
  * from — one design system, so the three look like one application while
  * showing entirely different work.
  *
- * Enterprise and quiet: white cards on the light green-grey page, a hairline
- * border, the lightest shadow, one accent (the TDMS green) and colour only
- * where it carries meaning (a status). No gradients, no motion beyond a
- * hover tint.
+ * White cards on the light green-grey canvas, a hairline border and a soft
+ * shadow. Green is the brand; the KPI accents (ACCENT below) say what a figure
+ * counts, and status colours say what state it is in. One gradient, in the
+ * welcome banner; motion is a small hover lift, off under reduced motion.
  *
  * Server components throughout. Accessibility, once, here: every card is a
  * <section> named by its heading; statuses are words, never colour alone;
@@ -110,14 +110,20 @@ export function DashboardHeader({
   roleLabel: string;
   description: string;
 }) {
+  // The welcome banner: the one gradient on the page, light enough that the
+  // text keeps its full contrast.
   return (
-    <header className="flex flex-col gap-1.5">
-      <p className="text-[13px] font-semibold text-tdms-text">
-        {roleLabel} <span aria-hidden="true" className="text-tdms-muted">·</span>{' '}
-        <span className="font-medium text-tdms-muted">{date}</span>
-      </p>
-      <GreetingHeading firstName={firstName} initialGreeting={greeting} />
-      <p className="max-w-3xl text-[15px] text-tdms-muted">{description}</p>
+    <header className="relative overflow-hidden rounded-[18px] border border-primary-100 bg-gradient-to-br from-primary-50 via-white to-accent-blue-50 px-5 py-6 shadow-card sm:px-7 sm:py-7">
+      <div aria-hidden="true" className="pointer-events-none absolute -right-10 -top-16 h-56 w-56 rounded-full bg-primary-200/40 blur-2xl" />
+      <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 right-1/4 h-40 w-40 rounded-full bg-accent-violet/10 blur-2xl" />
+      <div className="relative flex flex-col gap-1.5">
+        <p className="flex flex-wrap items-center gap-2 text-[13px] font-semibold">
+          <span className="rounded-full bg-white/80 px-2.5 py-0.5 text-primary-700 ring-1 ring-inset ring-primary-100">{roleLabel}</span>
+          <span className="font-medium text-tdms-muted">{date}</span>
+        </p>
+        <GreetingHeading firstName={firstName} initialGreeting={greeting} />
+        <p className="max-w-3xl text-[15px] text-tdms-muted">{description}</p>
+      </div>
     </header>
   );
 }
@@ -181,23 +187,57 @@ export function EmptyState({ icon, title, description, action }: { icon: WorkIco
 
 // --- Metrics --------------------------------------------------------------------------------
 
+/**
+ * The KPI colours, by what a figure counts — the same everywhere:
+ *   emerald  programs and outcomes        blue    students and instructors
+ *   violet   curricula and subjects       amber   work waiting (pending)
+ *   coral    something needing attention (a failed or overdue figure)
+ * Amber only when work is really waiting (an attention tone and a count above
+ * zero); otherwise applications, enrollment and documents are student-flow
+ * figures (blue) and a clear task list is green.
+ */
+type Accent = 'emerald' | 'blue' | 'violet' | 'amber' | 'coral';
+const ACCENT_BY_ICON: Record<WorkIcon, Accent> = {
+  programs: 'emerald', graduation: 'emerald',
+  students: 'blue', teachers: 'blue', registrations: 'blue',
+  curricula: 'violet', subjects: 'violet',
+  applications: 'blue', enrollment: 'blue', documents: 'blue', records: 'blue', tasks: 'emerald',
+  attention: 'coral',
+};
+export const ACCENT: Record<Accent, { tile: string; text: string; bar: string; edge: string }> = {
+  emerald: { tile: 'bg-primary-50 text-primary-600 ring-primary-100', text: 'text-primary-700', bar: 'bg-primary-500', edge: 'from-primary-400' },
+  blue: { tile: 'bg-accent-blue-50 text-accent-blue ring-blue-100', text: 'text-accent-blue-700', bar: 'bg-accent-blue', edge: 'from-accent-blue' },
+  violet: { tile: 'bg-accent-violet-50 text-accent-violet ring-violet-100', text: 'text-accent-violet-700', bar: 'bg-accent-violet', edge: 'from-accent-violet' },
+  amber: { tile: 'bg-accent-amber-50 text-accent-amber ring-amber-100', text: 'text-accent-amber-700', bar: 'bg-accent-amber', edge: 'from-accent-amber' },
+  coral: { tile: 'bg-accent-coral-50 text-accent-coral ring-rose-100', text: 'text-accent-coral-700', bar: 'bg-accent-coral', edge: 'from-accent-coral' },
+};
+export function accentOf(metric: Pick<WorkMetric, 'icon' | 'tone' | 'value'>): Accent {
+  if (metric.tone === 'failed' || (metric.icon === 'attention' && metric.value > 0)) return 'coral';
+  if (metric.tone === 'attention' && metric.value > 0) return 'amber';
+  return ACCENT_BY_ICON[metric.icon];
+}
+
 function MetricCard({ metric }: { metric: WorkMetric }) {
   const tone = metric.tone && metric.tone !== 'neutral' ? TONE[metric.tone] : null;
+  const accent = ACCENT[accentOf(metric)];
   const body = (
     <>
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[13px] font-semibold text-tdms-muted">{metric.label}</p>
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-tdms-wash text-tdms-text">
-          <Glyph icon={metric.icon} className="h-[18px] w-[18px]" />
+      {/* A thin accent line along the top edge. */}
+      <span aria-hidden="true" className={`absolute inset-x-5 top-0 h-[3px] rounded-b-full bg-gradient-to-r ${accent.edge} to-transparent opacity-80`} />
+      <div className="flex items-start justify-between gap-3">
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1 ring-inset sm:h-10 sm:w-10 ${accent.tile}`}>
+          <Glyph icon={metric.icon} className="h-5 w-5" />
         </span>
+        {metric.href && <ArrowRight className="h-4 w-4 text-tdms-muted opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100" strokeWidth={STROKE} aria-hidden="true" />}
       </div>
-      <p className="mt-2 text-[28px] font-bold leading-none tracking-[-0.02em] text-tdms-ink tabular-nums">{metric.value.toLocaleString('en-US')}</p>
+      <p className="mt-3 text-[12px] font-medium text-tdms-muted sm:text-[13px]">{metric.label}</p>
+      <p className="mt-1 text-[24px] font-bold sm:text-[28px] leading-none tracking-[-0.02em] text-tdms-ink tabular-nums">{metric.value.toLocaleString('en-US')}</p>
       <p className={`mt-2 text-xs font-medium ${tone ? tone.text : 'text-tdms-muted'}`}>{metric.hint}</p>
     </>
   );
-  const box = 'block h-full rounded-2xl border border-tdms-hairline bg-white p-4 shadow-card sm:p-5';
+  const box = 'group relative block h-full overflow-hidden rounded-2xl border border-tdms-hairline bg-white p-3.5 shadow-card sm:p-5';
   return metric.href ? (
-    <Link href={metric.href} className={`${box} transition-colors hover:border-[#CDE3D8] hover:bg-[#FBFDFC] ${FOCUS}`}>
+    <Link href={metric.href} className={`${box} transition hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-card-hover motion-reduce:transform-none ${FOCUS}`}>
       {body}
     </Link>
   ) : (
@@ -208,7 +248,7 @@ function MetricCard({ metric }: { metric: WorkMetric }) {
 export function MetricGrid({ metrics }: { metrics: WorkMetric[] }) {
   if (metrics.length === 0) return null;
   return (
-    <ul aria-label="Key figures" className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 md:grid-cols-3 2xl:grid-cols-6">
+    <ul aria-label="Key figures" className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 2xl:grid-cols-6">
       {metrics.map((m) => (
         <li key={m.key}>
           <MetricCard metric={m} />
@@ -246,7 +286,7 @@ export function WorkList({ items, prominent = false }: { items: WorkItem[]; prom
               aria-label={`${item.action}: ${item.label}${waiting ? ` (${item.count})` : ''}`}
               className={`shrink-0 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${FOCUS} ${
                 waiting
-                  ? 'border-tdms-text bg-tdms-text text-white hover:bg-[#0B6A45]'
+                  ? 'border-tdms-text bg-tdms-text text-white hover:bg-primary-700'
                   : 'border-tdms-hairline bg-white text-tdms-ink hover:bg-tdms-bg'
               }`}
             >
@@ -381,7 +421,7 @@ export function QuickLinks({ links, compact = false }: { links: QuickLink[]; com
         <li key={l.href}>
           <Link
             href={l.href}
-            className={`flex h-full items-center gap-3 rounded-xl border border-tdms-hairline bg-white px-3.5 py-3 transition-colors hover:border-[#CDE3D8] hover:bg-tdms-bg ${FOCUS}`}
+            className={`flex h-full items-center gap-3 rounded-xl border border-tdms-hairline bg-white px-3.5 py-3 transition-colors hover:border-primary-200 hover:bg-tdms-bg ${FOCUS}`}
           >
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-tdms-wash text-tdms-text">
               <Glyph icon={l.icon} className="h-[18px] w-[18px]" />

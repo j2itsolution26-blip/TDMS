@@ -82,7 +82,7 @@ function ClassRow({ c }: { c: TodayClass }) {
         </Link>
         <Link
           href={a ? `/teaching/attendance/${a.sessionId}` : `/teaching/attendance?class=${c.classId}&start=${c.startTime}&end=${c.endTime}`}
-          className={`rounded-lg bg-tdms-text px-3 py-2 text-xs font-semibold text-white hover:bg-[#0B6A45] ${FOCUS}`}
+          className={`rounded-lg bg-tdms-text px-3 py-2 text-xs font-semibold text-white hover:bg-primary-700 ${FOCUS}`}
         >
           {a?.status === 'OPEN' ? 'Continue Attendance' : a ? 'View Attendance' : 'Take Attendance'}
         </Link>

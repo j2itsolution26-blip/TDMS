@@ -175,7 +175,7 @@ function Hero({
     <section
       aria-label="Welcome"
       className="relative isolate overflow-hidden rounded-[26px] px-6 py-8 text-white shadow-[0_24px_48px_-20px_rgba(14,77,55,0.55)] sm:px-10 sm:py-10"
-      style={{ background: 'linear-gradient(118deg, #0E5A3F 0%, #0F6B49 38%, #128A5C 68%, #27B57A 100%)' }}
+      style={{ background: 'linear-gradient(118deg, #0B3A2C 0%, #104C3A 34%, #087F5B 70%, #2BA77C 100%)' }}
     >
       {/* Dot grid, fading in from the right; two soft glows. */}
       <div
@@ -188,8 +188,8 @@ function Hero({
           WebkitMaskImage: 'linear-gradient(to left, black 0%, rgba(0,0,0,0.5) 35%, transparent 65%)',
         }}
       />
-      <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-24 -z-10 h-72 w-72 rounded-full bg-[#3DDC97]/30 blur-3xl" />
-      <div aria-hidden="true" className="pointer-events-none absolute -bottom-28 right-1/3 -z-10 h-64 w-64 rounded-full bg-[#9BF0C9]/20 blur-3xl" />
+      <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-24 -z-10 h-72 w-72 rounded-full bg-primary-300/30 blur-3xl" />
+      <div aria-hidden="true" className="pointer-events-none absolute -bottom-28 right-1/3 -z-10 h-64 w-64 rounded-full bg-primary-200/20 blur-3xl" />
 
       <div className="flex flex-col gap-10 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0 max-w-xl">
@@ -198,7 +198,7 @@ function Hero({
           <div className="mt-7 flex flex-wrap gap-3">
             <Link
               href={copy.primary.href}
-              className={`inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-tdms-deep shadow-lg shadow-black/10 transition hover:bg-[#F0FBF6] focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#0F6B49]`}
+              className={`inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-tdms-deep shadow-lg shadow-black/10 transition hover:bg-primary-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#0F6B49]`}
             >
               {/^(Create|Add|Record)/.test(copy.primary.label) && <Plus className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />}
               {copy.primary.label}
@@ -246,11 +246,11 @@ function Hero({
 // --- Stat cards -------------------------------------------------------------------
 
 const STAT_STYLE: Record<AdminStat['key'], { icon: LucideIcon; tile: string; link: string; spark: string }> = {
-  students: { icon: GraduationCap, tile: 'bg-emerald-50 text-emerald-600', link: 'text-emerald-700', spark: '#10B981' },
-  teachers: { icon: Presentation, tile: 'bg-blue-50 text-blue-600', link: 'text-blue-700', spark: '#3B82F6' },
-  programs: { icon: Layers, tile: 'bg-violet-50 text-violet-600', link: 'text-violet-700', spark: '#8B5CF6' },
-  applications: { icon: FileText, tile: 'bg-amber-50 text-amber-600', link: 'text-amber-700', spark: '#F59E0B' },
-  enrollments: { icon: ClipboardCheck, tile: 'bg-rose-50 text-rose-600', link: 'text-rose-700', spark: '#F43F5E' },
+  students: { icon: GraduationCap, tile: 'bg-accent-blue-50 text-accent-blue', link: 'text-accent-blue-700', spark: '#2563EB' },
+  teachers: { icon: Presentation, tile: 'bg-sky-50 text-sky-700', link: 'text-sky-800', spark: '#0284C7' },
+  programs: { icon: Layers, tile: 'bg-primary-50 text-primary-600', link: 'text-primary-700', spark: '#087F5B' },
+  applications: { icon: FileText, tile: 'bg-accent-amber-50 text-accent-amber', link: 'text-accent-amber-700', spark: '#D97706' },
+  enrollments: { icon: ClipboardCheck, tile: 'bg-accent-violet-50 text-accent-violet', link: 'text-accent-violet-700', spark: '#7C3AED' },
 };
 
 /** A faint area chart of a real monthly series. Decorative — the figure says it in words. */
@@ -324,7 +324,7 @@ function SetupChecklist({ setup }: { setup: SetupProgress }) {
               key={step.key}
               aria-current={current ? 'step' : undefined}
               className={`relative flex items-center gap-3.5 rounded-2xl px-3 py-3 ${
-                current ? 'bg-gradient-to-r from-tdms-wash to-white ring-1 ring-inset ring-[#CDEFDD]' : ''
+                current ? 'bg-gradient-to-r from-tdms-wash to-white ring-1 ring-inset ring-primary-100' : ''
               }`}
             >
               {/* The connecting line to the next step: green up to the current step. */}
@@ -342,7 +342,7 @@ function SetupChecklist({ setup }: { setup: SetupProgress }) {
                   step.done
                     ? 'bg-tdms-green text-white'
                     : current
-                      ? 'bg-white text-tdms-text ring-2 ring-tdms-green shadow-[0_0_0_5px_rgba(61,220,151,0.25)]'
+                      ? 'bg-white text-tdms-text ring-2 ring-tdms-green shadow-[0_0_0_5px_rgba(52,195,143,0.25)]'
                       : 'bg-tdms-bg text-tdms-muted ring-1 ring-tdms-hairline'
                 }`}
               >
@@ -365,7 +365,7 @@ function SetupChecklist({ setup }: { setup: SetupProgress }) {
                   aria-label={`${step.action}: ${step.title}`}
                   className={`shrink-0 rounded-[10px] px-3.5 py-2 text-xs font-bold transition ${FOCUS} ${
                     current
-                      ? 'bg-gradient-to-r from-[#0B7A4F] to-[#095C3C] text-white shadow-md shadow-emerald-900/20 hover:brightness-110'
+                      ? 'bg-gradient-to-r from-primary-600 to-primary-800 text-white shadow-md shadow-emerald-900/20 hover:brightness-110'
                       : 'bg-[#EEF2F1] text-tdms-ink hover:bg-[#E3E9E7]'
                   }`}
                 >
@@ -401,7 +401,7 @@ function OperationalTasks({ items }: { items: PendingItem[] }) {
       <CardHeader id="tasks-title" title="Operational Tasks" subtitle="What is waiting on the office" />
 
       {waiting.length === 0 ? (
-        <div className="mt-5 flex items-center gap-4 rounded-2xl bg-gradient-to-br from-tdms-wash via-[#F2FBF6] to-white p-4 ring-1 ring-inset ring-[#D5F1E2]">
+        <div className="mt-5 flex items-center gap-4 rounded-2xl bg-gradient-to-br from-tdms-wash via-primary-50/60 to-white p-4 ring-1 ring-inset ring-primary-100">
           <span
             aria-hidden="true"
             className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-tdms-mint to-tdms-green text-white shadow-[0_8px_20px_-6px_rgba(22,160,106,0.6)]"
@@ -539,7 +539,7 @@ function RecentActivity({ items }: { items: ListItem[] }) {
 const QUICK_STYLE: Record<AdminQuickAction['key'], { icon: LucideIcon; tile: string; chip: string }> = {
   program: { icon: Layers, tile: 'bg-[#F1EEFE] ring-[#E4DDFC]', chip: 'text-violet-600' },
   subject: { icon: BookOpen, tile: 'bg-[#EAF4FE] ring-[#D6E8FB]', chip: 'text-sky-600' },
-  staff: { icon: UsersRound, tile: 'bg-tdms-wash ring-[#D2F0E0]', chip: 'text-emerald-600' },
+  staff: { icon: UsersRound, tile: 'bg-tdms-wash ring-primary-100', chip: 'text-emerald-600' },
   student: { icon: UserPlus, tile: 'bg-[#FDF1E7] ring-[#F8E0CB]', chip: 'text-orange-600' },
 };
 

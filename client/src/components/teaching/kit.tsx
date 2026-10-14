@@ -116,10 +116,10 @@ export function Table({ label, head, children }: { label: string; head: ReactNod
     // `relative` keeps screen-reader-only header labels inside the scroll box; without it they sat past it and widened the page on phones.
     <div className="relative overflow-x-auto" role="region" aria-label={label} tabIndex={0}>
       <table className="min-w-full divide-y divide-tdms-hairline">
-        <thead className="bg-tdms-bg/60">
+        <thead className="bg-tdms-bg/70">
           <tr>{head}</tr>
         </thead>
-        <tbody className="divide-y divide-tdms-hairline">{children}</tbody>
+        <tbody className="divide-y divide-tdms-hairline [&>tr:hover]:bg-primary-50/40 [&>tr]:transition-colors">{children}</tbody>
       </table>
     </div>
   );
@@ -127,7 +127,7 @@ export function Table({ label, head, children }: { label: string; head: ReactNod
 
 // --- Buttons and fields --------------------------------------------------------------------
 
-export const BTN = `inline-flex items-center justify-center gap-2 rounded-xl bg-tdms-text px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0B6A45] disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
+export const BTN = `inline-flex items-center justify-center gap-2 rounded-xl bg-tdms-text px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
 export const BTN_SECONDARY = `inline-flex items-center justify-center gap-2 rounded-xl border border-tdms-hairline bg-white px-4 py-2.5 text-sm font-semibold text-tdms-ink shadow-sm transition hover:bg-tdms-bg disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
 export const BTN_DANGER = `inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-700 shadow-sm transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
 export const BTN_SMALL = `inline-flex items-center justify-center gap-1.5 rounded-lg border border-tdms-hairline bg-white px-2.5 py-1.5 text-xs font-semibold text-tdms-ink transition hover:bg-tdms-bg disabled:opacity-50 ${FOCUS}`;

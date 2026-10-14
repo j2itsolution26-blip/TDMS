@@ -140,6 +140,12 @@ export async function renameSection(user: AuthUser, id: bigint, name: string, co
   const section = await prisma.section.findUnique({ where: { id }, include: { schoolYear: true } });
   if (!section) throw new NotFoundError('Section not found.');
   assertWritableYear(section.schoolYear);
+  // Names are unique per program, year level and school year (sections_unique).
+  const clash = await prisma.section.findFirst({
+    where: { schoolYearId: section.schoolYearId, programId: section.programId, yearLevel: section.yearLevel, name, id: { not: id } },
+    select: { id: true },
+  });
+  if (clash) throw new AppError('That section already exists.', 422, { name: ['That section already exists for this program and year level.'] });
   const updated = await prisma.section.update({ where: { id }, data: { name } });
   await recordAudit({ action: 'SECTION_RENAMED', actor: actorLabel(user), target: `Section ${section.name}`, details: { to: name }, context });
   return updated;

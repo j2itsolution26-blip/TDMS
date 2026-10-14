@@ -44,7 +44,8 @@
     "test:student-accounts": "node scripts/e2e/student-accounts.mjs",
     "test:roster": "node scripts/e2e/section-roster.mjs",
     "test:capacity": "node scripts/e2e/section-capacity.mjs",
-    "test:student-profile": "node scripts/e2e/section-student-profile.mjs"
+    "test:student-profile": "node scripts/e2e/section-student-profile.mjs",
+    "test:hierarchy": "node scripts/e2e/section-hierarchy.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

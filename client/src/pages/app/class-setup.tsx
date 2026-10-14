@@ -16,7 +16,8 @@ function View({ ctx, setup }: Data) {
   const tab: SetupTab = params.get('tab') === 'sections' ? 'sections' : 'classes';
   const [newSection, setNewSection] = useState(0);
   const onTab = (t: SetupTab) => {
-    const next = new URLSearchParams(params.toString());
+    // From the live URL: the Sections tab keeps ?program=&level= there itself.
+    const next = new URLSearchParams(window.location.search);
     if (t === 'classes') next.delete('tab'); else next.set('tab', t);
     router.replace(`${pathname}${next.toString() ? `?${next}` : ''}`);
   };
@@ -26,10 +27,10 @@ function View({ ctx, setup }: Data) {
   const sections = tab === 'sections';
   return (
     <PageShell
-      eyebrow={sections ? 'Academic / Classes & Sections' : 'Academic'}
-      title={sections ? 'Sections Management' : 'Classes & Sections'}
+      eyebrow="Academic"
+      title="Classes & Sections"
       description={sections
-        ? 'Organize students into sections and manage class capacity for the current school year.'
+        ? 'Organize diploma students by year level and section.'
         : 'Build the school year: sections and their students, then classes with a Diploma Instructor and schedule.'}
       actions={
         <>

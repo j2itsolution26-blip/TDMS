@@ -5,7 +5,7 @@ import { api } from '@/lib/api-client';
 import { DAY_NAMES, SECTION_YEAR_LEVELS, SEMESTER_LABELS, yearLevelLabel } from '@shared/lib/teaching';
 import { useAction } from './client-kit';
 import SectionRoster from './SectionRoster';
-import SectionsManagement from './SectionsManagement';
+import SectionsManagement, { useSectionScope } from './SectionsManagement';
 import { useRouter } from '@/lib/navigation';
 import { BTN, BTN_SECONDARY, BTN_SMALL, Card, Chip, Empty, Field, Flash, INPUT, TD, TH, Table } from './kit';
 
@@ -52,13 +52,16 @@ export default function ClassSetupScreen({ setup, schoolYearId, yearLabel, archi
 }) {
   const act = useAction();
   const router = useRouter();
-  const [sectionForm, setSectionForm] = useState(false);
+  // Which program and year level the Sections tab shows (kept in the URL).
+  const scope = useSectionScope(setup.sections, setup.programs);
+  // The New Section form, open with its program and year level preselected.
+  const [sectionForm, setSectionForm] = useState<{ programId: string | null; yearLevel: number } | null>(null);
   // A success message that clears itself, like a toast.
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const announce = (message: string) => { setToast(message); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(null), 5000); };
   useEffect(() => () => clearTimeout(toastTimer.current), []);
-  useEffect(() => { if (newSection > 0 && !archived) setSectionForm(true); }, [newSection, archived]);
+  useEffect(() => { if (newSection > 0 && !archived) setSectionForm({ programId: scope.programId, yearLevel: scope.level }); }, [newSection, archived]); // eslint-disable-line react-hooks/exhaustive-deps
   const [roster, setRoster] = useState<string | null>(null);
   const [classForm, setClassForm] = useState<ClassRow | 'new' | null>(null);
 
@@ -78,11 +81,12 @@ export default function ClassSetupScreen({ setup, schoolYearId, yearLabel, archi
       {tab === 'sections' ? (
         <SectionsManagement
           sections={setup.sections}
+          scope={scope}
           archived={archived}
           yearLabel={yearLabel}
           onStudents={(id) => setRoster(id)}
-          onNewSection={() => setSectionForm(true)}
-          onDeleted={(message) => { announce(message); router.refresh(); }}
+          onNewSection={(programId, yearLevel) => setSectionForm({ programId, yearLevel })}
+          onChanged={(message) => { announce(message); router.refresh(); }}
         />
       ) : (
         <Card padded={false} title="Classes" description="A subject taught to a section in a semester, by a Diploma Instructor." actions={!archived && setup.sections.length > 0 ? <button type="button" className={BTN} onClick={() => setClassForm('new')}><Plus className="h-4 w-4" aria-hidden="true" /> New class</button> : null}>
@@ -113,8 +117,16 @@ export default function ClassSetupScreen({ setup, schoolYearId, yearLabel, archi
         </Card>
       )}
 
-      <Modal open={sectionForm} onClose={() => setSectionForm(false)} title="New section">
-        <SectionForm setup={setup} schoolYearId={schoolYearId} onDone={(created) => { setSectionForm(false); if (created) announce(`Section ${created} created.`); }} />
+      <Modal open={sectionForm !== null} onClose={() => setSectionForm(null)} title="New section" subtitle={`School year ${yearLabel}`}>
+        {sectionForm && (
+          <SectionForm setup={setup} schoolYearId={schoolYearId} defaults={sectionForm} onDone={(created) => {
+            setSectionForm(null);
+            if (!created) return;
+            // Show the year level the new section was created in.
+            scope.show(created.programId, created.yearLevel);
+            announce(`Section ${created.name} created.`);
+          }} />
+        )}
       </Modal>
       <Modal open={roster !== null} onClose={() => setRoster(null)} title="Section Roster" subtitle="Students placed in this section for the school year." maxWidth="sm:max-w-[1040px]" appearance="fluent">
         {roster && <SectionRoster sectionId={roster} archived={archived} />}
@@ -126,11 +138,20 @@ export default function ClassSetupScreen({ setup, schoolYearId, yearLabel, archi
   );
 }
 
-function SectionForm({ setup, schoolYearId, onDone }: { setup: Setup; schoolYearId: string; onDone: (created?: string) => void }) {
+function SectionForm({ setup, schoolYearId, defaults, onDone }: {
+  setup: Setup;
+  schoolYearId: string;
+  defaults: { programId: string | null; yearLevel: number };
+  onDone: (created?: { name: string; programId: string; yearLevel: number }) => void;
+}) {
   const { busy, error, errors, run } = useAction();
-  const [f, setF] = useState({ programId: setup.programs[0]?.id ?? '', yearLevel: '1', name: '' });
+  const [f, setF] = useState({
+    programId: setup.programs.some((p) => p.id === defaults.programId) ? defaults.programId! : setup.programs[0]?.id ?? '',
+    yearLevel: String(defaults.yearLevel),
+    name: '',
+  });
   return (
-    <form className="space-y-4" onSubmit={async (e) => { e.preventDefault(); if (await run(() => api.post('/api/v1/sections', { ...f, schoolYearId }), { success: 'Section created.' })) onDone(f.name.trim()); }}>
+    <form className="space-y-4" onSubmit={async (e) => { e.preventDefault(); if (await run(() => api.post('/api/v1/sections', { ...f, schoolYearId }), { success: 'Section created.' })) onDone({ name: f.name.trim(), programId: f.programId, yearLevel: Number(f.yearLevel) }); }}>
       <Field label="Program" htmlFor="sec-prog" error={errors.programId}>
         <select id="sec-prog" className={INPUT} value={f.programId} onChange={(e) => setF({ ...f, programId: e.target.value })}>
           {setup.programs.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}
@@ -143,7 +164,7 @@ function SectionForm({ setup, schoolYearId, onDone }: { setup: Setup; schoolYear
           </select>
         </Field>
         <Field label="Section name" htmlFor="sec-name" error={errors.name}>
-          <input id="sec-name" className={INPUT} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="A" required maxLength={50} />
+          <input id="sec-name" className={INPUT} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="A" required maxLength={50} autoFocus />
         </Field>
       </div>
       {error && !Object.keys(errors).length && <Flash kind="error">{error}</Flash>}

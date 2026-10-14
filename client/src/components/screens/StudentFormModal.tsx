@@ -5,7 +5,7 @@ import Modal from '@/components/Modal';
 import Combobox, { type ComboboxOption } from '@/components/Combobox';
 import { STUDENT_STATUSES, STUDENT_STATUS_LABELS, type StudentStatus } from '@shared/types/domain';
 import { toDateInput } from '@shared/lib/dates';
-import { YEAR_LEVELS } from '@shared/lib/teaching';
+import { MAX_YEAR_LEVEL, YEAR_LEVELS } from '@shared/lib/teaching';
 import { localDayKey } from '@shared/lib/institution-time';
 import { EARLIEST_BIRTH_DATE, dateOfBirthProblem, phoneProblem } from '@shared/lib/student-rules';
 import type { CurriculumOption, ProgramOption, StudentRow } from './StudentsScreen';
@@ -45,7 +45,7 @@ function validate(form: Form): Errors {
   if (dob) e.dateOfBirth = [dob];
   if (!form.programId) e.programId = ['Choose a program.'];
   if (!form.curriculumId) e.curriculumId = ['Choose a curriculum.'];
-  if (!(form.yearLevel >= 1 && form.yearLevel <= 4)) e.yearLevel = ['Choose a year level from 1 to 4.'];
+  if (!(form.yearLevel >= 1 && form.yearLevel <= MAX_YEAR_LEVEL)) e.yearLevel = ['Choose 1st, 2nd or 3rd Year.'];
   return e;
 }
 

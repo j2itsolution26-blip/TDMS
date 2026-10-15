@@ -1,11 +1,12 @@
 import type { z } from 'zod';
 import { prisma } from '@/server/lib/prisma';
 import { AppError, NotFoundError } from '@/server/lib/http';
-import { DAY_SHORT, formatClock, sectionCapacity, sectionLabel, SECTION_CAPACITY } from '@shared/lib/teaching';
+import { DAY_SHORT, formatClock, sectionCapacity, sectionLabel, SECTION_CAPACITY, SEMESTER_LABELS, yearLevelLabel } from '@shared/lib/teaching';
 import type { AuthUser } from '@shared/types/domain';
 import { USER_MODEL_TYPE } from '@/server/auth/rbac';
 import { actorLabel, recordAudit, type AuditContext } from '@/server/services/audit-log';
-import type { classSchema, classUpdateSchema, sectionSchema } from '@/server/schemas/teaching';
+import type { classCheckSchema, classSchema, classUpdateSchema, sectionSchema } from '@/server/schemas/teaching';
+import { assertNoConflicts, previewConflicts } from './schedule-conflicts';
 import { notifyStudents, notifyUsers } from './notifications';
 import { assertWritableYear } from './school-years';
 import { studentCredentialPolicy, studentPolicy } from '@/server/auth/policies';
@@ -43,7 +44,7 @@ async function requireInstructorAccount(id: bigint) {
 
 /** Everything the Class Setup screen needs for one school year, in one round of queries. */
 export async function classSetupOverview(schoolYearId: bigint) {
-  const [sections, classes, programs, subjects, instructorRows] = await Promise.all([
+  const [sections, classes, programs, subjects, instructorRows, rooms, curricula] = await Promise.all([
     prisma.section.findMany({
       where: { schoolYearId },
       orderBy: [{ program: { code: 'asc' } }, { yearLevel: 'asc' }, { name: 'asc' }],
@@ -65,10 +66,14 @@ export async function classSetupOverview(schoolYearId: bigint) {
         passingGrade: true,
         gradeStatus: true,
         instructorId: true,
+        roomId: true,
+        status: true,
+        curriculumSubjectId: true,
+        roomRef: { select: { code: true } },
         instructor: { select: { name: true } },
         subject: { select: { id: true, code: true, title: true } },
-        section: { select: { id: true, name: true, yearLevel: true, program: { select: { code: true } } } },
-        schedules: { orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }], select: { dayOfWeek: true, startTime: true, endTime: true, room: true } },
+        section: { select: { id: true, name: true, yearLevel: true, program: { select: { id: true, code: true } } } },
+        schedules: { orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }], select: { dayOfWeek: true, startTime: true, endTime: true, room: true, roomId: true, roomRef: { select: { code: true } } } },
       },
     }),
     prisma.program.findMany({ where: { isActive: true }, orderBy: { code: 'asc' }, select: { id: true, code: true, name: true } }),
@@ -77,7 +82,16 @@ export async function classSetupOverview(schoolYearId: bigint) {
       where: { modelType: USER_MODEL_TYPE, role: { name: 'teacher', guardName: 'web' } },
       select: { modelId: true },
     }),
+    prisma.room.findMany({ orderBy: { code: 'asc' }, select: { id: true, code: true, name: true, type: true, capacity: true, isActive: true } }),
+    // Each active program's current curriculum (newest active), for the subjects a section can be scheduled.
+    prisma.curriculum.findMany({
+      where: { isActive: true, program: { isActive: true } },
+      orderBy: { effectiveSchoolYear: 'desc' },
+      select: { id: true, programId: true, versionLabel: true, curriculumSubjects: { select: { subjectId: true, yearLevel: true, semester: true, units: true, isRequired: true } } },
+    }),
   ]);
+  const current = new Map<string, (typeof curricula)[number]>();
+  for (const c of curricula) if (!current.has(c.programId.toString())) current.set(c.programId.toString(), c);
 
   const instructors = await prisma.user.findMany({
     where: { id: { in: instructorRows.map((r) => r.modelId) }, status: 'ACTIVE' },
@@ -99,18 +113,34 @@ export async function classSetupOverview(schoolYearId: bigint) {
       id: c.id.toString(),
       semester: c.semester,
       room: c.room,
+      roomId: c.roomId?.toString() ?? null,
+      roomCode: c.roomRef?.code ?? null,
+      status: c.status,
+      /** Linked to its curriculum entry (false only for classes created before mapping checks). */
+      mapped: c.curriculumSubjectId !== null,
       passingGrade: c.passingGrade.toNumber(),
       gradeStatus: c.gradeStatus,
       instructorId: c.instructorId?.toString() ?? null,
       instructorName: c.instructor?.name ?? null,
       subject: { id: c.subject.id.toString(), code: c.subject.code, title: c.subject.title },
-      section: { id: c.section.id.toString(), label: sectionLabel(c.section.program.code, c.section.yearLevel, c.section.name) },
-      schedules: c.schedules,
+      section: { id: c.section.id.toString(), label: sectionLabel(c.section.program.code, c.section.yearLevel, c.section.name), programId: c.section.program.id.toString(), yearLevel: c.section.yearLevel },
+      schedules: c.schedules.map((m) => ({ dayOfWeek: m.dayOfWeek, startTime: m.startTime, endTime: m.endTime, room: m.room, roomId: m.roomId?.toString() ?? null, roomCode: m.roomRef?.code ?? null })),
       scheduleText: c.schedules.map((s) => `${DAY_SHORT[s.dayOfWeek]} ${formatClock(s.startTime)}–${formatClock(s.endTime)}`).join(', '),
     })),
     programs: programs.map((p) => ({ id: p.id.toString(), code: p.code, name: p.name })),
     subjects: subjects.map((s) => ({ id: s.id.toString(), code: s.code, title: s.title })),
     instructors: instructors.map((u) => ({ id: u.id.toString(), name: u.name, email: u.email })),
+    rooms: rooms.map((r) => ({ id: r.id.toString(), code: r.code, name: r.name, type: r.type, capacity: r.capacity, isActive: r.isActive })),
+    /** What each program's current curriculum offers, by year level and semester. */
+    mappings: [...current.values()].flatMap((c) => c.curriculumSubjects.map((e) => ({
+      programId: c.programId.toString(),
+      curriculum: c.versionLabel,
+      subjectId: e.subjectId.toString(),
+      yearLevel: e.yearLevel,
+      semester: e.semester,
+      units: e.units.toNumber(),
+      isRequired: e.isRequired,
+    }))),
   };
 }
 
@@ -436,6 +466,56 @@ export async function removeSectionStudent(user: AuthUser, id: bigint, studentId
 
 // --- Classes -----------------------------------------------------------------------
 
+/**
+ * The curriculum entry a class teaches: the subject must be mapped in the
+ * section's program's current curriculum (its newest active one, as for
+ * enrollment) at the section's year level and the class's semester.
+ */
+async function requireCurriculumEntry(
+  section: { programId: bigint; yearLevel: number; program: { code: string } },
+  subject: { id: bigint; code: string },
+  semester: number,
+) {
+  const curriculum = await prisma.curriculum.findFirst({
+    where: { programId: section.programId, isActive: true },
+    orderBy: { effectiveSchoolYear: 'desc' },
+    select: { id: true, versionLabel: true },
+  });
+  if (!curriculum) {
+    const text = `${section.program.code} has no active curriculum yet. Set one up under Programs, then map its subjects.`;
+    throw new AppError(text, 422, { subjectId: [text] }, 'SUBJECT_NOT_MAPPED');
+  }
+  const entry = await prisma.curriculumSubject.findFirst({
+    where: { curriculumId: curriculum.id, subjectId: subject.id, yearLevel: section.yearLevel, semester },
+    select: { id: true },
+  });
+  if (!entry) {
+    const text = `${subject.code} is not in ${section.program.code}'s curriculum (${curriculum.versionLabel}) for ${yearLevelLabel(section.yearLevel)} · ${SEMESTER_LABELS[semester] ?? `Semester ${semester}`}. Map it under Subjects first.`;
+    throw new AppError(text, 422, { subjectId: [text] }, 'SUBJECT_NOT_MAPPED');
+  }
+  return entry;
+}
+
+/** Every room named on a class or its meetings must exist and be active. */
+async function requireActiveRooms(ids: (bigint | null | undefined)[]) {
+  const unique = [...new Set(ids.filter((x): x is bigint => x != null).map(String))].map(BigInt);
+  if (unique.length === 0) return new Map<string, { id: bigint; code: string }>();
+  const rooms = await prisma.room.findMany({ where: { id: { in: unique } }, select: { id: true, code: true, isActive: true } });
+  if (rooms.length !== unique.length) throw new AppError('Choose a room from the list.', 422, { roomId: ['Choose a room from the list.'] });
+  const inactive = rooms.filter((r) => !r.isActive);
+  if (inactive.length) {
+    const text = `Room ${inactive.map((r) => r.code).join(', ')} is inactive and cannot be scheduled.`;
+    throw new AppError(text, 422, { roomId: [text] });
+  }
+  return new Map(rooms.map((r) => [r.id.toString(), r]));
+}
+
+/**
+ * Create a class: the subject must be in the section's curriculum for that
+ * year level and semester, the instructor and rooms active, and no meeting
+ * may clash with another class's room, instructor or section time
+ * (schedule-conflicts) — checked inside the transaction, under the term lock.
+ */
 export async function createClass(user: AuthUser, input: z.output<typeof classSchema>, context?: AuditContext) {
   const section = await prisma.section.findUnique({
     where: { id: input.sectionId },
@@ -444,26 +524,42 @@ export async function createClass(user: AuthUser, input: z.output<typeof classSc
   if (!section) throw new AppError('Choose a section.', 422, { sectionId: ['Choose a section.'] });
   assertWritableYear(section.schoolYear);
 
-  const subject = await prisma.subject.findUnique({ where: { id: input.subjectId }, select: { title: true, isActive: true } });
+  const subject = await prisma.subject.findUnique({ where: { id: input.subjectId }, select: { id: true, code: true, title: true, isActive: true } });
   if (!subject?.isActive) throw new AppError('Choose an active subject.', 422, { subjectId: ['Choose an active subject.'] });
 
   const clash = await prisma.classOffering.findFirst({ where: { sectionId: input.sectionId, subjectId: input.subjectId, semester: input.semester } });
   if (clash) throw new AppError('This section already has that subject this semester.', 422, { subjectId: ['Already offered to this section this semester.'] });
 
+  const entry = await requireCurriculumEntry(section, subject, input.semester);
   const instructor = input.instructorId ? await requireInstructorAccount(input.instructorId) : null;
+  const rooms = await requireActiveRooms([input.roomId, ...input.schedules.map((s) => s.roomId)]);
+  // The room's code is mirrored into the legacy text columns, which the
+  // Instructor's screens show; the room id is what conflicts are checked on.
+  const code = (id: bigint | null | undefined, text: string | null | undefined) => (id ? rooms.get(id.toString())?.code ?? null : text ?? null);
   const label = `${subject.title} — ${sectionLabel(section.program.code, section.yearLevel, section.name)}`;
 
   const cls = await prisma.$transaction(async (tx) => {
+    await assertNoConflicts(tx, {
+      schoolYearId: section.schoolYearId,
+      semester: input.semester,
+      sectionId: section.id,
+      instructorId: instructor?.id ?? null,
+      instructorName: instructor?.name,
+      roomId: input.roomId ?? null,
+      meetings: input.schedules,
+    });
     const created = await tx.classOffering.create({
       data: {
         schoolYearId: section.schoolYearId,
         semester: input.semester,
         sectionId: input.sectionId,
         subjectId: input.subjectId,
+        curriculumSubjectId: entry.id,
         instructorId: instructor?.id ?? null,
-        room: input.room,
+        room: code(input.roomId, input.room),
+        roomId: input.roomId ?? null,
         passingGrade: input.passingGrade,
-        schedules: { create: input.schedules },
+        schedules: { create: input.schedules.map((s) => ({ ...s, roomId: s.roomId ?? null, room: code(s.roomId, s.room) })) },
       },
     });
     if (instructor) {
@@ -475,38 +571,77 @@ export async function createClass(user: AuthUser, input: z.output<typeof classSc
       });
     }
     return created;
-  });
+  }, { maxWait: 10_000, timeout: 20_000 });
 
   await recordAudit({
     action: 'CLASS_CREATED',
     actor: actorLabel(user),
     target: `Class ${label} (${section.schoolYear.label})`,
-    details: { instructor: instructor?.name ?? null },
+    details: { instructor: instructor?.name ?? null, meetings: input.schedules.length },
     context,
   });
   return cls;
 }
 
+/**
+ * Update a class's instructor, rooms, meetings, passing grade or status. An
+ * ACTIVE class is re-checked for conflicts like a new one; cancelling frees
+ * its room, instructor and section time. A class created before curriculum
+ * checks is linked to its curriculum entry when one matches, never refused.
+ */
 export async function updateClass(user: AuthUser, id: bigint, input: z.output<typeof classUpdateSchema>, context?: AuditContext) {
   const cls = await prisma.classOffering.findUnique({
     where: { id },
-    include: { schoolYear: true, subject: { select: { title: true } }, section: { select: { name: true, yearLevel: true, program: { select: { code: true } } } } },
+    include: {
+      schoolYear: true,
+      subject: { select: { id: true, code: true, title: true } },
+      section: { select: { id: true, name: true, yearLevel: true, programId: true, program: { select: { code: true } } } },
+    },
   });
   if (!cls) throw new NotFoundError('Class not found.');
   assertWritableYear(cls.schoolYear);
 
+  const active = input.status === 'ACTIVE';
   const instructor = input.instructorId ? await requireInstructorAccount(input.instructorId) : null;
+  const roomIds = [input.roomId, ...input.schedules.map((s) => s.roomId)];
+  // A cancelled class may keep a room that has since been deactivated.
+  const rooms = active
+    ? await requireActiveRooms(roomIds)
+    : new Map((await prisma.room.findMany({ where: { id: { in: roomIds.filter((x): x is bigint => x != null) } }, select: { id: true, code: true } })).map((r) => [r.id.toString(), r]));
+  const code = (id: bigint | null | undefined, text: string | null | undefined) => (id ? rooms.get(id.toString())?.code ?? null : text ?? null);
   const changedInstructor = (instructor?.id ?? null)?.toString() !== cls.instructorId?.toString();
   const label = `${cls.subject.title} — ${sectionLabel(cls.section.program.code, cls.section.yearLevel, cls.section.name)}`;
+  const entry = cls.curriculumSubjectId ?? (await requireCurriculumEntry(cls.section, cls.subject, cls.semester).then((e) => e.id).catch(() => null));
 
   await prisma.$transaction(async (tx) => {
+    if (active) {
+      await assertNoConflicts(tx, {
+        schoolYearId: cls.schoolYearId,
+        semester: cls.semester,
+        classId: id,
+        sectionId: cls.section.id,
+        instructorId: instructor?.id ?? null,
+        instructorName: instructor?.name,
+        roomId: input.roomId ?? null,
+        meetings: input.schedules,
+      });
+    }
     await tx.classOffering.update({
       where: { id },
-      data: { instructorId: instructor?.id ?? null, room: input.room, passingGrade: input.passingGrade },
+      data: {
+        instructorId: instructor?.id ?? null,
+        room: code(input.roomId, input.room),
+        roomId: input.roomId ?? null,
+        passingGrade: input.passingGrade,
+        status: input.status,
+        curriculumSubjectId: entry,
+      },
     });
     await tx.classSchedule.deleteMany({ where: { classId: id } });
-    if (input.schedules.length > 0) await tx.classSchedule.createMany({ data: input.schedules.map((s) => ({ ...s, classId: id })) });
-    if (changedInstructor && instructor) {
+    if (input.schedules.length > 0) {
+      await tx.classSchedule.createMany({ data: input.schedules.map((s) => ({ ...s, roomId: s.roomId ?? null, room: code(s.roomId, s.room), classId: id })) });
+    }
+    if (changedInstructor && instructor && active) {
       await notifyUsers(tx, [instructor.id], {
         type: 'class.assigned',
         title: `You were assigned to teach ${label}`,
@@ -514,15 +649,46 @@ export async function updateClass(user: AuthUser, id: bigint, input: z.output<ty
         href: `/teaching/classes/${id}`,
       });
     }
-  });
+  }, { maxWait: 10_000, timeout: 20_000 });
 
   await recordAudit({
     action: 'CLASS_UPDATED',
     actor: actorLabel(user),
     target: `Class ${label} (${cls.schoolYear.label})`,
-    details: changedInstructor ? { instructor: instructor?.name ?? 'unassigned' } : undefined,
+    details: {
+      ...(changedInstructor ? { instructor: instructor?.name ?? 'unassigned' } : {}),
+      ...(input.status !== cls.status ? { status: input.status } : {}),
+    },
     context,
   });
+}
+
+/**
+ * The schedule form's dry run: the conflicts a class with these meetings
+ * would have, without writing anything. For a new class pass the section and
+ * semester; for an existing one its id.
+ */
+export async function checkClassSchedule(input: z.output<typeof classCheckSchema>) {
+  let base: { schoolYearId: bigint; semester: number; sectionId: bigint; classId: bigint | null };
+  if (input.classId) {
+    const cls = await prisma.classOffering.findUnique({ where: { id: input.classId }, select: { id: true, schoolYearId: true, semester: true, sectionId: true } });
+    if (!cls) throw new NotFoundError('Class not found.');
+    base = { schoolYearId: cls.schoolYearId, semester: cls.semester, sectionId: cls.sectionId, classId: cls.id };
+  } else {
+    if (!input.sectionId || !input.semester) throw new AppError('Choose a section and a semester.', 422);
+    const section = await prisma.section.findUnique({ where: { id: input.sectionId }, select: { id: true, schoolYearId: true } });
+    if (!section) throw new NotFoundError('Section not found.');
+    base = { schoolYearId: section.schoolYearId, semester: input.semester, sectionId: section.id, classId: null };
+  }
+  const instructor = input.instructorId ? await prisma.user.findUnique({ where: { id: input.instructorId }, select: { name: true } }) : null;
+  const conflicts = await previewConflicts({
+    ...base,
+    instructorId: input.instructorId ?? null,
+    instructorName: instructor?.name,
+    roomId: input.roomId ?? null,
+    meetings: input.schedules,
+  });
+  return { conflicts };
 }
 
 /** Only a class with no recorded work: attendance, assessments, grades or documents. */

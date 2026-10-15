@@ -10,7 +10,8 @@ type Params = { params: Promise<{ id: string }> };
 
 export const GET = withErrorHandling(async (_request: Request, { params }: Params) => {
   const user = await requireApiUser();
-  authorize(teachingPolicy.manageClasses(user));
+  // Reading a roster: the Director too (read-only); every change needs manageClasses.
+  authorize(teachingPolicy.viewClasses(user));
   return ok(await sectionRoster(idSchema.parse((await params).id)));
 });
 

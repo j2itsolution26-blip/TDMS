@@ -7,8 +7,9 @@ import type { PageRequest } from '@/server/controllers/pages/types';
 
 export async function loadClassSetup({ query }: PageRequest) {
   const { year } = query;
-  const ctx = await yearPage(teachingPolicy.manageClasses, year);
+  // The Director sees it read-only; changes need manageClasses (checked again by every write).
+  const ctx = await yearPage(teachingPolicy.viewClasses, year);
   const setup = ctx.yearId ? await classSetupOverview(ctx.yearId) : null;
 
-  return { ctx, setup };
+  return { ctx, setup, canManage: teachingPolicy.manageClasses(ctx.user) };
 }

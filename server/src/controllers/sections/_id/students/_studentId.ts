@@ -15,7 +15,7 @@ type Params = { params: Promise<{ id: string; studentId: string }> };
  */
 export const GET = withErrorHandling(async (_request: Request, { params }: Params) => {
   const user = await requireApiUser();
-  authorize(teachingPolicy.manageClasses(user));
+  authorize(teachingPolicy.viewClasses(user));
   const { id, studentId } = await params;
   return ok(await sectionStudentProfile(user, idSchema.parse(id), idSchema.parse(studentId)));
 });

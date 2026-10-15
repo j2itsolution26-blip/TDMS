@@ -8,6 +8,8 @@ import {
   BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT_CLASS, LABEL_CLASS,
 } from '@/components/ui';
 import { SUBJECT_TYPES, SUBJECT_TYPE_LABELS, type SubjectType } from '@shared/types/domain';
+import { SEMESTER_LABELS, yearLevelLabel } from '@shared/lib/teaching';
+import CurriculumMap, { type ActiveSubject, type MapProgram } from './CurriculumMap';
 
 /** Port of livewire/subjects/index.blade.php. */
 
@@ -19,6 +21,8 @@ export interface SubjectRow {
   subjectType: string;
   defaultUnits: number;
   isActive: boolean;
+  /** Where it is mapped, in active curricula. */
+  usage: { program: string; curriculum: string; yearLevel: number; semester: number }[];
 }
 
 interface Props {
@@ -26,6 +30,10 @@ interface Props {
   page: number;
   lastPage: number;
   total: number;
+  search: string;
+  map: MapProgram[];
+  subjects: ActiveSubject[];
+  canMap: boolean;
   canCreate: boolean;
   canUpdate: boolean;
 }
@@ -35,8 +43,18 @@ const EMPTY = {
   subjectType: 'lecture' as SubjectType, defaultUnits: '', isActive: true,
 };
 
-export default function SubjectsScreen({ rows, page, lastPage, total, canCreate, canUpdate }: Props) {
+export default function SubjectsScreen({ rows, page, lastPage, total, search, map, subjects, canMap, canCreate, canUpdate }: Props) {
   const router = useRouter();
+  // Two views: the Curriculum Map (default) and the Catalogue. Kept in the URL.
+  const [view, setView] = useState<'map' | 'catalogue'>(() =>
+    typeof window !== 'undefined' && (new URLSearchParams(window.location.search).get('view') === 'catalogue' || search) ? 'catalogue' : 'map');
+  const [term, setTerm] = useState(search);
+  const switchView = (v: 'map' | 'catalogue') => {
+    setView(v);
+    const q = new URLSearchParams(window.location.search);
+    q.set('view', v);
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}?${q}`);
+  };
   useOpenOnNew(canCreate, openCreate);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<SubjectRow | null>(null);
@@ -84,7 +102,7 @@ export default function SubjectsScreen({ rows, page, lastPage, total, canCreate,
     <div className="space-y-6">
       <PageHeader
         title="Subjects"
-        subtitle="The subject catalogue shared by every curriculum."
+        subtitle="Map subjects to each program's year levels and semesters, and keep the shared catalogue."
         actions={canCreate ? (
           <button type="button" className={BUTTON_PRIMARY} onClick={openCreate}>
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -95,11 +113,28 @@ export default function SubjectsScreen({ rows, page, lastPage, total, canCreate,
         ) : null}
       />
 
+      <div role="tablist" aria-label="Subjects view" className="inline-flex rounded-xl border border-tdms-hairline bg-white p-1">
+        {([['map', 'Curriculum Map'], ['catalogue', `Catalogue (${total})`]] as const).map(([v, label]) => (
+          <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => switchView(v)}
+            className={`rounded-lg px-4 py-2 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 ${view === v ? 'bg-forest text-white' : 'text-ink hover:bg-surface'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
       {message && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{message}</div>}
 
+      {view === 'map' ? <CurriculumMap programs={map} subjects={subjects} canMap={canMap} /> : (
+      <>
+      <form role="search" aria-label="Search the catalogue" className="flex gap-3"
+        onSubmit={(e) => { e.preventDefault(); router.push(`/subjects?view=catalogue${term.trim() ? `&search=${encodeURIComponent(term.trim())}` : ''}`); }}>
+        <label htmlFor="subjects-search" className="sr-only">Search by code or title</label>
+        <input id="subjects-search" type="search" className={INPUT_CLASS} placeholder="Search by subject code or title…" value={term} onChange={(e) => setTerm(e.target.value)} />
+        <button type="submit" className={BUTTON_SECONDARY}>Search</button>
+      </form>
       <Card padding="p-0">
         {rows.length === 0 ? (
-          <EmptyState title="No subjects yet" description="Add a subject so it can be attached to a curriculum." />
+          <EmptyState title={search ? `No subject matches “${search}”` : 'No subjects yet'} description={search ? 'Try another code or title.' : 'Add a subject so it can be attached to a curriculum.'} />
         ) : (
           <>
             <div className="overflow-x-auto">
@@ -110,6 +145,7 @@ export default function SubjectsScreen({ rows, page, lastPage, total, canCreate,
                     <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Title</th>
                     <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Type</th>
                     <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Units</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Used in</th>
                     <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Status</th>
                     <th className="px-6 py-3 text-right text-xs font-medium uppercase text-slate-500">Actions</th>
                   </tr>
@@ -123,6 +159,11 @@ export default function SubjectsScreen({ rows, page, lastPage, total, canCreate,
                         {SUBJECT_TYPE_LABELS[s.subjectType as SubjectType] ?? s.subjectType}
                       </td>
                       <td className="px-6 py-3.5 text-sm text-slate-500">{s.defaultUnits.toFixed(1)}</td>
+                      <td className="px-6 py-3.5 text-xs">
+                        {s.usage.length === 0
+                          ? <span className="rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 ring-1 ring-inset ring-amber-200">Not mapped</span>
+                          : <ul className="space-y-0.5 text-slate-600">{s.usage.map((u, i) => <li key={i} className="whitespace-nowrap"><span className="font-semibold text-navy-900">{u.program}</span> · {yearLevelLabel(u.yearLevel)} · {SEMESTER_LABELS[u.semester] ?? `Sem ${u.semester}`}</li>)}</ul>}
+                      </td>
                       <td className="px-6 py-3.5"><Badge status={s.isActive ? 'active' : 'inactive'} /></td>
                       <td className="px-6 py-3.5 text-right text-sm">
                         {canUpdate && (
@@ -139,10 +180,12 @@ export default function SubjectsScreen({ rows, page, lastPage, total, canCreate,
                 </tbody>
               </table>
             </div>
-            <Pagination page={page} lastPage={lastPage} total={total} basePath="/subjects" />
+            <Pagination page={page} lastPage={lastPage} total={total} basePath="/subjects" query={{ view: 'catalogue', search: search || undefined }} />
           </>
         )}
       </Card>
+      </>
+      )}
 
       <Modal open={showForm} onClose={() => setShowForm(false)} title={editing ? 'Edit Subject' : 'New Subject'}>
         <form onSubmit={save} className="space-y-4">

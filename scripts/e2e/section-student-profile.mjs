@@ -103,7 +103,10 @@ try {
   check('the Coordinator (who manages sections) can open it', c.status === 200 && c.data.studentNumber === `${M}-1`);
   check('…but personal details and the account are withheld, and say so', c.data?.personal === null && c.data.account === null && c.data.restricted.includes('personal') && c.data.restricted.includes('account') && !c.text.includes('09170000000') && !c.text.includes('2005-04-09') && !c.text.includes(account.email), c.data);
   check('…documents follow the existing document permission (office viewers)', Array.isArray(c.data?.documents) && c.data.documents.length === 1);
-  for (const who of ['secretary', 'director', 'teacher']) {
+  // The Director views Classes & Sections read-only (teachingPolicy.viewClasses), so may open it too.
+  const dir = await get('director', `/sections/${A.id}/students/${full.id}`);
+  check('director: may view (read-only oversight), with the details the Director may already see', dir.status === 200 && dir.data?.studentNumber === `${M}-1` && dir.data.personal !== null, dir.status);
+  for (const who of ['secretary', 'teacher']) {
     const r = await get(who, `/sections/${A.id}/students/${full.id}`);
     check(`${who}: 403, same as the roster itself`, r.status === 403 && !r.text.includes(`First1`), r.status);
   }

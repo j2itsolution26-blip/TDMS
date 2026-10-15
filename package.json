@@ -48,7 +48,8 @@
     "test:hierarchy": "node scripts/e2e/section-hierarchy.mjs",
     "test:auto-assign": "node scripts/e2e/section-auto-assign.mjs",
     "test:dit-dht": "node scripts/e2e/dit-dht-enrollment.mjs",
-    "test:registration": "node scripts/e2e/registration-enrollment.mjs"
+    "test:registration": "node scripts/e2e/registration-enrollment.mjs",
+    "test:scheduling": "node scripts/e2e/class-scheduling.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

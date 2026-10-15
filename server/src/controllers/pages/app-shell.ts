@@ -59,7 +59,7 @@ const ASSESSMENT_LINKS = ['/assessment/results', '/assessment/calendar', '/asses
 const ROLE_SIDEBARS: Record<'director' | 'coordinator' | 'secretary' | 'assessment_center_manager' | 'processing_officer' | 'teacher' | 'student', [NavGroup, string[]][]> = {
   director: [
     ['main', ['/dashboard']],
-    ['academic', ['/programs', '/subjects', '/school-years']],
+    ['academic', ['/programs', '/subjects', '/class-setup', '/school-years']],
     ['people', ['/students']],
     ['admissions', ['/applications', '/enrollments']],
     ['oversight', ['/academic-reviews', '/status-requests', '/learning-support', '/instructors']],
@@ -181,7 +181,8 @@ export async function loadAppShell(_request: PageRequest) {
   }
 
   // --- The Diploma Instructor module. Each page re-checks the same policy.
-  if (teachingPolicy.manageClasses(user)) {
+  // The Director sees it read-only (viewClasses); scheduling needs manageClasses.
+  if (teachingPolicy.viewClasses(user)) {
     items.push({ label: 'Classes & Sections', href: '/class-setup', match: ['/class-setup'], icon: 'setup', group: 'academic' });
   }
   if (teachingPolicy.viewSchoolYears(user)) {

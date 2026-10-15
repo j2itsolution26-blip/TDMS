@@ -9,11 +9,12 @@ import type { loadClassSetup } from '@/server/controllers/pages/app/class-setup'
 
 type Data = Awaited<ReturnType<typeof loadClassSetup>>;
 
-function View({ ctx, setup }: Data) {
+function View({ ctx, setup, canManage }: Data) {
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const tab: SetupTab = params.get('tab') === 'sections' ? 'sections' : 'classes';
+  const requested = params.get('tab');
+  const tab: SetupTab = requested === 'sections' || requested === 'timetable' || requested === 'rooms' ? requested : 'classes';
   const [newSection, setNewSection] = useState(0);
   const onTab = (t: SetupTab) => {
     // From the live URL: the Sections tab keeps ?program=&level= there itself.
@@ -22,7 +23,7 @@ function View({ ctx, setup }: Data) {
     router.replace(`${pathname}${next.toString() ? `?${next}` : ''}`);
   };
   const yearLabel = ctx.current?.label.replace('-', '–') ?? '';
-  const canAdd = !!setup && !!ctx.current && !ctx.archived;
+  const canAdd = !!setup && !!ctx.current && !ctx.archived && canManage;
 
   const sections = tab === 'sections';
   return (
@@ -48,7 +49,7 @@ function View({ ctx, setup }: Data) {
       {!setup || !ctx.current ? (
         <Empty title="No school year yet" description="Create a school year first, under School Years." />
       ) : (
-        <ClassSetupScreen setup={setup} schoolYearId={ctx.current.id.toString()} yearLabel={yearLabel} archived={ctx.archived} tab={tab} onTab={onTab} newSection={newSection} />
+        <ClassSetupScreen setup={setup} schoolYearId={ctx.current.id.toString()} yearLabel={yearLabel} archived={ctx.archived} canManage={canManage} tab={tab} onTab={onTab} newSection={newSection} />
       )}
     </PageShell>
   );

@@ -74,6 +74,8 @@ const scheduleSchema = z
     startTime: clockTime,
     endTime: clockTime,
     room: optionalText(50),
+    /** This meeting's room, when it is not the class's room. */
+    roomId: idSchema.nullable().optional(),
   })
   .refine((s) => timeToMinutes(s.endTime) > timeToMinutes(s.startTime), { message: 'The class must end after it starts.', path: ['endTime'] });
 
@@ -83,11 +85,39 @@ export const classSchema = z.object({
   semester: z.coerce.number().int().min(1).max(3),
   instructorId: idSchema.nullable().optional(),
   room: optionalText(50),
+  /** The class's room (a Room); meetings without their own room use it. */
+  roomId: idSchema.nullable().optional(),
   passingGrade: z.coerce.number().min(0).max(100).default(75),
   schedules: z.array(scheduleSchema).max(14).default([]),
 });
 
-export const classUpdateSchema = classSchema.omit({ sectionId: true, subjectId: true, semester: true });
+export const CLASS_STATUSES = ['ACTIVE', 'CANCELLED'] as const;
+
+export const classUpdateSchema = classSchema
+  .omit({ sectionId: true, subjectId: true, semester: true })
+  .extend({ status: z.enum(CLASS_STATUSES).default('ACTIVE') });
+
+/** The schedule form's dry run: a new class (section, semester) or an existing one (classId). */
+export const classCheckSchema = z.object({
+  classId: idSchema.nullable().optional(),
+  sectionId: idSchema.nullable().optional(),
+  semester: z.coerce.number().int().min(1).max(3).nullable().optional(),
+  instructorId: idSchema.nullable().optional(),
+  roomId: idSchema.nullable().optional(),
+  schedules: z.array(scheduleSchema).max(14).default([]),
+});
+
+// --- Rooms ----------------------------------------------------------------------
+
+export const ROOM_TYPES = ['LECTURE', 'LABORATORY', 'OTHER'] as const;
+
+export const roomSchema = z.object({
+  code: z.string().trim().min(1, 'Enter a room code.').max(30).transform((v) => v.toUpperCase()),
+  name: z.string().trim().min(1, 'Enter the room name.').max(120),
+  type: z.enum(ROOM_TYPES).default('LECTURE'),
+  capacity: z.coerce.number().int().min(1, 'At least 1.').max(500).nullable().optional(),
+  isActive: z.boolean().default(true),
+});
 
 export const weightsSchema = z
   .object(Object.fromEntries(ASSESSMENT_KINDS.map((k) => [k, z.coerce.number().min(0).max(100)])) as Record<(typeof ASSESSMENT_KINDS)[number], z.ZodNumber>)

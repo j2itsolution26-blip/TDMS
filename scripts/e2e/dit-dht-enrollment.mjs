@@ -106,7 +106,7 @@ try {
 
   console.log('\n3. Enrolling and approving: the program comes from the student');
   const en = await api('secretary', 'POST', `/students/${ivy.id}/enrollments`, { schoolYear: year.label, semester: 1, yearLevel: 1, curriculumId: String(curDht.id) });
-  const ivyEnrollment = await prisma.enrollment.findFirst({ where: { studentId: ivy.id } });
+  const ivyEnrollment = await prisma.enrollment.findFirst({ where: { studentId: ivy.id, schoolYear: year.label } });
   check('the enrollment takes Ivy’s own DIT-1 curriculum, even when another is sent', [200, 201].includes(en.status) && ivyEnrollment?.curriculumId === curDit.id, en.json);
   const dup = await api('secretary', 'POST', `/students/${ivy.id}/enrollments`, { schoolYear: year.label, semester: 1, yearLevel: 1 });
   check('a second enrollment for the same term is refused', dup.status === 422, dup.json);
@@ -119,16 +119,16 @@ try {
   console.log('\nEnrollments page: program tabs, search, section');
   const hEn = await api('secretary', 'POST', `/students/${hana.id}/enrollments`, { schoolYear: year.label, semester: 1, yearLevel: 1 });
   check('Hana’s enrollment is created (pending)', [200, 201].includes(hEn.status));
-  const eDit = await page('secretary', `/enrollments?program=${dit.id}&search=Reg${M}`);
-  const eDht = await page('secretary', `/enrollments?program=${dht.id}&search=Reg${M}`);
-  const eAll = await page('secretary', `/enrollments?search=Reg${M}`);
+  const eDit = await page('secretary', `/enrollments?program=${dit.id}&year=${year.label}&search=Reg${M}`);
+  const eDht = await page('secretary', `/enrollments?program=${dht.id}&year=${year.label}&search=Reg${M}`);
+  const eAll = await page('secretary', `/enrollments?year=${year.label}&search=Reg${M}`);
   check('DIT-1 tab: only Ivy’s enrollment, with its section', eDit?.data.rows.length === 1 && eDit.data.rows[0].student.name.startsWith('Ivy') && eDit.data.rows[0].section === `${M}-DIT-1 · 1st Year · Section A`, eDit?.data.rows);
   check('DHT-2 tab: only Hana’s pending enrollment, no section yet', eDht?.data.rows.length === 1 && eDht.data.rows[0].student.name.startsWith('Hana') && eDht.data.rows[0].section === null);
   const tabs = Object.fromEntries((eAll?.programTabs ?? []).map((t) => [t.label, t.count]));
   check('program tab counts for the search: All 2, DIT-1 1, DHT-2 1', tabs['All Programs'] === 2 && tabs[`${M}-DIT-1`] === 1 && tabs[`${M}-DHT-2`] === 1, eAll?.programTabs);
   const statusCounts = Object.fromEntries((eDht?.filters ?? []).map((f) => [f.value || 'all', f.count]));
   check('status counts follow the program tab (DHT-2: 1 pending, 0 enrolled)', statusCounts.pending === 1 && statusCounts.enrolled === 0, statusCounts);
-  const byNumber = await page('secretary', `/enrollments?search=${encodeURIComponent(ivy.studentNumber)}`);
+  const byNumber = await page('secretary', `/enrollments?year=${year.label}&search=${encodeURIComponent(ivy.studentNumber)}`);
   check('search by student number finds the enrollment', byNumber?.data.rows.length === 1 && byNumber.data.rows[0].student.studentNumber === ivy.studentNumber);
 
   console.log('\n4–7. Capacity and separation');
@@ -145,7 +145,7 @@ try {
   const r26 = await approve('secretary', s26.enrollment.id);
   check('4. the 26th DIT-1 1st Year student goes to Section B', r26.data?.placement?.section === `${M}-DIT-1 · 1st Year · Section B`, r26.json);
   await verifyDocs(hana.id);
-  const hEnr = await prisma.enrollment.findFirst({ where: { studentId: hana.id } });
+  const hEnr = await prisma.enrollment.findFirst({ where: { studentId: hana.id, schoolYear: year.label } });
   const rh = await approve('secretary', hEnr.id);
   const ph = await placementOf(hana.id, year.id);
   check('5. Hana (DHT-2) opens DHT-2 Section A — DIT-1 B had 24 seats but is never shared', rh.data?.placement?.section === `${M}-DHT-2 · 1st Year · Section A` && ph.section.programId === dht.id);

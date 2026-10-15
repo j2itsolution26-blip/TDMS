@@ -372,6 +372,12 @@ export const teachingPolicy = {
   /** Sections, rosters, class offerings, schedules and instructor assignment. */
   manageClasses: (u: AuthUser) => can(u, 'schedule.manage'),
 
+  /**
+   * Classes & Sections and the timetable, read-only: whoever schedules, plus
+   * the Director's oversight. Every change still needs manageClasses.
+   */
+  viewClasses: (u: AuthUser) => can(u, 'schedule.manage') || inRoles(u, ['director']),
+
   /** Create, activate and archive school years. */
   manageSchoolYears: (u: AuthUser) => hasAnyRole(u, ['admin', 'director']),
   viewSchoolYears: (u: AuthUser) => inRoles(u, ['admin', 'director', 'coordinator']),

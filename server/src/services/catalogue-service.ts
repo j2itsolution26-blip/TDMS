@@ -226,14 +226,19 @@ export async function activeCurriculaForProgram(programId: bigint) {
 
 // --- Subjects --------------------------------------------------------------
 
-export async function listSubjects(page = 1) {
+export async function listSubjects(page = 1, search = '') {
+  const q = search.trim();
+  const where = q ? { OR: [{ code: { contains: q, mode: 'insensitive' as const } }, { title: { contains: q, mode: 'insensitive' as const } }] } : {};
   const [rows, total] = await Promise.all([
     prisma.subject.findMany({
+      where,
       orderBy: { code: 'asc' },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
+      // Where each subject is used: its mapping status on the Subjects page.
+      include: { curriculumSubjects: { select: { yearLevel: true, semester: true, curriculum: { select: { versionLabel: true, isActive: true, program: { select: { code: true } } } } } } },
     }),
-    prisma.subject.count(),
+    prisma.subject.count({ where }),
   ]);
 
   return paginate(
@@ -245,10 +250,65 @@ export async function listSubjects(page = 1) {
       subjectType: s.subjectType,
       defaultUnits: s.defaultUnits.toNumber(),
       isActive: s.isActive,
+      usage: s.curriculumSubjects
+        .filter((u) => u.curriculum.isActive)
+        .map((u) => ({ program: u.curriculum.program.code, curriculum: u.curriculum.versionLabel, yearLevel: u.yearLevel, semester: u.semester })),
     })),
     total,
     page,
   );
+}
+
+/**
+ * The Curriculum Map: each active program's current curriculum (its newest
+ * active one — the one classes are scheduled from and students enroll into)
+ * with every subject mapped to it, by year level and semester.
+ */
+export async function curriculumMap() {
+  const [programs, curricula] = await Promise.all([
+    prisma.program.findMany({ where: { isActive: true }, orderBy: { id: 'asc' }, select: { id: true, code: true, name: true } }),
+    prisma.curriculum.findMany({
+      where: { isActive: true },
+      orderBy: { effectiveSchoolYear: 'desc' },
+      select: {
+        id: true, programId: true, versionLabel: true, effectiveSchoolYear: true,
+        curriculumSubjects: {
+          orderBy: [{ yearLevel: 'asc' }, { semester: 'asc' }],
+          select: {
+            id: true, yearLevel: true, semester: true, units: true, isRequired: true,
+            subject: { select: { id: true, code: true, title: true, subjectType: true, isActive: true } },
+            prerequisite: { select: { code: true } },
+            _count: { select: { classes: true } },
+          },
+        },
+      },
+    }),
+  ]);
+  return programs.map((p) => {
+    const c = curricula.find((x) => x.programId === p.id);
+    return {
+      id: p.id.toString(),
+      code: p.code,
+      name: p.name,
+      curriculum: c
+        ? {
+            id: c.id.toString(),
+            version: c.versionLabel,
+            effective: c.effectiveSchoolYear,
+            entries: c.curriculumSubjects.map((e) => ({
+              id: e.id.toString(),
+              yearLevel: e.yearLevel,
+              semester: e.semester,
+              units: e.units.toNumber(),
+              isRequired: e.isRequired,
+              prerequisite: e.prerequisite?.code ?? null,
+              classes: e._count.classes,
+              subject: { id: e.subject.id.toString(), code: e.subject.code, title: e.subject.title, type: e.subject.subjectType, isActive: e.subject.isActive },
+            })),
+          }
+        : null,
+    };
+  });
 }
 
 export async function getSubject(id: bigint) {
@@ -334,6 +394,7 @@ export async function listCurriculumSubjects(curriculumId: bigint) {
     yearLevel: e.yearLevel,
     semester: e.semester,
     units: e.units.toNumber(),
+    isRequired: e.isRequired,
     subject: { id: e.subject.id.toString(), code: e.subject.code, title: e.subject.title },
     prerequisite: e.prerequisite
       ? { id: e.prerequisite.id.toString(), code: e.prerequisite.code, title: e.prerequisite.title }
@@ -375,6 +436,7 @@ export async function addCurriculumSubject(input: z.infer<typeof curriculumSubje
       yearLevel: input.yearLevel,
       semester: input.semester,
       units: input.units,
+      isRequired: input.isRequired,
       createdAt: new Date(),
       updatedAt: new Date(),
     },
@@ -390,5 +452,10 @@ export async function removeCurriculumSubject(id: bigint, curriculumId: bigint) 
   const entry = await prisma.curriculumSubject.findUnique({ where: { id }, select: { curriculumId: true } });
   if (!entry) throw new NotFoundError('Curriculum subject not found.');
   if (entry.curriculumId !== curriculumId) throw new NotFoundError('Curriculum subject not found.');
+  // A scheduled class teaches this entry: removing it would orphan the class.
+  const classes = await prisma.classOffering.count({ where: { curriculumSubjectId: id } });
+  if (classes > 0) {
+    throw new AppError(`${classes} class${classes === 1 ? ' teaches' : 'es teach'} this subject from this curriculum. Delete or cancel ${classes === 1 ? 'it' : 'them'} under Classes & Sections first.`, 409, undefined, 'CURRICULUM_SUBJECT_IN_USE');
+  }
   await prisma.curriculumSubject.delete({ where: { id } });
 }

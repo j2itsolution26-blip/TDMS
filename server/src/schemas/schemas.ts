@@ -250,8 +250,11 @@ export const curriculumSubjectSchema = z
     subjectId: idSchema,
     prerequisiteSubjectId: idSchema.nullable().optional(),
     yearLevel: yearLevelSchema,
-    semester: z.coerce.number().int().min(1).max(2),
+    // 1st Semester, 2nd Semester or Summer (3) — the terms classes are offered in.
+    semester: z.coerce.number().int().min(1, 'Choose a semester.').max(3, 'Choose a semester.'),
     units: z.coerce.number().min(0).max(99),
+    /** Required (default) or elective. */
+    isRequired: z.boolean().default(true),
   })
   // Laravel rule: different:subject_id
   .refine((d) => !d.prerequisiteSubjectId || d.prerequisiteSubjectId !== d.subjectId, {

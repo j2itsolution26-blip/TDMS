@@ -5,6 +5,7 @@ import type { enrollmentSchema } from '@/server/schemas/schemas';
 import { ensureCredentialChecklist, hasAllRequiredCredentialsVerified } from './student-service';
 import { recordAudit, actorLabel, type AuditContext } from './audit-log';
 import { ENROLLMENT_STATUS_LABELS, ENROLLMENT_TRANSITIONS, type AuthUser, type EnrollmentStatus } from '@shared/types/domain';
+import { assignSection, isRetryable, type Placement } from './teaching/section-assignment';
 
 /**
  * Enrolment and credential verification.
@@ -278,6 +279,10 @@ export async function createEnrollment(input: z.infer<typeof enrollmentSchema>) 
  *   * rejecting and dropping need a reason, kept in the status history;
  *   * approving still needs every required document verified, and stamps the
  *     approver and flips the student to `active`, as before;
+ *   * approving also places the student in a section of their program, the
+ *     enrollment's year level and its school year (teaching/section-assignment)
+ *     in the SAME transaction — approved and placed, or neither — and says
+ *     which section; a collision with a concurrent change is retried;
  *   * every decision is written to the audit log.
  */
 export async function transitionEnrollment(
@@ -289,7 +294,7 @@ export async function transitionEnrollment(
 ) {
   const enrollment = await prisma.enrollment.findUnique({
     where: { id },
-    include: { student: { select: { id: true, studentNumber: true, firstName: true, lastName: true } } },
+    include: { student: { select: { id: true, studentNumber: true, firstName: true, lastName: true, programId: true, program: { select: { code: true } } } } },
   });
   if (!enrollment) throw new NotFoundError('Enrollment not found.');
 
@@ -309,21 +314,40 @@ export async function transitionEnrollment(
     throw new AppError('Give a reason.', 422, { reason: ['Give a reason.'] });
   }
 
+  // The school year the student will be placed in: the enrollment's own, as a record.
+  let schoolYear: { id: bigint; label: string } | null = null;
   if (toStatus === 'enrolled') {
     const ready = await hasAllRequiredCredentialsVerified(enrollment.studentId);
     if (!ready) {
       throw new AppError('This student still has unverified or missing required credentials.', 422);
     }
+    const year = enrollment.schoolYearId
+      ? await prisma.schoolYear.findUnique({ where: { id: enrollment.schoolYearId }, select: { id: true, label: true, status: true } })
+      : await prisma.schoolYear.findUnique({ where: { label: enrollment.schoolYear }, select: { id: true, label: true, status: true } });
+    if (!year) {
+      throw new AppError(
+        `School year ${enrollment.schoolYear} has not been set up, so the student cannot be placed in a section. Create it under School Years, then approve again.`,
+        422, undefined, 'SCHOOL_YEAR_MISSING',
+      );
+    }
+    if (year.status === 'ARCHIVED') {
+      throw new AppError(`School year ${year.label} is archived. Its sections are read-only.`, 409, undefined, 'SCHOOL_YEAR_ARCHIVED');
+    }
+    schoolYear = year;
   }
 
   const actorId = BigInt(actor.id);
-  await prisma.$transaction(async (tx) => {
+  const current = enrollment;
+  const year = schoolYear;
+
+  // Approve (or reject, or drop) and — on approval — place the student, as one transaction.
+  const decide = () => prisma.$transaction(async (tx): Promise<Placement | null> => {
     const done = await tx.enrollment.updateMany({
       where: { id, status: from },
       data: {
         status: toStatus,
-        approvedBy: toStatus === 'enrolled' ? actorId : enrollment.approvedBy,
-        approvedAt: toStatus === 'enrolled' ? new Date() : enrollment.approvedAt,
+        approvedBy: toStatus === 'enrolled' ? actorId : current.approvedBy,
+        approvedAt: toStatus === 'enrolled' ? new Date() : current.approvedAt,
         updatedAt: new Date(),
       },
     });
@@ -335,22 +359,57 @@ export async function transitionEnrollment(
       data: { enrollmentId: id, fromStatus: from, toStatus, changedBy: actorId, reason: reason?.trim() || null },
     });
 
-    if (toStatus === 'enrolled') {
-      await tx.student.update({
-        where: { id: enrollment.studentId },
-        data: { status: 'active', updatedAt: new Date() },
-      });
+    if (toStatus !== 'enrolled' || !year) return null;
+    await tx.student.update({
+      where: { id: current.studentId },
+      data: { status: 'active', updatedAt: new Date() },
+    });
+    return assignSection(tx, {
+      studentId: current.studentId,
+      programId: current.student.programId,
+      programCode: current.student.program.code,
+      yearLevel: current.yearLevel,
+      schoolYearId: year.id,
+      schoolYearLabel: year.label,
+    });
+    // Approvals into one group queue on its lock; give a busy moment room.
+  }, { maxWait: 10_000, timeout: 20_000 });
+
+  // A unique-index collision (someone created the same section name a moment
+  // earlier) rolls the whole decision back; it is tried again, twice at most.
+  let placement: Placement | null = null;
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      placement = await decide();
+      break;
+    } catch (error) {
+      if (attempt < 3 && isRetryable(error)) continue;
+      throw error;
     }
-  });
+  }
 
   const action = toStatus === 'enrolled' ? 'ENROLLMENT_APPROVED' : toStatus === 'rejected' ? 'ENROLLMENT_REJECTED' : 'ENROLLMENT_DROPPED';
   await recordAudit({
     action,
     actor: actorLabel(actor),
     target: `Enrollment: ${enrollment.student.studentNumber} (${enrollment.student.firstName} ${enrollment.student.lastName}), SY ${enrollment.schoolYear} semester ${enrollment.semester}`,
-    details: { enrollment_id: id.toString(), from, to: toStatus, ...(reason?.trim() ? { reason: reason.trim() } : {}) },
+    details: {
+      enrollment_id: id.toString(), from, to: toStatus,
+      ...(reason?.trim() ? { reason: reason.trim() } : {}),
+      ...(placement ? { section: placement.label, section_created: placement.created, already_placed: placement.already } : {}),
+    },
     context,
   });
+  if (placement && !placement.already) {
+    await recordAudit({
+      action: placement.created ? 'SECTION_CREATED_AND_STUDENT_ASSIGNED' : 'SECTION_STUDENT_ASSIGNED',
+      actor: actorLabel(actor),
+      target: placement.label,
+      details: { studentId: enrollment.studentId.toString(), enrollment_id: id.toString(), automatic: true },
+      context,
+    });
+  }
+  return { placement: placement ? { section: placement.label, created: placement.created, already: placement.already } : null };
 }
 
 /**

@@ -12,6 +12,7 @@ export const POST = withErrorHandling(async (request: Request, { params }: Param
   authorize(enrollmentPolicy.transition(user));
   const { id } = await params;
   const input = await parseJson(request, enrollmentTransitionSchema);
-  await transitionEnrollment(idSchema.parse(id), input.status, user, input.reason, requestContext(request));
-  return ok({ status: input.status });
+  const result = await transitionEnrollment(idSchema.parse(id), input.status, user, input.reason, requestContext(request));
+  // On approval, the section the student was placed in.
+  return ok({ status: input.status, placement: result.placement });
 });

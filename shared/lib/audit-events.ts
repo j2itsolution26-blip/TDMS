@@ -118,6 +118,8 @@ const EVENTS: Record<string, EventMeta> = {
   SECTION_DELETED: { label: 'Section deleted', category: 'academic', severity: 'activity' },
   SECTION_STUDENTS_ADDED: { label: 'Students added to section', category: 'academic', severity: 'activity' },
   SECTION_STUDENT_REMOVED: { label: 'Student removed from section', category: 'academic', severity: 'activity' },
+  SECTION_STUDENT_ASSIGNED: { label: 'Student assigned to section on enrollment', category: 'academic', severity: 'activity' },
+  SECTION_CREATED_AND_STUDENT_ASSIGNED: { label: 'Section opened for an enrolled student', category: 'academic', severity: 'activity' },
   CLASS_CREATED: { label: 'Class created', category: 'academic', severity: 'activity' },
   CLASS_UPDATED: { label: 'Class updated', category: 'academic', severity: 'activity' },
   CLASS_DELETED: { label: 'Class deleted', category: 'academic', severity: 'activity' },

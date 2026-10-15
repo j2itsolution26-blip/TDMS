@@ -134,6 +134,8 @@ function SectionCard({ s, yearLabel, archived, onStudents, onEdit, onDelete }: {
             <h4 className="text-base font-semibold text-ink">Section {s.name}</h4>
             {cap.level === 'full' && <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ring-1 ring-inset ${TONE.full.chip}`}>Section Full</span>}
             {cap.level === 'near' && <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ring-1 ring-inset ${TONE.near.chip}`}>Nearly full</span>}
+            {cap.count === 0 && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-slate-600 ring-1 ring-inset ring-slate-200">Empty</span>}
+            {cap.level === 'open' && cap.count > 0 && <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ring-1 ring-inset ${TONE.open.chip}`}>Available</span>}
           </div>
           <p className="text-xs text-muted">{s.program.name}</p>
           <p className="text-xs text-muted">{s.program.code} · {yearLevelLabel(s.yearLevel)} · {yearLabel}</p>
@@ -332,6 +334,7 @@ export default function SectionsManagement({
                   {plural(current.list.length, 'section')} · {plural(current.students, 'student')} · {plural(current.seats, 'seat')} open
                   {current.full ? ` · ${current.full} full` : ''} · up to {SECTION_CAPACITY} students each
                 </p>
+                <p className="mt-0.5 text-xs text-muted">Approved enrollments are placed here automatically: the first section with a free seat, or a new one when all are full.</p>
               </div>
               {!archived && (
                 <button type="button" className={BTN_PRIMARY} onClick={() => onNewSection(programId, level)}>

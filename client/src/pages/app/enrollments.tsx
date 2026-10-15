@@ -8,6 +8,7 @@ import { api } from '@/lib/api-client';
 import { useRouter } from '@/lib/navigation';
 import { Page } from '@/lib/page-data';
 import type { loadEnrollments } from '@/server/controllers/pages/app/enrollments';
+import { approvalNotice, type Placement } from '@/lib/enrollment-notice';
 
 type Data = Awaited<ReturnType<typeof loadEnrollments>>;
 type Row = Data['data']['rows'][number];
@@ -34,7 +35,7 @@ function Review({ row, onDone }: { row: Row; onDone: (message: string) => void }
     setBusy(true);
     setError(null);
     setErrors({});
-    const result = await api.post(`/api/v1/enrollments/${row.id}/transition`, { status, reason: status === 'rejected' ? reason : '' });
+    const result = await api.post<{ placement: Placement | null }>(`/api/v1/enrollments/${row.id}/transition`, { status, reason: status === 'rejected' ? reason : '' });
     setBusy(false);
     if (!result.ok) {
       setErrors(result.errors ?? {});
@@ -44,7 +45,7 @@ function Review({ row, onDone }: { row: Row; onDone: (message: string) => void }
       return;
     }
     router.refresh();
-    onDone(status === 'enrolled' ? `${row.student.name} is now enrolled.` : `${row.student.name}'s enrollment was rejected.`);
+    onDone(status === 'enrolled' ? approvalNotice(row.student.name, result.data.placement) : `${row.student.name}'s enrollment was rejected.`);
   }
 
   const facts: [string, string][] = [

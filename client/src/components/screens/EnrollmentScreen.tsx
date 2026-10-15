@@ -9,6 +9,7 @@ import {
 } from '@/components/ui';
 import { formatDate } from '@shared/lib/dates';
 import { MAX_YEAR_LEVEL } from '@shared/lib/teaching';
+import { approvalNotice, type Placement } from '@/lib/enrollment-notice';
 
 /** Port of livewire/enrollment/show.blade.php. */
 
@@ -115,7 +116,7 @@ export default function EnrollmentScreen({
     if (busy) return;
     if (!window.confirm(`Approve this enrollment for SY ${enrollment.schoolYear}, semester ${enrollment.semester}? The student becomes Enrolled. This cannot be undone.`)) return;
     setBusy(true); reset();
-    const result = await api.post(`/api/v1/enrollments/${enrollment.id}/transition`, {
+    const result = await api.post<{ placement: Placement | null }>(`/api/v1/enrollments/${enrollment.id}/transition`, {
       status: 'enrolled', reason: '',
     });
     setBusy(false);
@@ -124,7 +125,7 @@ export default function EnrollmentScreen({
       setFlashError(result.message);
       return;
     }
-    setFlash('Student officially enrolled.');
+    setFlash(approvalNotice(student.fullName, result.data.placement));
     router.refresh();
   }
 

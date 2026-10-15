@@ -137,6 +137,24 @@ export async function assignSection(
   return { sectionId: target.id, label, created, already: false };
 }
 
+/**
+ * Free a student's seat: remove their section placement in the given school
+ * years, and return the sections they left. Attendance and scores reference
+ * the student and the class, not the placement, so they are kept. Used when
+ * an enrollment is dropped and when a student is dropped or transferred.
+ * Archived years are never passed in — their placements are history.
+ */
+export async function releaseSeats(tx: Db, studentId: bigint, schoolYearIds: bigint[]): Promise<string[]> {
+  if (schoolYearIds.length === 0) return [];
+  const placements = await tx.sectionStudent.findMany({
+    where: { studentId, schoolYearId: { in: schoolYearIds } },
+    select: { id: true, section: { select: { name: true, yearLevel: true, program: { select: { code: true } } } } },
+  });
+  if (placements.length === 0) return [];
+  await tx.sectionStudent.deleteMany({ where: { id: { in: placements.map((p) => p.id) } } });
+  return placements.map((p) => sectionLabel(p.section.program.code, p.section.yearLevel, p.section.name));
+}
+
 /** Unique-index collisions and serialization failures are worth one more try. */
 export function isRetryable(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2002' || error.code === 'P2034');

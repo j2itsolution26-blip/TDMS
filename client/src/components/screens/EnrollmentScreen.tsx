@@ -8,7 +8,7 @@ import {
   BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_SUCCESS, BUTTON_DANGER, INPUT_CLASS, LABEL_CLASS,
 } from '@/components/ui';
 import { formatDate } from '@shared/lib/dates';
-import { MAX_YEAR_LEVEL } from '@shared/lib/teaching';
+import { MAX_YEAR_LEVEL, yearLevelLabel } from '@shared/lib/teaching';
 import { approvalNotice, type Placement } from '@/lib/enrollment-notice';
 
 /** Port of livewire/enrollment/show.blade.php. */
@@ -34,6 +34,8 @@ export interface EnrollmentRow {
   status: string;
   approvedAt: string | null;
   approver: { name: string } | null;
+  /** The section the student is in for that school year, if any. */
+  section: string | null;
 }
 
 interface Props {
@@ -133,13 +135,14 @@ export default function EnrollmentScreen({
     event.preventDefault();
     if (!dropping) return;
     setBusy(true); reset();
-    const result = await api.post(`/api/v1/enrollments/${dropping}/transition`, {
+    const result = await api.post<{ released: string[] }>(`/api/v1/enrollments/${dropping}/transition`, {
       status: dropAs, reason: dropReason,
     });
     setBusy(false);
     if (!result.ok) { setErrors(result.errors ?? {}); if (!result.errors) setFlashError(result.message); return; }
     setDropping(null); setDropReason('');
-    setFlash(dropAs === 'rejected' ? 'Enrollment rejected.' : 'Enrollment dropped.');
+    const freed = result.data.released ?? [];
+    setFlash(dropAs === 'rejected' ? 'Enrollment rejected.' : `Enrollment dropped.${freed.length ? ` The seat in ${freed.join(', ')} is free again.` : ''}`);
     router.refresh();
   }
 
@@ -252,6 +255,7 @@ export default function EnrollmentScreen({
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">School Year</th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Sem</th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Year Level</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Section</th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Approved</th>
                   <th className="px-6 py-3 text-right text-xs font-medium uppercase text-slate-500">Actions</th>
@@ -262,7 +266,8 @@ export default function EnrollmentScreen({
                   <tr key={e.id}>
                     <td className="px-6 py-3.5 text-sm font-medium text-navy-900">{e.schoolYear}</td>
                     <td className="px-6 py-3.5 text-sm text-slate-500">{e.semester}</td>
-                    <td className="px-6 py-3.5 text-sm text-slate-500">{e.yearLevel}</td>
+                    <td className="whitespace-nowrap px-6 py-3.5 text-sm text-slate-500">{yearLevelLabel(e.yearLevel)}</td>
+                    <td className="px-6 py-3.5 text-sm text-slate-600">{e.section ?? <span className="text-xs text-slate-400">{e.status === 'pending' ? 'Assigned on approval' : '—'}</span>}</td>
                     <td className="px-6 py-3.5"><Badge status={e.status} /></td>
                     <td className="px-6 py-3.5 text-sm text-slate-500">
                       {e.approvedAt ? formatDate(e.approvedAt) : '—'}

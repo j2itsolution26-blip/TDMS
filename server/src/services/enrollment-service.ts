@@ -1,11 +1,13 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/server/lib/prisma';
+import { sectionLabel } from '@shared/lib/teaching';
 import { AppError, NotFoundError } from '@/server/lib/http';
 import type { z } from 'zod';
 import type { enrollmentSchema } from '@/server/schemas/schemas';
 import { ensureCredentialChecklist, hasAllRequiredCredentialsVerified } from './student-service';
 import { recordAudit, actorLabel, type AuditContext } from './audit-log';
 import { ENROLLMENT_STATUS_LABELS, ENROLLMENT_TRANSITIONS, type AuthUser, type EnrollmentStatus } from '@shared/types/domain';
-import { assignSection, isRetryable, type Placement } from './teaching/section-assignment';
+import { assignSection, isRetryable, releaseSeats, type Placement } from './teaching/section-assignment';
 
 /**
  * Enrolment and credential verification.
@@ -113,13 +115,25 @@ export function isCredentialLocked(status: string): boolean {
 // --- Enrollments -----------------------------------------------------------
 
 export async function listEnrollments(studentId: bigint) {
-  const rows = await prisma.enrollment.findMany({
-    where: { studentId },
-    include: { approver: true },
-    orderBy: { createdAt: 'desc' },
-  });
+  const [rows, placements] = await Promise.all([
+    prisma.enrollment.findMany({
+      where: { studentId },
+      include: { approver: true },
+      orderBy: { createdAt: 'desc' },
+    }),
+    // The student's section in each school year, for the Section column.
+    prisma.sectionStudent.findMany({
+      where: { studentId },
+      select: { schoolYearId: true, section: { select: { name: true, yearLevel: true, program: { select: { code: true } }, schoolYear: { select: { label: true } } } } },
+    }),
+  ]);
+  const sectionFor = (e: (typeof rows)[number]) => {
+    const p = placements.find((x) => (e.schoolYearId ? x.schoolYearId === e.schoolYearId : x.section.schoolYear.label === e.schoolYear));
+    return p ? sectionLabel(p.section.program.code, p.section.yearLevel, p.section.name) : null;
+  };
 
   return rows.map((e) => ({
+    section: sectionFor(e),
     id: e.id.toString(),
     schoolYear: e.schoolYear,
     semester: e.semester,
@@ -137,9 +151,22 @@ const ENROLLMENTS_PAGE_SIZE = 15;
  * an enrollment still happens on the student's record, where the credential
  * gate lives.
  */
-export async function listAllEnrollments(options: { page?: number; status?: string } = {}) {
+export async function listAllEnrollments(options: { page?: number; status?: string; programId?: bigint; search?: string } = {}) {
   const page = options.page ?? 1;
-  const where = options.status ? { status: options.status } : {};
+  const q = options.search?.trim() ?? '';
+  // Program and search narrow everything below; the status filter narrows the
+  // rows and the program counts, the program filter the status counts — so
+  // each tab's count is what that tab would show.
+  const bySearch: Prisma.EnrollmentWhereInput = q
+    ? { student: { OR: [
+        { studentNumber: { contains: q, mode: 'insensitive' } },
+        { firstName: { contains: q, mode: 'insensitive' } },
+        { lastName: { contains: q, mode: 'insensitive' } },
+      ] } }
+    : {};
+  const byProgram: Prisma.EnrollmentWhereInput = options.programId ? { student: { programId: options.programId } } : {};
+  const byStatusFilter: Prisma.EnrollmentWhereInput = options.status ? { status: options.status } : {};
+  const where: Prisma.EnrollmentWhereInput = { AND: [bySearch, byProgram, byStatusFilter] };
 
   const [rows, total, byStatus] = await Promise.all([
     prisma.enrollment.findMany({
@@ -150,6 +177,7 @@ export async function listAllEnrollments(options: { page?: number; status?: stri
       select: {
         id: true,
         schoolYear: true,
+        schoolYearId: true,
         semester: true,
         yearLevel: true,
         status: true,
@@ -173,8 +201,31 @@ export async function listAllEnrollments(options: { page?: number; status?: stri
       },
     }),
     prisma.enrollment.count({ where }),
-    prisma.enrollment.groupBy({ by: ['status'], _count: { _all: true } }),
+    prisma.enrollment.groupBy({ by: ['status'], where: { AND: [bySearch, byProgram] }, _count: { _all: true } }),
   ]);
+  const programRows = await prisma.$queryRaw<{ program_id: bigint; n: number }[]>`
+    SELECT s.program_id, COUNT(*)::int AS n
+    FROM enrollments e JOIN students s ON s.id = e.student_id
+    WHERE (${options.status ?? null}::text IS NULL OR e.status = ${options.status ?? null})
+      AND (${q}::text = '' OR s.student_number ILIKE ${'%' + q + '%'} OR s.first_name ILIKE ${'%' + q + '%'} OR s.last_name ILIKE ${'%' + q + '%'})
+    GROUP BY s.program_id`;
+
+  // Each row's section: the student's placement in that enrollment's school year, in two queries.
+  const labels = [...new Set(rows.filter((e) => !e.schoolYearId).map((e) => e.schoolYear))];
+  const yearsByLabel = labels.length ? await prisma.schoolYear.findMany({ where: { label: { in: labels } }, select: { id: true, label: true } }) : [];
+  const yearOf = (e: (typeof rows)[number]) => e.schoolYearId ?? yearsByLabel.find((y) => y.label === e.schoolYear)?.id ?? null;
+  const yearIds = [...new Set(rows.map(yearOf).filter((x): x is bigint => x !== null))];
+  const placements = rows.length && yearIds.length
+    ? await prisma.sectionStudent.findMany({
+        where: { studentId: { in: [...new Set(rows.map((e) => e.student.id))] }, schoolYearId: { in: yearIds } },
+        select: { studentId: true, schoolYearId: true, section: { select: { name: true, yearLevel: true, program: { select: { code: true } } } } },
+      })
+    : [];
+  const sectionOf = (e: (typeof rows)[number]) => {
+    const y = yearOf(e);
+    const p = placements.find((x) => x.studentId === e.student.id && x.schoolYearId === y);
+    return p ? sectionLabel(p.section.program.code, p.section.yearLevel, p.section.name) : null;
+  };
 
   // Required documents of the students whose enrollment is still pending, in two queries.
   const pending = rows.filter((e) => e.status === 'pending');
@@ -215,6 +266,7 @@ export async function listAllEnrollments(options: { page?: number; status?: stri
         approver: e.approver?.name ?? null,
         decision: last && last.toStatus === e.status ? { by: last.actor?.name ?? null, at: last.createdAt.toISOString(), reason: last.reason } : null,
         documents: e.status === 'pending' ? documentsFor(e.student.id, e.student.programId) : null,
+        section: sectionOf(e),
         student: {
           id: e.student.id.toString(),
           studentNumber: e.student.studentNumber,
@@ -225,6 +277,7 @@ export async function listAllEnrollments(options: { page?: number; status?: stri
       };
     }),
     counts: Object.fromEntries(byStatus.map((g) => [g.status, g._count._all])) as Record<string, number>,
+    programCounts: Object.fromEntries(programRows.map((r) => [r.program_id.toString(), r.n])) as Record<string, number>,
     page,
     total,
     lastPage: Math.max(1, Math.ceil(total / ENROLLMENTS_PAGE_SIZE)),
@@ -241,6 +294,18 @@ export async function createEnrollment(input: z.infer<typeof enrollmentSchema>) 
     throw new AppError('This student already has an enrollment for that term.', 422, {
       schoolYear: ['This student already has an enrollment for that term.'],
     });
+  }
+
+  // The curriculum comes from the student record; it must be the student's own program.
+  const [owner, curriculum] = await Promise.all([
+    prisma.student.findUnique({ where: { id: input.studentId }, select: { programId: true, program: { select: { code: true } } } }),
+    prisma.curriculum.findUnique({ where: { id: input.curriculumId }, select: { programId: true } }),
+  ]);
+  if (!owner || !curriculum || owner.programId !== curriculum.programId) {
+    throw new AppError(
+      `This curriculum belongs to another program. A student of ${owner?.program.code ?? 'this program'} is enrolled under their own program; a change of program is a transfer.`,
+      422, { curriculumId: ['Curriculum of another program.'] },
+    );
   }
 
   // Linked to the school year as a record when one exists; an archived year
@@ -283,6 +348,9 @@ export async function createEnrollment(input: z.infer<typeof enrollmentSchema>) 
  *     enrollment's year level and its school year (teaching/section-assignment)
  *     in the SAME transaction — approved and placed, or neither — and says
  *     which section; a collision with a concurrent change is retried;
+ *   * dropping frees the student's seat in that school year's section, unless
+ *     another term of the same school year is still enrolled (an archived
+ *     year's placement is history and is never touched);
  *   * every decision is written to the audit log.
  */
 export async function transitionEnrollment(
@@ -335,13 +403,21 @@ export async function transitionEnrollment(
     }
     schoolYear = year;
   }
+  // Dropping: the school year whose seat is freed, when it is a record and not archived.
+  let dropYear: bigint | null = null;
+  if (toStatus === 'dropped') {
+    const year = enrollment.schoolYearId
+      ? await prisma.schoolYear.findUnique({ where: { id: enrollment.schoolYearId }, select: { id: true, status: true } })
+      : await prisma.schoolYear.findUnique({ where: { label: enrollment.schoolYear }, select: { id: true, status: true } });
+    if (year && year.status !== 'ARCHIVED') dropYear = year.id;
+  }
 
   const actorId = BigInt(actor.id);
   const current = enrollment;
   const year = schoolYear;
 
   // Approve (or reject, or drop) and — on approval — place the student, as one transaction.
-  const decide = () => prisma.$transaction(async (tx): Promise<Placement | null> => {
+  const decide = () => prisma.$transaction(async (tx): Promise<{ placement: Placement | null; released: string[] }> => {
     const done = await tx.enrollment.updateMany({
       where: { id, status: from },
       data: {
@@ -359,12 +435,20 @@ export async function transitionEnrollment(
       data: { enrollmentId: id, fromStatus: from, toStatus, changedBy: actorId, reason: reason?.trim() || null },
     });
 
-    if (toStatus !== 'enrolled' || !year) return null;
+    if (toStatus === 'dropped' && dropYear !== null) {
+      // Another term of the same school year still enrolled keeps the seat.
+      const stillEnrolled = await tx.enrollment.count({
+        where: { studentId: current.studentId, schoolYear: current.schoolYear, status: 'enrolled', id: { not: id } },
+      });
+      return { placement: null, released: stillEnrolled > 0 ? [] : await releaseSeats(tx, current.studentId, [dropYear]) };
+    }
+
+    if (toStatus !== 'enrolled' || !year) return { placement: null, released: [] };
     await tx.student.update({
       where: { id: current.studentId },
       data: { status: 'active', updatedAt: new Date() },
     });
-    return assignSection(tx, {
+    const placed = await assignSection(tx, {
       studentId: current.studentId,
       programId: current.student.programId,
       programCode: current.student.program.code,
@@ -372,15 +456,17 @@ export async function transitionEnrollment(
       schoolYearId: year.id,
       schoolYearLabel: year.label,
     });
-    // Approvals into one group queue on its lock; give a busy moment room.
+    return { placement: placed, released: [] };
+  // Approvals into one group queue on its lock; give a busy moment room.
   }, { maxWait: 10_000, timeout: 20_000 });
 
   // A unique-index collision (someone created the same section name a moment
   // earlier) rolls the whole decision back; it is tried again, twice at most.
   let placement: Placement | null = null;
+  let released: string[] = [];
   for (let attempt = 1; ; attempt += 1) {
     try {
-      placement = await decide();
+      ({ placement, released } = await decide());
       break;
     } catch (error) {
       if (attempt < 3 && isRetryable(error)) continue;
@@ -397,6 +483,7 @@ export async function transitionEnrollment(
       enrollment_id: id.toString(), from, to: toStatus,
       ...(reason?.trim() ? { reason: reason.trim() } : {}),
       ...(placement ? { section: placement.label, section_created: placement.created, already_placed: placement.already } : {}),
+      ...(released.length ? { seat_released: released } : {}),
     },
     context,
   });
@@ -409,7 +496,13 @@ export async function transitionEnrollment(
       context,
     });
   }
-  return { placement: placement ? { section: placement.label, created: placement.created, already: placement.already } : null };
+  for (const label of released) {
+    await recordAudit({ action: 'SECTION_STUDENT_REMOVED', actor: actorLabel(actor), target: label, details: { studentId: enrollment.studentId.toString(), reason: 'enrollment dropped', enrollment_id: id.toString() }, context });
+  }
+  return {
+    placement: placement ? { section: placement.label, created: placement.created, already: placement.already } : null,
+    released,
+  };
 }
 
 /**

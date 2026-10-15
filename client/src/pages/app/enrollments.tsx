@@ -3,6 +3,7 @@ import Link from '@/lib/link';
 import Modal from '@/components/Modal';
 import { Alert, Badge, BUTTON_DANGER, BUTTON_SECONDARY, BUTTON_SUCCESS, Card, EmptyState, FieldError, INPUT_CLASS, LABEL_CLASS, PageHeader, Pagination } from '@/components/ui';
 import { formatDate } from '@shared/lib/dates';
+import { yearLevelLabel } from '@shared/lib/teaching';
 import { ENROLLMENT_STATUS_LABELS, type EnrollmentStatus } from '@shared/types/domain';
 import { api } from '@/lib/api-client';
 import { useRouter } from '@/lib/navigation';
@@ -53,7 +54,8 @@ function Review({ row, onDone }: { row: Row; onDone: (message: string) => void }
     ['Program', `${row.student.programCode} — ${row.student.programName}`],
     ['Curriculum', row.curriculum ?? '—'],
     ['Term', `SY ${row.schoolYear} · Semester ${row.semester}`],
-    ['Year level', `Year ${row.yearLevel}`],
+    ['Year level', yearLevelLabel(row.yearLevel)],
+    ['Section', row.section ?? 'Assigned automatically when approved'],
     ['Requested', row.createdAt ? formatDate(row.createdAt) : '—'],
   ];
 
@@ -141,9 +143,23 @@ function Decision({ row }: { row: Row }) {
   return null;
 }
 
-function View({ canOpenStudent, canDecide, data, filters, status }: Data) {
+const TAB = 'rounded-lg px-3 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2';
+
+function View({ canOpenStudent, canDecide, data, filters, status, programTabs, program, search }: Data) {
+  const router = useRouter();
   const [reviewing, setReviewing] = useState<Row | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [term, setTerm] = useState(search);
+
+  // Program, status and search together in the URL; a change starts at page 1.
+  const href = (next: { program?: string; status?: string; search?: string }) => {
+    const merged = { program, status, search, ...next };
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(merged)) if (v) params.set(k, v);
+    return `/enrollments${params.toString() ? `?${params}` : ''}`;
+  };
+  const programCode = programTabs.find((t) => t.value === program)?.label;
+  const scope = [programCode, status && label(status).toLowerCase(), search && `matching “${search}”`].filter(Boolean).join(' · ');
 
   return (
     <div className="space-y-6">
@@ -152,13 +168,29 @@ function View({ canOpenStudent, canDecide, data, filters, status }: Data) {
         subtitle={canDecide ? 'Term enrollments across all students. Review a pending enrollment to approve or reject it.' : 'Term enrollments across all students.'}
       />
 
+      {/* Program tabs: All Programs, then each program by code. */}
+      <nav aria-label="Filter by program" className="flex flex-wrap gap-2">
+        {programTabs.map((t) => {
+          const active = t.value === program;
+          return (
+            <Link key={t.value || 'all'} href={href({ program: t.value })} aria-current={active ? 'page' : undefined} title={t.name}
+              className={`${TAB} inline-flex items-center gap-2 ${active ? 'bg-forest text-white' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}>
+              <span className="font-semibold">{t.label}</span>
+              {t.value && <span className={`hidden text-xs md:inline ${active ? 'text-white/80' : 'text-slate-500'}`}>{t.name}</span>}
+              <span className={`tabular-nums ${active ? 'text-white/80' : 'text-slate-500'}`}>{t.count}</span>
+            </Link>
+          );
+        })}
+      </nav>
+
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
       <nav aria-label="Filter by status" className="flex flex-wrap gap-2">
         {filters.map((f) => {
           const active = f.value === status;
           return (
             <Link
               key={f.value || 'all'}
-              href={f.value ? `/enrollments?status=${f.value}` : '/enrollments'}
+              href={href({ status: f.value })}
               aria-current={active ? 'page' : undefined}
               className={`rounded-lg px-3 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2 ${
                 active ? 'bg-indigo-600 text-white' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
@@ -169,14 +201,22 @@ function View({ canOpenStudent, canDecide, data, filters, status }: Data) {
           );
         })}
       </nav>
+        <form role="search" aria-label="Search enrollments" className="flex gap-2 lg:w-96" onSubmit={(e) => { e.preventDefault(); router.push(href({ search: term.trim() })); }}>
+          <label htmlFor="enrollments-search" className="sr-only">Search by student name or number</label>
+          <input id="enrollments-search" type="search" className={INPUT_CLASS} placeholder="Student name or number…" value={term} onChange={(e) => setTerm(e.target.value)} />
+          <button type="submit" className={BUTTON_SECONDARY}>Search</button>
+        </form>
+      </div>
 
       {notice && <Alert type="success">{notice}</Alert>}
 
       <Card padding="p-0">
         {data.rows.length === 0 ? (
           <EmptyState
-            title={status ? `No ${label(status).toLowerCase()} enrollments` : 'No enrollments yet'}
-            description="Enrollments are created from a student's record, one per school year and semester."
+            title={scope ? `No ${scope} enrollments` : 'No enrollments yet'}
+            description={scope
+              ? 'Nothing matches these filters. Choose another program or status, or clear the search.'
+              : "Enrollments are created from a student's record, one per school year and semester."}
           />
         ) : (
           <>
@@ -188,6 +228,7 @@ function View({ canOpenStudent, canDecide, data, filters, status }: Data) {
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Student</th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Program</th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Term</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Section</th>
                     <th scope="col" className="hidden px-6 py-3 text-left text-xs font-medium uppercase text-slate-500 sm:table-cell">Created</th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Status</th>
                     {canDecide && <th scope="col" className="px-6 py-3 text-right text-xs font-medium uppercase text-slate-500"><span className="sr-only">Actions</span></th>}
@@ -206,10 +247,18 @@ function View({ canOpenStudent, canDecide, data, filters, status }: Data) {
                         )}
                         <p className="text-xs text-slate-500">{row.student.studentNumber}</p>
                       </td>
-                      <td className="px-6 py-3.5 text-sm text-slate-600">{row.student.programCode}</td>
+                      <td className="px-6 py-3.5 text-sm">
+                        <span className="inline-flex rounded-md bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-800 ring-1 ring-inset ring-primary-100">{row.student.programCode}</span>
+                        <p className="mt-0.5 text-xs text-slate-500">{row.student.programName}</p>
+                      </td>
                       <td className="px-6 py-3.5 text-sm text-slate-600">
                         SY {row.schoolYear} · Semester {row.semester}
-                        <p className="text-xs text-slate-500">Year {row.yearLevel}</p>
+                        <p className="text-xs text-slate-500">{yearLevelLabel(row.yearLevel)}</p>
+                      </td>
+                      <td className="px-6 py-3.5 text-sm text-slate-600">
+                        {row.section
+                          ? <span className="whitespace-nowrap font-medium text-navy-900">Section {row.section.split('Section ').pop()}</span>
+                          : <span className="text-xs text-slate-500">{row.status === 'pending' ? 'On approval' : '—'}</span>}
                       </td>
                       <td className="hidden px-6 py-3.5 text-sm text-slate-600 sm:table-cell">{formatDate(row.createdAt)}</td>
                       <td className="px-6 py-3.5">
@@ -233,7 +282,7 @@ function View({ canOpenStudent, canDecide, data, filters, status }: Data) {
                 </tbody>
               </table>
             </div>
-            <Pagination page={data.page} lastPage={data.lastPage} total={data.total} basePath="/enrollments" query={{ status: status || undefined }} />
+            <Pagination page={data.page} lastPage={data.lastPage} total={data.total} basePath="/enrollments" query={{ status: status || undefined, program: program || undefined, search: search || undefined }} />
           </>
         )}
       </Card>

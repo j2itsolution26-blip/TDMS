@@ -25,7 +25,7 @@ export function fullName(p: { firstName: string; middleName: string | null; last
   return `${p.firstName} ${p.middleName ?? ''} ${p.lastName}`.replace(/\s+/g, ' ').trim();
 }
 
-export async function listStudents(options: { page?: number; search?: string } = {}) {
+export async function listStudents(options: { page?: number; search?: string; programId?: bigint; yearLevel?: number; status?: string } = {}) {
   const page = options.page ?? 1;
   const search = options.search?.trim() ?? '';
 
@@ -35,15 +35,21 @@ export async function listStudents(options: { page?: number; search?: string } =
    * "santos" previously missed "Santos", which was a latent annoyance
    * rather than a deliberate behaviour.
    */
-  const where: Prisma.StudentWhereInput = search
-    ? {
-        OR: [
-          { studentNumber: { contains: search, mode: 'insensitive' } },
-          { firstName: { contains: search, mode: 'insensitive' } },
-          { lastName: { contains: search, mode: 'insensitive' } },
-        ],
-      }
-    : {};
+  const where: Prisma.StudentWhereInput = {
+    ...(search
+      ? {
+          OR: [
+            { studentNumber: { contains: search, mode: 'insensitive' } },
+            { firstName: { contains: search, mode: 'insensitive' } },
+            { lastName: { contains: search, mode: 'insensitive' } },
+          ],
+        }
+      : {}),
+    // The filters: program, year level and status.
+    ...(options.programId ? { programId: options.programId } : {}),
+    ...(options.yearLevel ? { yearLevel: options.yearLevel } : {}),
+    ...(options.status ? { status: options.status } : {}),
+  };
 
   const [rows, total] = await Promise.all([
     prisma.student.findMany({

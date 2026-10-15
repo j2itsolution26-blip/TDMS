@@ -303,14 +303,14 @@ export default function StudentFormModal({
 
           <Section title="Academic information" description="Where the student is placed. Curricula are listed for the chosen program only.">
             <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
-              <Field id="st-programId" label="Program" required error={e.programId}>
+              <Field id="st-programId" label="Diploma Program" required error={e.programId}>
                 <Combobox
                   id="st-programId"
                   labelledBy="st-programId-label"
                   value={form.programId}
                   onChange={(v) => { if (v !== form.programId) setForm((f) => ({ ...f, programId: v, curriculumId: '' })); setConfirmDiscard(false); setErrors((x) => ({ ...x, programId: undefined, curriculumId: undefined })); }}
                   options={programOptions}
-                  placeholder="Select a program"
+                  placeholder="Select a diploma program"
                   searchPlaceholder="Search by program code or name"
                   emptyText={programs.length === 0 ? 'No active programs yet.' : 'No program matches.'}
                   invalid={!!e.programId}

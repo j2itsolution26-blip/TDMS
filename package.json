@@ -46,7 +46,8 @@
     "test:capacity": "node scripts/e2e/section-capacity.mjs",
     "test:student-profile": "node scripts/e2e/section-student-profile.mjs",
     "test:hierarchy": "node scripts/e2e/section-hierarchy.mjs",
-    "test:auto-assign": "node scripts/e2e/section-auto-assign.mjs"
+    "test:auto-assign": "node scripts/e2e/section-auto-assign.mjs",
+    "test:dit-dht": "node scripts/e2e/dit-dht-enrollment.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

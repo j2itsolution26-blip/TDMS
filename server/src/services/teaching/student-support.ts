@@ -19,6 +19,7 @@ import type { badgeSchema, learningSupportSchema, learningSupportUpdateSchema, s
 import { classHeading, classRoster, instructorClasses, requireInstructor, requireInstructorClass, requireRosterStudent, studentName } from './access';
 import { gradebook } from './gradebook';
 import { notifyRoles, notifyStudents, notifyUsers } from './notifications';
+import { releaseSeats } from './section-assignment';
 
 /**
  * The Instructor's student-facing duties beyond grading: status
@@ -178,7 +179,9 @@ export async function listStatusRequests(user: AuthUser, filter: { status?: stri
 /**
  * Approving applies the requested status to the student record; rejecting
  * leaves it as it was. Either way the Instructor is told and the decision is
- * audited. Nothing is deleted.
+ * audited. A student who is dropped or transferred leaves their section in
+ * the school years still running (active or upcoming), so the seat is free
+ * again; archived years keep their placements. No other record is deleted.
  */
 export async function decideStatusRequest(user: AuthUser, id: bigint, decision: 'APPROVED' | 'REJECTED', note: string | null, context?: AuditContext) {
   if (!teachingPolicy.decideStatusRequests(user)) throw new AuthorizationError();
@@ -188,7 +191,8 @@ export async function decideStatusRequest(user: AuthUser, id: bigint, decision: 
   if (decision === 'REJECTED' && !note) throw new AppError('Give the reason for rejecting.', 422, { note: ['Give the reason for rejecting.'] });
 
   const name = `${r.student.firstName} ${r.student.lastName}`;
-  await prisma.$transaction(async (tx) => {
+  const leaves = decision === 'APPROVED' && SEAT_RELEASING.includes(r.requestedStatus);
+  const released = await prisma.$transaction(async (tx) => {
     // Conditional on still PENDING, so two deciders at once cannot both apply it.
     const claimed = await tx.studentStatusRequest.updateMany({
       where: { id, status: 'PENDING' },
@@ -198,6 +202,11 @@ export async function decideStatusRequest(user: AuthUser, id: bigint, decision: 
     if (decision === 'APPROVED') {
       await tx.student.update({ where: { id: r.student.id }, data: { status: r.requestedStatus, updatedAt: new Date() } });
     }
+    let freed: string[] = [];
+    if (leaves) {
+      const running = await tx.schoolYear.findMany({ where: { status: { in: ['ACTIVE', 'UPCOMING'] } }, select: { id: true } });
+      freed = await releaseSeats(tx, r.student.id, running.map((y) => y.id));
+    }
     if (r.requestedBy) {
       await notifyUsers(tx, [r.requestedBy], {
         type: `status-request.${decision.toLowerCase()}`,
@@ -206,16 +215,23 @@ export async function decideStatusRequest(user: AuthUser, id: bigint, decision: 
         href: '/teaching/students',
       });
     }
+    return freed;
   });
 
   await recordAudit({
     action: decision === 'APPROVED' ? 'STUDENT_STATUS_CHANGED' : 'STUDENT_STATUS_REQUEST_REJECTED',
     actor: actorLabel(user),
     target: `${r.student.studentNumber} — ${name}`,
-    details: { from: r.student.status, to: r.requestedStatus, note },
+    details: { from: r.student.status, to: r.requestedStatus, note, ...(released.length ? { seat_released: released } : {}) },
     context,
   });
+  for (const label of released) {
+    await recordAudit({ action: 'SECTION_STUDENT_REMOVED', actor: actorLabel(user), target: label, details: { studentId: r.student.id.toString(), reason: `student ${r.requestedStatus}` }, context });
+  }
 }
+
+/** Statuses that end a student's place in their section. */
+const SEAT_RELEASING = ['dropped', 'transferred'];
 
 // --- Learning support --------------------------------------------------------------
 

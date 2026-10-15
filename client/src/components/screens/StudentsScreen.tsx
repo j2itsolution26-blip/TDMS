@@ -8,6 +8,8 @@ import {
   Alert, Card, PageHeader, EmptyState, Badge, Pagination,
   BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT_CLASS,
 } from '@/components/ui';
+import { YEAR_LEVELS, yearLevelLabel } from '@shared/lib/teaching';
+import { STUDENT_STATUSES, STUDENT_STATUS_LABELS } from '@shared/types/domain';
 
 /** Port of livewire/students/index.blade.php. */
 
@@ -32,13 +34,15 @@ interface Props {
   lastPage: number;
   total: number;
   search: string;
+  /** Program (id), year level and status filters from the URL; '' is all. */
+  filters: { program: string; yearLevel: string; status: string };
   programs: ProgramOption[];
   canCreate: boolean;
   canUpdate: boolean;
 }
 
 export default function StudentsScreen({
-  rows, page, lastPage, total, search, programs, canCreate, canUpdate,
+  rows, page, lastPage, total, search, filters, programs, canCreate, canUpdate,
 }: Props) {
   const router = useRouter();
   useOpenOnNew(canCreate, openCreate);
@@ -55,12 +59,21 @@ export default function StudentsScreen({
     setEditing(s); setNotice(null); setShowForm(true);
   }
 
-  function submitSearch(event: React.FormEvent) {
-    event.preventDefault();
+  // Search and filters together in the URL; any change starts again at page 1.
+  function go(next: Partial<Props['filters']> & { search?: string }) {
+    const merged = { search: term, ...filters, ...next };
     const params = new URLSearchParams();
-    if (term) params.set('search', term);
+    for (const [k, v] of Object.entries(merged)) if (v) params.set(k, v);
     router.push(`/students${params.toString() ? `?${params}` : ''}`);
   }
+
+  function submitSearch(event: React.FormEvent) {
+    event.preventDefault();
+    go({ search: term });
+  }
+
+  const filtered = Boolean(search || filters.program || filters.yearLevel || filters.status);
+  const SELECT = `${INPUT_CLASS} sm:w-auto`;
 
   return (
     <div className="space-y-6">
@@ -77,21 +90,47 @@ export default function StudentsScreen({
         ) : null}
       />
 
-      <form onSubmit={submitSearch} className="flex gap-3">
-        <input
-          className={INPUT_CLASS}
-          placeholder="Search by student number or name…"
-          value={term}
-          onChange={(e) => setTerm(e.target.value)}
-        />
-        <button type="submit" className={BUTTON_SECONDARY}>Search</button>
+      <form onSubmit={submitSearch} className="flex flex-col gap-3 lg:flex-row" role="search" aria-label="Find students">
+        <div className="flex min-w-0 flex-1 gap-3">
+          <label htmlFor="students-search" className="sr-only">Search by student number or name</label>
+          <input
+            id="students-search"
+            className={INPUT_CLASS}
+            placeholder="Search by student number or name…"
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+          />
+          <button type="submit" className={BUTTON_SECONDARY}>Search</button>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:flex">
+          <label className="sr-only" htmlFor="students-program">Program</label>
+          <select id="students-program" className={SELECT} value={filters.program} onChange={(e) => go({ program: e.target.value })}>
+            <option value="">All programs</option>
+            {programs.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}
+          </select>
+          <label className="sr-only" htmlFor="students-year">Year level</label>
+          <select id="students-year" className={SELECT} value={filters.yearLevel} onChange={(e) => go({ yearLevel: e.target.value })}>
+            <option value="">All year levels</option>
+            {YEAR_LEVELS.map((y) => <option key={y} value={y}>{yearLevelLabel(y)}</option>)}
+          </select>
+          <label className="sr-only" htmlFor="students-status">Status</label>
+          <select id="students-status" className={SELECT} value={filters.status} onChange={(e) => go({ status: e.target.value })}>
+            <option value="">All statuses</option>
+            {STUDENT_STATUSES.map((st) => <option key={st} value={st}>{STUDENT_STATUS_LABELS[st]}</option>)}
+          </select>
+        </div>
       </form>
 
       {notice && <Alert type={notice.tone}>{notice.text}</Alert>}
 
       <Card padding="p-0">
         {rows.length === 0 ? (
-          <EmptyState title="No students found" description="Adjust the search, or add a student record." />
+          <EmptyState
+            title={filtered ? 'No students match these filters' : 'No students yet'}
+            description={filtered
+              ? `Nothing for ${[filters.program && programs.find((p) => p.id === filters.program)?.code, filters.yearLevel && yearLevelLabel(Number(filters.yearLevel)), filters.status && STUDENT_STATUS_LABELS[filters.status as keyof typeof STUDENT_STATUS_LABELS], search && `“${search}”`].filter(Boolean).join(' · ')}. Change or clear the filters.`
+              : 'Add a student record with New Student.'}
+          />
         ) : (
           <>
             <div className="overflow-x-auto">
@@ -114,8 +153,11 @@ export default function StudentsScreen({
                         {s.fullName}
                         {s.email && <p className="text-xs text-slate-500">{s.email}</p>}
                       </td>
-                      <td className="px-6 py-3.5 text-sm text-slate-500">{s.program.code}</td>
-                      <td className="px-6 py-3.5 text-sm text-slate-500">{s.yearLevel}</td>
+                      <td className="px-6 py-3.5 text-sm">
+                        <span className="font-semibold text-navy-900">{s.program.code}</span>
+                        <p className="text-xs text-slate-500">{s.program.name}</p>
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-3.5 text-sm text-slate-500">{yearLevelLabel(s.yearLevel)}</td>
                       <td className="px-6 py-3.5"><Badge status={s.status} /></td>
                       <td className="px-6 py-3.5 text-right text-sm">
                         <div className="flex items-center justify-end gap-3">
@@ -134,7 +176,7 @@ export default function StudentsScreen({
                 </tbody>
               </table>
             </div>
-            <Pagination page={page} lastPage={lastPage} total={total} basePath="/students" query={{ search }} />
+            <Pagination page={page} lastPage={lastPage} total={total} basePath="/students" query={{ search, ...filters }} />
           </>
         )}
       </Card>

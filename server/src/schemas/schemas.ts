@@ -292,6 +292,12 @@ export const studentSchema = z.object({
   enrollmentDate: nullableDate,
 });
 
+/** Registering a student: the school term of their first (pending) enrollment. Optional — defaults to the active term. */
+export const registrationTermSchema = z.object({
+  schoolYearId: idSchema.optional().nullable(),
+  semester: z.coerce.number().int().min(1, 'Choose a semester.').max(3, 'Choose a semester.').optional().nullable(),
+});
+
 // --- Applications ----------------------------------------------------------
 
 export const applicationSchema = z.object({

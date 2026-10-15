@@ -151,7 +151,7 @@ const ENROLLMENTS_PAGE_SIZE = 15;
  * an enrollment still happens on the student's record, where the credential
  * gate lives.
  */
-export async function listAllEnrollments(options: { page?: number; status?: string; programId?: bigint; search?: string } = {}) {
+export async function listAllEnrollments(options: { page?: number; status?: string; programId?: bigint; search?: string; schoolYear?: string; yearLevel?: number } = {}) {
   const page = options.page ?? 1;
   const q = options.search?.trim() ?? '';
   // Program and search narrow everything below; the status filter narrows the
@@ -165,8 +165,13 @@ export async function listAllEnrollments(options: { page?: number; status?: stri
       ] } }
     : {};
   const byProgram: Prisma.EnrollmentWhereInput = options.programId ? { student: { programId: options.programId } } : {};
+  // School year and year level narrow every count, like the search.
+  const byTerm: Prisma.EnrollmentWhereInput = {
+    ...(options.schoolYear ? { schoolYear: options.schoolYear } : {}),
+    ...(options.yearLevel ? { yearLevel: options.yearLevel } : {}),
+  };
   const byStatusFilter: Prisma.EnrollmentWhereInput = options.status ? { status: options.status } : {};
-  const where: Prisma.EnrollmentWhereInput = { AND: [bySearch, byProgram, byStatusFilter] };
+  const where: Prisma.EnrollmentWhereInput = { AND: [bySearch, byTerm, byProgram, byStatusFilter] };
 
   const [rows, total, byStatus] = await Promise.all([
     prisma.enrollment.findMany({
@@ -201,12 +206,14 @@ export async function listAllEnrollments(options: { page?: number; status?: stri
       },
     }),
     prisma.enrollment.count({ where }),
-    prisma.enrollment.groupBy({ by: ['status'], where: { AND: [bySearch, byProgram] }, _count: { _all: true } }),
+    prisma.enrollment.groupBy({ by: ['status'], where: { AND: [bySearch, byTerm, byProgram] }, _count: { _all: true } }),
   ]);
   const programRows = await prisma.$queryRaw<{ program_id: bigint; n: number }[]>`
     SELECT s.program_id, COUNT(*)::int AS n
     FROM enrollments e JOIN students s ON s.id = e.student_id
     WHERE (${options.status ?? null}::text IS NULL OR e.status = ${options.status ?? null})
+      AND (${options.schoolYear ?? null}::text IS NULL OR e.school_year = ${options.schoolYear ?? null})
+      AND (${options.yearLevel ?? null}::int IS NULL OR e.year_level = ${options.yearLevel ?? null})
       AND (${q}::text = '' OR s.student_number ILIKE ${'%' + q + '%'} OR s.first_name ILIKE ${'%' + q + '%'} OR s.last_name ILIKE ${'%' + q + '%'})
     GROUP BY s.program_id`;
 

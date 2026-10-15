@@ -26,6 +26,7 @@ export interface StudentRow {
 }
 
 export interface ProgramOption { id: string; name: string; code: string }
+export interface SchoolYearOption { id: string; label: string; status: string; currentSemester: number }
 export interface CurriculumOption { id: string; versionLabel: string; effectiveSchoolYear: string; isActive?: boolean }
 
 interface Props {
@@ -37,12 +38,14 @@ interface Props {
   /** Program (id), year level and status filters from the URL; '' is all. */
   filters: { program: string; yearLevel: string; status: string };
   programs: ProgramOption[];
+  /** Open school years, for a new student's first enrollment. */
+  schoolYears: SchoolYearOption[];
   canCreate: boolean;
   canUpdate: boolean;
 }
 
 export default function StudentsScreen({
-  rows, page, lastPage, total, search, filters, programs, canCreate, canUpdate,
+  rows, page, lastPage, total, search, filters, programs, schoolYears, canCreate, canUpdate,
 }: Props) {
   const router = useRouter();
   useOpenOnNew(canCreate, openCreate);
@@ -185,6 +188,7 @@ export default function StudentsScreen({
         open={showForm}
         editing={editing}
         programs={programs}
+        schoolYears={schoolYears}
         onClose={() => setShowForm(false)}
         onSaved={(text) => {
           setShowForm(false);

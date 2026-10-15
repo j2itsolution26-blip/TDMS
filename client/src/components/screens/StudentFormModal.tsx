@@ -5,10 +5,10 @@ import Modal from '@/components/Modal';
 import Combobox, { type ComboboxOption } from '@/components/Combobox';
 import { STUDENT_STATUSES, STUDENT_STATUS_LABELS, type StudentStatus } from '@shared/types/domain';
 import { toDateInput } from '@shared/lib/dates';
-import { MAX_YEAR_LEVEL, YEAR_LEVELS } from '@shared/lib/teaching';
+import { MAX_YEAR_LEVEL, SEMESTER_LABELS, YEAR_LEVELS, yearLevelLabel } from '@shared/lib/teaching';
 import { localDayKey } from '@shared/lib/institution-time';
 import { EARLIEST_BIRTH_DATE, dateOfBirthProblem, phoneProblem } from '@shared/lib/student-rules';
-import type { CurriculumOption, ProgramOption, StudentRow } from './StudentsScreen';
+import type { CurriculumOption, ProgramOption, SchoolYearOption, StudentRow } from './StudentsScreen';
 
 /**
  * Add / edit a student: personal details, then the academic placement.
@@ -84,12 +84,14 @@ function Section({ title, description, children }: { title: string; description:
 }
 
 export default function StudentFormModal({
-  open, editing, programs, onClose, onSaved,
+  open, editing, programs, schoolYears, onClose, onSaved,
 }: {
   open: boolean;
   /** The student being edited, or null to add one. */
   editing: StudentRow | null;
   programs: ProgramOption[];
+  /** School years that can take enrollments (not archived), for a new student's first term. */
+  schoolYears: SchoolYearOption[];
   onClose: () => void;
   /** Called after a successful save with a sentence for the page's notice. */
   onSaved: (message: string) => void;
@@ -104,6 +106,9 @@ export default function StudentFormModal({
   const [busy, setBusy] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const firstField = useRef<HTMLInputElement>(null);
+  // A new student's first term: the active school year's current semester by default.
+  const defaultYear = schoolYears.find((y) => y.status === 'ACTIVE') ?? schoolYears[0] ?? null;
+  const [term, setTerm] = useState({ schoolYearId: defaultYear?.id ?? '', semester: defaultYear?.currentSemester ?? 1 });
 
   // Reset on every open; for an edit, load the full record (the list carries only a joined name).
   useEffect(() => {
@@ -111,6 +116,7 @@ export default function StudentFormModal({
     setErrors({}); setMessage(null); setBusy(false); setConfirmDiscard(false);
     if (!editing) {
       setForm(EMPTY); initial.current = EMPTY;
+      setTerm({ schoolYearId: defaultYear?.id ?? '', semester: defaultYear?.currentSemester ?? 1 });
       requestAnimationFrame(() => firstField.current?.focus());
       return;
     }
@@ -195,7 +201,11 @@ export default function StudentFormModal({
     setBusy(true); setErrors({}); setMessage(null);
     const result = editing
       ? await api.put<{ studentNumber?: string }>(`/api/v1/students/${editing.id}`, form)
-      : await api.post<{ studentNumber?: string }>('/api/v1/students', form);
+      : await api.post<{ studentNumber?: string; enrollment?: { term: string } | null }>('/api/v1/students', {
+          ...form,
+          // Registration opens a pending enrollment for this term, in the same transaction.
+          ...(term.schoolYearId ? { schoolYearId: term.schoolYearId, semester: term.semester } : {}),
+        });
     setBusy(false);
     if (!result.ok) {
       setErrors((result.errors ?? {}) as Errors);
@@ -203,9 +213,12 @@ export default function StudentFormModal({
       return;
     }
     const name = `${form.firstName.trim()} ${form.lastName.trim()}`;
+    const enrollment = editing ? null : (result.data as { enrollment?: { term: string } | null }).enrollment ?? null;
     onSaved(editing
       ? `${name}'s record was updated.`
-      : `${name} was added${result.data?.studentNumber ? ` as ${result.data.studentNumber}` : ''}.`);
+      : `${name} was added${result.data?.studentNumber ? ` as ${result.data.studentNumber}` : ''}. ${enrollment
+          ? `Their enrollment for ${enrollment.term} is in Enrollments as Pending — approve it once their documents are verified, and a section is assigned automatically.`
+          : 'No school year is open, so no enrollment was created — set one up under School Years, then enroll the student from their record.'}`);
   }
 
   const today = localDayKey(new Date());
@@ -350,7 +363,7 @@ export default function StudentFormModal({
                 <select id="st-yearLevel" className={`${FIELD} ${fieldBorder(!!e.yearLevel)}`} value={form.yearLevel}
                   onChange={(ev) => set('yearLevel', Number(ev.target.value))}
                   aria-invalid={!!e.yearLevel || undefined} aria-describedby={describe('st-yearLevel', e.yearLevel)}>
-                  {YEAR_LEVELS.map((y) => <option key={y} value={y}>Year {y}</option>)}
+                  {YEAR_LEVELS.map((y) => <option key={y} value={y}>{yearLevelLabel(y)}</option>)}
                 </select>
               </Field>
               <Field id="st-status" label="Student Status" required error={e.status}>
@@ -362,6 +375,37 @@ export default function StudentFormModal({
               </Field>
             </div>
           </Section>
+
+          {!editing && (
+            <>
+              <div className="border-t border-slate-200" role="presentation" />
+              <Section title="Enrollment" description="The term the student is enrolled into. They appear in Enrollments as Pending; approving it there assigns their section.">
+                {schoolYears.length === 0 ? (
+                  <p className="rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-900 ring-1 ring-inset ring-amber-200">
+                    No school year is open yet, so the student will be registered without an enrollment. Set one up under School Years first to enroll them now.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
+                    <Field id="st-schoolYearId" label="School Year" required>
+                      <select id="st-schoolYearId" className={`${FIELD} ${fieldBorder(false)}`} value={term.schoolYearId}
+                        onChange={(ev) => {
+                          const y = schoolYears.find((x) => x.id === ev.target.value);
+                          setTerm({ schoolYearId: ev.target.value, semester: y?.currentSemester ?? 1 });
+                        }}>
+                        {schoolYears.map((y) => <option key={y.id} value={y.id}>SY {y.label}{y.status === 'ACTIVE' ? ' (active)' : ''}</option>)}
+                      </select>
+                    </Field>
+                    <Field id="st-semester" label="Term" required>
+                      <select id="st-semester" className={`${FIELD} ${fieldBorder(false)}`} value={term.semester}
+                        onChange={(ev) => setTerm((t) => ({ ...t, semester: Number(ev.target.value) }))}>
+                        {[1, 2, 3].map((n) => <option key={n} value={n}>{SEMESTER_LABELS[n]}</option>)}
+                      </select>
+                    </Field>
+                  </div>
+                )}
+              </Section>
+            </>
+          )}
         </form>
       )}
     </Modal>

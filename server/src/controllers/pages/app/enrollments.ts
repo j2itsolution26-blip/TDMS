@@ -4,6 +4,8 @@ import { listAllEnrollments } from '@/server/services/enrollment-service';
 import { activePrograms } from '@/server/services/catalogue-service';
 import { ENROLLMENT_STATUSES, ENROLLMENT_STATUS_LABELS } from '@shared/types/domain';
 import type { PageRequest } from '@/server/controllers/pages/types';
+import { prisma } from '@/server/lib/prisma';
+import { YEAR_LEVELS } from '@shared/lib/teaching';
 
 /**
  * Enrollments — every student's term enrollments in one list.
@@ -26,11 +28,17 @@ export async function loadEnrollments({ query }: PageRequest) {
   // ?program= is one of the programs by id; anything else means all programs.
   const program = programs.find((p) => p.id.toString() === params.program)?.id.toString() ?? '';
   const search = (params.search ?? '').trim().slice(0, 100);
+  // School years that have enrollments, newest first; ?year= must be one of them.
+  const years = (await prisma.enrollment.groupBy({ by: ['schoolYear'], orderBy: { schoolYear: 'desc' } })).map((y) => y.schoolYear);
+  const schoolYear = years.includes(params.year ?? '') ? params.year! : '';
+  const yearLevel = (YEAR_LEVELS as readonly number[]).includes(Number(params.yearLevel)) ? Number(params.yearLevel) : 0;
   const data = await listAllEnrollments({
     page: Number.isFinite(parsed) && parsed > 0 ? parsed : 1,
     status: status || undefined,
     programId: program ? BigInt(program) : undefined,
     search,
+    schoolYear: schoolYear || undefined,
+    yearLevel: yearLevel || undefined,
   });
   const canOpenStudent = studentPolicy.view(user);
 
@@ -45,5 +53,8 @@ export async function loadEnrollments({ query }: PageRequest) {
     ...programs.map((p) => ({ value: p.id.toString(), label: p.code, name: p.name, count: data.programCounts[p.id.toString()] ?? 0 })),
   ];
 
-  return { canOpenStudent, canDecide: enrollmentPolicy.transition(user), data, filters, status, programTabs, program, search };
+  return {
+    canOpenStudent, canDecide: enrollmentPolicy.transition(user), data, filters, status, programTabs, program, search,
+    years, schoolYear, yearLevel: yearLevel ? String(yearLevel) : '',
+  };
 }

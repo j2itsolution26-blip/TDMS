@@ -1,3 +1,4 @@
+import { openPendingEnrollment, registrationTerm } from './registration-enrollment';
 import { prisma } from '@/server/lib/prisma';
 import { AppError, NotFoundError } from '@/server/lib/http';
 import type { z } from 'zod';
@@ -83,11 +84,15 @@ export interface ApproveResult {
  *
  * One transaction that: picks the program's newest active curriculum,
  * creates the Student as an `applicant`, opens a `missing` credential row
- * for every requirement that applies, and stamps the application approved.
+ * for every requirement that applies, opens a pending enrollment for the
+ * active school year's current semester (so the new student reaches
+ * Enrollments — see registration-enrollment), and stamps the application
+ * approved.
  * If any step fails the whole thing rolls back, so an approved application
  * can never point at a half-built student.
  */
 export async function approveApplication(id: bigint, actorId: bigint): Promise<ApproveResult> {
+  const term = await registrationTerm(null);
   return prisma.$transaction(async (tx) => {
     const application = await tx.application.findUnique({ where: { id } });
     if (!application) throw new NotFoundError('Application not found.');
@@ -144,6 +149,8 @@ export async function approveApplication(id: bigint, actorId: bigint): Promise<A
         })),
       });
     }
+
+    if (term) await openPendingEnrollment(tx, { studentId: student.id, curriculumId: curriculum.id, yearLevel: 1, term });
 
     await tx.application.update({
       where: { id },

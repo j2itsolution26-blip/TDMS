@@ -3,6 +3,7 @@ import { AppError, NotFoundError } from '@/server/lib/http';
 import type { z } from 'zod';
 import type { studentSchema } from '@/server/schemas/schemas';
 import type { Prisma } from '@prisma/client';
+import { openPendingEnrollment, type RegistrationTerm } from './registration-enrollment';
 
 /** Port of the students/index Volt component and App\Models\Student. */
 
@@ -109,7 +110,11 @@ async function nextStudentNumber(tx: Prisma.TransactionClient): Promise<string> 
   return `${year}-${String(count + 1).padStart(4, '0')}`;
 }
 
-export async function createStudent(input: z.infer<typeof studentSchema>) {
+/**
+ * Register a student: the record, its document checklist and — given a term —
+ * a pending enrollment for it, in one transaction (see registration-enrollment).
+ */
+export async function createStudent(input: z.infer<typeof studentSchema>, term: RegistrationTerm | null = null) {
   await assertProgramAndCurriculumAgree(input.programId, input.curriculumId);
   await assertNotADuplicate(input);
 
@@ -137,7 +142,11 @@ export async function createStudent(input: z.infer<typeof studentSchema>) {
         });
         // Its document checklist, in the same transaction.
         await ensureCredentialChecklist(student.id, tx);
-        return student;
+        // And the enrollment it is approved through, so it reaches Enrollments.
+        const enrollment = term
+          ? await openPendingEnrollment(tx, { studentId: student.id, curriculumId: input.curriculumId, yearLevel: input.yearLevel, term })
+          : null;
+        return { ...student, enrollment };
       });
     } catch (error) {
       if (isUniqueViolation(error, 'student_number') && attempt < 4) continue;

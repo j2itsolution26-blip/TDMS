@@ -145,21 +145,21 @@ function Decision({ row }: { row: Row }) {
 
 const TAB = 'rounded-lg px-3 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2';
 
-function View({ canOpenStudent, canDecide, data, filters, status, programTabs, program, search }: Data) {
+function View({ canOpenStudent, canDecide, data, filters, status, programTabs, program, search, years, schoolYear, yearLevel }: Data) {
   const router = useRouter();
   const [reviewing, setReviewing] = useState<Row | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [term, setTerm] = useState(search);
 
-  // Program, status and search together in the URL; a change starts at page 1.
-  const href = (next: { program?: string; status?: string; search?: string }) => {
-    const merged = { program, status, search, ...next };
+  // Program, status, term and search together in the URL; a change starts at page 1.
+  const href = (next: { program?: string; status?: string; search?: string; year?: string; yearLevel?: string }) => {
+    const merged = { program, status, search, year: schoolYear, yearLevel, ...next };
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(merged)) if (v) params.set(k, v);
     return `/enrollments${params.toString() ? `?${params}` : ''}`;
   };
   const programCode = programTabs.find((t) => t.value === program)?.label;
-  const scope = [programCode, status && label(status).toLowerCase(), search && `matching “${search}”`].filter(Boolean).join(' · ');
+  const scope = [programCode, schoolYear && `SY ${schoolYear}`, yearLevel && yearLevelLabel(Number(yearLevel)), status && label(status).toLowerCase(), search && `matching “${search}”`].filter(Boolean).join(' · ');
 
   return (
     <div className="space-y-6">
@@ -201,11 +201,23 @@ function View({ canOpenStudent, canDecide, data, filters, status, programTabs, p
           );
         })}
       </nav>
-        <form role="search" aria-label="Search enrollments" className="flex gap-2 lg:w-96" onSubmit={(e) => { e.preventDefault(); router.push(href({ search: term.trim() })); }}>
+        <div className="flex flex-col gap-2 sm:flex-row">
+        <label className="sr-only" htmlFor="enrollments-year">School year</label>
+        <select id="enrollments-year" className={`${INPUT_CLASS} sm:w-auto`} value={schoolYear} onChange={(e) => router.push(href({ year: e.target.value }))}>
+          <option value="">All school years</option>
+          {years.map((y) => <option key={y} value={y}>SY {y}</option>)}
+        </select>
+        <label className="sr-only" htmlFor="enrollments-level">Year level</label>
+        <select id="enrollments-level" className={`${INPUT_CLASS} sm:w-auto`} value={yearLevel} onChange={(e) => router.push(href({ yearLevel: e.target.value }))}>
+          <option value="">All year levels</option>
+          {[1, 2, 3].map((n) => <option key={n} value={n}>{yearLevelLabel(n)}</option>)}
+        </select>
+        <form role="search" aria-label="Search enrollments" className="flex gap-2 lg:w-80" onSubmit={(e) => { e.preventDefault(); router.push(href({ search: term.trim() })); }}>
           <label htmlFor="enrollments-search" className="sr-only">Search by student name or number</label>
           <input id="enrollments-search" type="search" className={INPUT_CLASS} placeholder="Student name or number…" value={term} onChange={(e) => setTerm(e.target.value)} />
           <button type="submit" className={BUTTON_SECONDARY}>Search</button>
         </form>
+        </div>
       </div>
 
       {notice && <Alert type="success">{notice}</Alert>}
@@ -282,7 +294,7 @@ function View({ canOpenStudent, canDecide, data, filters, status, programTabs, p
                 </tbody>
               </table>
             </div>
-            <Pagination page={data.page} lastPage={data.lastPage} total={data.total} basePath="/enrollments" query={{ status: status || undefined, program: program || undefined, search: search || undefined }} />
+            <Pagination page={data.page} lastPage={data.lastPage} total={data.total} basePath="/enrollments" query={{ status: status || undefined, program: program || undefined, search: search || undefined, year: schoolYear || undefined, yearLevel: yearLevel || undefined }} />
           </>
         )}
       </Card>

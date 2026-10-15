@@ -99,13 +99,15 @@ const asDetails = (s: MapEntry['subject']): SubjectDetails => ({
   lectureHours: s.lectureHours, labHours: s.labHours, recommendedClassSize: s.recommendedClassSize, remarks: s.remarks, isActive: s.isActive,
 });
 
-export default function CurriculumMap({ programs, subjects, canMap, onEdit, notice: outerNotice }: {
+export default function CurriculumMap({ programs, subjects, canMap, onEdit, notice: outerNotice, focus }: {
   programs: MapProgram[];
   subjects: ActiveSubject[];
   canMap: boolean;
   /** Open the subject form on a subject. */
   onEdit: (s: SubjectDetails) => void;
   notice?: string | null;
+  /** Move to this term (after a subject was created there). */
+  focus?: { programId: string; yearLevel: number; semester: number; at: number } | null;
 }) {
   const router = useRouter();
   const { program, level, sem, set: setScope } = useMapScope(programs);
@@ -125,6 +127,11 @@ export default function CurriculumMap({ programs, subjects, canMap, onEdit, noti
   // A notice belongs to the term it was about: moving on clears it.
   const set = (next: Parameters<typeof setScope>[0]) => { setNotice(null); setScope(next); };
   useEffect(() => { if (outerNotice) setNotice(outerNotice); }, [outerNotice]);
+  useEffect(() => {
+    if (!focus) return;
+    setScope({ programId: focus.programId, yearLevel: focus.yearLevel, semester: focus.semester });
+    if (outerNotice) setNotice(outerNotice);
+  }, [focus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const entries = program?.curriculum?.entries ?? [];
   const inYear = (l: number) => entries.filter((e) => e.yearLevel === l);

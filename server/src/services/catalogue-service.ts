@@ -390,7 +390,49 @@ async function assertPrerequisites(db: Prisma.TransactionClient | typeof prisma,
     const text = 'Each prerequisite must be a subject already in this curriculum.';
     throw new AppError(text, 422, { prerequisiteSubjectIds: [text] });
   }
+  if (subjectId !== null) await assertNoCycle(db, curriculumId, subjectId, unique);
   return unique;
+}
+
+/**
+ * No circular prerequisites: following the curriculum's prerequisite chains
+ * from each chosen prerequisite must never lead back to the subject itself
+ * (A needs B, B needs A — or a longer loop).
+ */
+async function assertNoCycle(db: Prisma.TransactionClient | typeof prisma, curriculumId: bigint, subjectId: bigint, chosen: bigint[]) {
+  const edges = await db.curriculumSubjectPrerequisite.findMany({
+    where: { curriculumSubject: { curriculumId } },
+    select: { subjectId: true, curriculumSubject: { select: { subjectId: true } } },
+  });
+  // subject → the subjects it requires (excluding the entry being changed, whose list is being replaced).
+  const requires = new Map<string, string[]>();
+  for (const e of edges) {
+    const from = e.curriculumSubject.subjectId.toString();
+    if (from === subjectId.toString()) continue;
+    requires.set(from, [...(requires.get(from) ?? []), e.subjectId.toString()]);
+  }
+  const target = subjectId.toString();
+  for (const start of chosen.map(String)) {
+    const path = [start];
+    const seen = new Set<string>();
+    const walk = (at: string): boolean => {
+      if (at === target) return true;
+      if (seen.has(at)) return false;
+      seen.add(at);
+      for (const next of requires.get(at) ?? []) {
+        path.push(next);
+        if (walk(next)) return true;
+        path.pop();
+      }
+      return false;
+    };
+    if (walk(start)) {
+      const codes = await db.subject.findMany({ where: { id: { in: [...new Set([target, ...path])].map(BigInt) } }, select: { id: true, code: true } });
+      const code = (id: string) => codes.find((c) => c.id.toString() === id)?.code ?? '?';
+      const text = `That would make a circular prerequisite: ${[target, ...path].map(code).join(' → ')}.`;
+      throw new AppError(text, 422, { prerequisiteSubjectIds: [text] }, 'PREREQUISITE_CYCLE');
+    }
+  }
 }
 
 /**

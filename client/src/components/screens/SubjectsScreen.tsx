@@ -57,6 +57,8 @@ export default function SubjectsScreen({ rows, page, lastPage, total, search, ma
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // The term a newly created subject went into: the map moves there.
+  const [focus, setFocus] = useState<{ programId: string; yearLevel: number; semester: number; at: number } | null>(null);
   const canAdd = canCreate && canMap;
   useOpenOnNew(canAdd, () => setForm({ editing: null }));
 
@@ -100,7 +102,7 @@ export default function SubjectsScreen({ rows, page, lastPage, total, search, ma
       </div>
 
       {view === 'map' ? (
-        <CurriculumMap programs={map} subjects={subjects} canMap={canMap && canUpdate} onEdit={(s) => setForm({ editing: s })} notice={notice} />
+        <CurriculumMap programs={map} subjects={subjects} canMap={canMap && canUpdate} onEdit={(s) => setForm({ editing: s })} notice={notice} focus={focus} />
       ) : (
         <div className="space-y-4">
           <form role="search" aria-label="Search the catalogue" className="flex gap-3"
@@ -167,7 +169,7 @@ export default function SubjectsScreen({ rows, page, lastPage, total, search, ma
         programs={map}
         scope={readMapScope(map)}
         onClose={() => setForm(null)}
-        onSaved={(message) => { setForm(null); setNotice(message); router.refresh(); }}
+        onSaved={(message, placed) => { setForm(null); setNotice(message); if (placed) setFocus({ ...placed, at: Date.now() }); router.refresh(); }}
       />
 
       <Modal open={toggling !== null} onClose={() => !busy && setToggling(null)} title={toggling?.isActive ? 'Deactivate subject?' : 'Activate subject?'} maxWidth="sm:max-w-md">

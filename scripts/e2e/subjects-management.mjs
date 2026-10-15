@@ -104,6 +104,16 @@ try {
   check('a mapping’s units, required flag and prerequisites change', editMap.status === 200 && Number(after.units) === 4 && after.isRequired === false && after.prerequisites.length === 1 && after.prerequisiteSubjectId === prog1.id, editMap.json);
   const selfPre = await api('coord', 'PUT', `/curricula/${curDit.id}/subjects/${prog2Entry.id}`, { units: 4, isRequired: true, prerequisiteSubjectIds: [String(prog2.id)] });
   check('a subject cannot be its own prerequisite', selfPre.status === 422);
+  // PROG2 requires PROG1: PROG1 requiring PROG2 would be circular.
+  const prog1Entry = await prisma.curriculumSubject.findFirst({ where: { subjectId: prog1.id, curriculumId: curDit.id } });
+  const loop2 = await api('coord', 'PUT', `/curricula/${curDit.id}/subjects/${prog1Entry.id}`, { units: 3, isRequired: true, prerequisiteSubjectIds: [String(prog2.id)] });
+  check('a circular prerequisite (PROG1 ↔ PROG2) is refused, naming the loop', loop2.status === 422 && loop2.json?.code === 'PREREQUISITE_CYCLE' && loop2.json.message.includes(`${M}-PROG1 → ${M}-PROG2 → ${M}-PROG1`), loop2.json);
+  // A longer loop: PROG3 requires PROG2 (which requires PROG1); PROG1 requiring PROG3 closes it.
+  await api('coord', 'POST', '/subjects', { ...subjectBody(`${M}-PROG3`), ...place(dit.id, 2, 1, { prerequisiteSubjectIds: [String(prog2.id)] }) });
+  const prog3 = await prisma.subject.findUnique({ where: { code: `${M}-PROG3` } });
+  const loop3 = await api('coord', 'PUT', `/curricula/${curDit.id}/subjects/${prog1Entry.id}`, { units: 3, isRequired: true, prerequisiteSubjectIds: [String(prog3.id)] });
+  check('…and a longer loop (PROG1 → PROG3 → PROG2 → PROG1)', loop3.status === 422 && loop3.json?.code === 'PREREQUISITE_CYCLE', loop3.json);
+  check('…and neither changed PROG1', (await prisma.curriculumSubjectPrerequisite.count({ where: { curriculumSubjectId: prog1Entry.id } })) === 0);
 
   console.log('\nThe Subjects page data');
   const pg = await page('coord', `/subjects?search=${M}-P`);
@@ -111,7 +121,7 @@ try {
   const y1s1 = ditMap?.curriculum.entries.filter((e) => e.yearLevel === 1 && e.semester === 1).map((e) => e.subject.code).sort();
   check('the map: DIT 1st Year 1st Semester has MATH1 and PROG1; 2nd Semester PROG2', JSON.stringify(y1s1) === JSON.stringify([`${M}-MATH1`, `${M}-PROG1`]) && ditMap.curriculum.entries.some((e) => e.semester === 2 && e.subject.code === `${M}-PROG2`), y1s1);
   check('…with hours, type and prerequisites', ditMap?.curriculum.entries.find((e) => e.subject.code === `${M}-PROG2`)?.prerequisites.map((p) => p.code).join() === `${M}-PROG1` && ditMap.curriculum.entries.find((e) => e.subject.code === `${M}-PROG1`)?.subject.labHours === 3);
-  check('the catalogue search finds PROG1 and PROG2 only, with where each is used', pg?.rows.map((r) => r.code).sort().join() === `${M}-PROG1,${M}-PROG2` && pg.rows[0].usage.length === 1);
+  check('the catalogue search finds PROG1, PROG2 and PROG3 only, with where each is used', pg?.rows.map((r) => r.code).sort().join() === `${M}-PROG1,${M}-PROG2,${M}-PROG3` && pg.rows.every((r) => r.usage.length === 1), pg?.rows.map((r) => r.code));
 
   console.log('\nEditing and the history lock');
   const edit = await api('coord', 'PUT', `/subjects/${math1.id}`, subjectBody(`${M}-MATH1`, { title: 'Discrete Mathematics', subjectType: 'lecture', lectureHours: 3, labHours: 2, remarks: 'Core' }));

@@ -182,6 +182,14 @@ export default {
         danger: '#DC2626',
         info: '#2563EB',
       },
+      keyframes: {
+        'modal-in': { from: { opacity: '0', transform: 'translateY(8px) scale(0.985)' }, to: { opacity: '1', transform: 'none' } },
+        'overlay-in': { from: { opacity: '0' }, to: { opacity: '1' } },
+      },
+      animation: {
+        'modal-in': 'modal-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1)',
+        'overlay-in': 'overlay-in 160ms ease-out',
+      },
       boxShadow: {
         // Restrained: a hairline lift, not a floating card.
         card: '0 1px 2px rgba(21, 43, 53, 0.04), 0 2px 8px -2px rgba(21, 43, 53, 0.06)',

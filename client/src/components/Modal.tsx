@@ -31,6 +31,8 @@ export default function Modal({
   footer,
   maxWidth = 'sm:max-w-2xl',
   appearance = 'default',
+  maxHeight,
+  animate = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -40,6 +42,10 @@ export default function Modal({
   footer?: ReactNode;
   maxWidth?: string;
   appearance?: 'default' | 'fluent';
+  /** Fluent only: the panel's height limit on larger screens, e.g. 'sm:max-h-[90vh]'. */
+  maxHeight?: string;
+  /** A short fade-and-rise on opening (off under reduced motion). Opt-in. */
+  animate?: boolean;
 }) {
   const titleId = useId();
   const subtitleId = useId();
@@ -73,7 +79,7 @@ export default function Modal({
 
   const fluent = appearance === 'fluent';
   const panel = fluent
-    ? `relative flex w-full ${maxWidth} flex-col overflow-hidden bg-white max-sm:h-[100dvh] sm:max-h-[calc(100dvh-3rem)] sm:rounded-[14px] sm:border sm:border-slate-200 sm:shadow-[0_12px_40px_rgba(16,42,67,0.16)]`
+    ? `relative flex w-full ${maxWidth} flex-col overflow-hidden bg-white max-sm:h-[100dvh] ${maxHeight ?? 'sm:max-h-[calc(100dvh-3rem)]'} ${animate ? 'animate-modal-in motion-reduce:animate-none' : ''} sm:rounded-[14px] sm:border sm:border-slate-200 sm:shadow-[0_12px_40px_rgba(16,42,67,0.16)]`
     : `relative w-full ${maxWidth} transform overflow-hidden rounded-xl bg-white shadow-xl transition-all`;
 
   return createPortal(
@@ -84,7 +90,7 @@ export default function Modal({
       aria-labelledby={titleId}
       aria-describedby={subtitle ? subtitleId : undefined}
     >
-      <div className="fixed inset-0 bg-navy-900/60 transition-opacity" onClick={onClose} />
+      <div className={`fixed inset-0 transition-opacity ${animate ? 'animate-overlay-in bg-[rgba(15,35,40,0.55)] motion-reduce:animate-none' : 'bg-navy-900/60'}`} onClick={onClose} />
 
       <div className={fluent ? 'flex min-h-full items-stretch justify-center sm:items-center sm:p-6' : 'flex min-h-full items-center justify-center p-4'}>
         <div className={panel}>

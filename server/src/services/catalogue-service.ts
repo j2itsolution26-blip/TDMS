@@ -4,9 +4,13 @@ import type { z } from 'zod';
 import type {
   programSchema,
   subjectSchema,
+  subjectPlacementSchema,
   curriculumSchema,
   curriculumSubjectSchema,
+  curriculumSubjectUpdateSchema,
 } from '@/server/schemas/schemas';
+import type { Prisma } from '@prisma/client';
+import { LOCKING_GRADE_STATUSES, normaliseHours } from '@shared/lib/subjects';
 
 /**
  * Programs, curricula and subjects — the academic catalogue.
@@ -249,6 +253,10 @@ export async function listSubjects(page = 1, search = '') {
       description: s.description,
       subjectType: s.subjectType,
       defaultUnits: s.defaultUnits.toNumber(),
+      lectureHours: s.lectureHours?.toNumber() ?? null,
+      labHours: s.labHours?.toNumber() ?? null,
+      recommendedClassSize: s.recommendedClassSize,
+      remarks: s.remarks,
       isActive: s.isActive,
       usage: s.curriculumSubjects
         .filter((u) => u.curriculum.isActive)
@@ -276,8 +284,13 @@ export async function curriculumMap() {
           orderBy: [{ yearLevel: 'asc' }, { semester: 'asc' }],
           select: {
             id: true, yearLevel: true, semester: true, units: true, isRequired: true,
-            subject: { select: { id: true, code: true, title: true, subjectType: true, isActive: true } },
-            prerequisite: { select: { code: true } },
+            subject: {
+              select: {
+                id: true, code: true, title: true, description: true, subjectType: true, defaultUnits: true,
+                lectureHours: true, labHours: true, recommendedClassSize: true, remarks: true, isActive: true,
+              },
+            },
+            prerequisites: { select: { subject: { select: { id: true, code: true } } } },
             _count: { select: { classes: true } },
           },
         },
@@ -301,9 +314,21 @@ export async function curriculumMap() {
               semester: e.semester,
               units: e.units.toNumber(),
               isRequired: e.isRequired,
-              prerequisite: e.prerequisite?.code ?? null,
+              prerequisites: e.prerequisites.map((x) => ({ id: x.subject.id.toString(), code: x.subject.code })),
               classes: e._count.classes,
-              subject: { id: e.subject.id.toString(), code: e.subject.code, title: e.subject.title, type: e.subject.subjectType, isActive: e.subject.isActive },
+              subject: {
+                id: e.subject.id.toString(),
+                code: e.subject.code,
+                title: e.subject.title,
+                description: e.subject.description,
+                type: e.subject.subjectType,
+                defaultUnits: e.subject.defaultUnits.toNumber(),
+                lectureHours: e.subject.lectureHours?.toNumber() ?? null,
+                labHours: e.subject.labHours?.toNumber() ?? null,
+                recommendedClassSize: e.subject.recommendedClassSize,
+                remarks: e.subject.remarks,
+                isActive: e.subject.isActive,
+              },
             })),
           }
         : null,
@@ -317,37 +342,108 @@ export async function getSubject(id: bigint) {
   return subject;
 }
 
-export async function createSubject(input: z.infer<typeof subjectSchema>) {
+/** The catalogue fields of a subject, with the hours that do not apply to its type dropped. */
+function subjectData(input: z.infer<typeof subjectSchema>) {
+  const h = normaliseHours({ subjectType: input.subjectType, lectureHours: input.lectureHours ?? null, labHours: input.labHours ?? null });
+  return {
+    code: input.code,
+    title: input.title,
+    description: input.description,
+    subjectType: input.subjectType,
+    defaultUnits: input.defaultUnits,
+    lectureHours: h.lectureHours,
+    labHours: h.labHours,
+    recommendedClassSize: input.recommendedClassSize ?? null,
+    remarks: input.remarks ?? null,
+    isActive: input.isActive,
+  };
+}
+
+/** The program's current curriculum: its newest active one (as scheduling and enrollment use). */
+async function currentCurriculum(programId: bigint, db: Prisma.TransactionClient | typeof prisma = prisma) {
+  const program = await db.program.findUnique({ where: { id: programId }, select: { code: true, isActive: true } });
+  if (!program) throw new AppError('Choose a program.', 422, { programId: ['Choose a program.'] });
+  const curriculum = await db.curriculum.findFirst({
+    where: { programId, isActive: true },
+    orderBy: { effectiveSchoolYear: 'desc' },
+    select: { id: true, versionLabel: true },
+  });
+  if (!curriculum) {
+    const text = `${program.code} has no active curriculum yet. Create one on the program's page first.`;
+    throw new AppError(text, 422, { programId: [text] });
+  }
+  return { ...curriculum, programCode: program.code };
+}
+
+/**
+ * Prerequisites must be other subjects already in the same curriculum, so a
+ * mapping cannot point at a subject the program does not teach.
+ */
+async function assertPrerequisites(db: Prisma.TransactionClient | typeof prisma, curriculumId: bigint, subjectId: bigint | null, ids: bigint[]) {
+  const unique = [...new Set(ids.map(String))].map(BigInt);
+  if (unique.length === 0) return unique;
+  if (subjectId !== null && unique.includes(subjectId)) {
+    throw new AppError('A subject cannot be its own prerequisite.', 422, { prerequisiteSubjectIds: ['A subject cannot be its own prerequisite.'] });
+  }
+  const mapped = await db.curriculumSubject.findMany({ where: { curriculumId, subjectId: { in: unique } }, select: { subjectId: true } });
+  if (mapped.length !== unique.length) {
+    const text = 'Each prerequisite must be a subject already in this curriculum.';
+    throw new AppError(text, 422, { prerequisiteSubjectIds: [text] });
+  }
+  return unique;
+}
+
+/**
+ * Create a subject and place it in its program's current curriculum, in one
+ * transaction: the catalogue entry and its mapping, or neither. The subject
+ * itself stays one catalogue record however many curricula later use it.
+ */
+export async function createSubject(input: z.infer<typeof subjectSchema>, placement: z.infer<typeof subjectPlacementSchema>) {
   await assertSubjectCodeFree(input.code, null);
-  return prisma.subject.create({
-    data: {
-      code: input.code,
-      title: input.title,
-      description: input.description,
-      subjectType: input.subjectType,
-      defaultUnits: input.defaultUnits,
-      isActive: input.isActive,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
+  const curriculum = await currentCurriculum(placement.programId);
+  return prisma.$transaction(async (tx) => {
+    const subject = await tx.subject.create({ data: { ...subjectData(input), createdAt: new Date(), updatedAt: new Date() } });
+    const prerequisites = await assertPrerequisites(tx, curriculum.id, subject.id, placement.prerequisiteSubjectIds);
+    const entry = await tx.curriculumSubject.create({
+      data: {
+        curriculumId: curriculum.id,
+        subjectId: subject.id,
+        prerequisiteSubjectId: prerequisites[0] ?? null,
+        yearLevel: placement.yearLevel,
+        semester: placement.semester,
+        units: input.defaultUnits,
+        isRequired: placement.isRequired,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+    if (prerequisites.length) {
+      await tx.curriculumSubjectPrerequisite.createMany({ data: prerequisites.map((pid) => ({ curriculumSubjectId: entry.id, subjectId: pid })) });
+    }
+    return { id: subject.id.toString(), code: subject.code, curriculum: curriculum.versionLabel, program: curriculum.programCode };
   });
 }
 
+/**
+ * Update a subject's catalogue details. Once a class of this subject has its
+ * grades finalized or released, its code and units are part of the academic
+ * record and are locked; the title, description, hours and remarks stay
+ * editable. Curriculum mappings keep their own units either way.
+ */
 export async function updateSubject(id: bigint, input: z.infer<typeof subjectSchema>) {
-  await getSubject(id);
+  const current = await getSubject(id);
   await assertSubjectCodeFree(input.code, id);
-  return prisma.subject.update({
-    where: { id },
-    data: {
-      code: input.code,
-      title: input.title,
-      description: input.description,
-      subjectType: input.subjectType,
-      defaultUnits: input.defaultUnits,
-      isActive: input.isActive,
-      updatedAt: new Date(),
-    },
-  });
+  const codeChanged = current.code !== input.code;
+  const unitsChanged = current.defaultUnits.toNumber() !== input.defaultUnits;
+  if (codeChanged || unitsChanged) {
+    const graded = await prisma.classOffering.count({ where: { subjectId: id, gradeStatus: { in: [...LOCKING_GRADE_STATUSES] } } });
+    if (graded > 0) {
+      const what = codeChanged && unitsChanged ? 'code and units' : codeChanged ? 'code' : 'units';
+      const text = `${current.code} has ${graded} class${graded === 1 ? '' : 'es'} with finalized grades, so its ${what} can no longer change. The title, description, hours and remarks can.`;
+      throw new AppError(text, 422, { ...(codeChanged ? { code: [text] } : {}), ...(unitsChanged ? { defaultUnits: [text] } : {}) }, 'SUBJECT_LOCKED');
+    }
+  }
+  return prisma.subject.update({ where: { id }, data: { ...subjectData(input), updatedAt: new Date() } });
 }
 
 export async function toggleSubjectActive(id: bigint) {
@@ -385,7 +481,7 @@ export async function activeSubjects() {
 export async function listCurriculumSubjects(curriculumId: bigint) {
   const rows = await prisma.curriculumSubject.findMany({
     where: { curriculumId },
-    include: { subject: true, prerequisite: true },
+    include: { subject: true, prerequisite: true, prerequisites: { select: { subject: { select: { id: true, code: true, title: true } } } } },
     orderBy: [{ yearLevel: 'asc' }, { semester: 'asc' }],
   });
 
@@ -399,6 +495,7 @@ export async function listCurriculumSubjects(curriculumId: bigint) {
     prerequisite: e.prerequisite
       ? { id: e.prerequisite.id.toString(), code: e.prerequisite.code, title: e.prerequisite.title }
       : null,
+    prerequisites: e.prerequisites.map((x) => ({ id: x.subject.id.toString(), code: x.subject.code, title: x.subject.title })),
   }));
 }
 
@@ -428,18 +525,44 @@ export async function addCurriculumSubject(input: z.infer<typeof curriculumSubje
     });
   }
 
-  return prisma.curriculumSubject.create({
-    data: {
-      curriculumId: input.curriculumId,
-      subjectId: input.subjectId,
-      prerequisiteSubjectId: input.prerequisiteSubjectId ?? null,
-      yearLevel: input.yearLevel,
-      semester: input.semester,
-      units: input.units,
-      isRequired: input.isRequired,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
+  // The list, plus the single prerequisite older callers send.
+  const wanted = [...input.prerequisiteSubjectIds, ...(input.prerequisiteSubjectId ? [input.prerequisiteSubjectId] : [])];
+  return prisma.$transaction(async (tx) => {
+    const prerequisites = await assertPrerequisites(tx, input.curriculumId, input.subjectId, wanted);
+    const entry = await tx.curriculumSubject.create({
+      data: {
+        curriculumId: input.curriculumId,
+        subjectId: input.subjectId,
+        prerequisiteSubjectId: prerequisites[0] ?? null,
+        yearLevel: input.yearLevel,
+        semester: input.semester,
+        units: input.units,
+        isRequired: input.isRequired,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+    if (prerequisites.length) {
+      await tx.curriculumSubjectPrerequisite.createMany({ data: prerequisites.map((pid) => ({ curriculumSubjectId: entry.id, subjectId: pid })) });
+    }
+    return entry;
+  });
+}
+
+/** Change a mapping's units, required/elective and prerequisites. Its term stays: remove and map again to move it. */
+export async function updateCurriculumSubject(id: bigint, curriculumId: bigint, input: z.infer<typeof curriculumSubjectUpdateSchema>) {
+  const entry = await prisma.curriculumSubject.findUnique({ where: { id }, select: { curriculumId: true, subjectId: true } });
+  if (!entry || entry.curriculumId !== curriculumId) throw new NotFoundError('Curriculum subject not found.');
+  await prisma.$transaction(async (tx) => {
+    const prerequisites = await assertPrerequisites(tx, curriculumId, entry.subjectId, input.prerequisiteSubjectIds);
+    await tx.curriculumSubject.update({
+      where: { id },
+      data: { units: input.units, isRequired: input.isRequired, prerequisiteSubjectId: prerequisites[0] ?? null, updatedAt: new Date() },
+    });
+    await tx.curriculumSubjectPrerequisite.deleteMany({ where: { curriculumSubjectId: id } });
+    if (prerequisites.length) {
+      await tx.curriculumSubjectPrerequisite.createMany({ data: prerequisites.map((pid) => ({ curriculumSubjectId: id, subjectId: pid })) });
+    }
   });
 }
 

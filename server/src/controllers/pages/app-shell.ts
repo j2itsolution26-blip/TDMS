@@ -115,7 +115,7 @@ const ROLE_SIDEBARS: Record<'director' | 'coordinator' | 'secretary' | 'assessme
   ],
   student: [
     ['main', ['/dashboard']],
-    ['learning', ['/my/qr', '/my/attendance', '/my/assessments', '/my/grades', '/my/badges']],
+    ['learning', ['/my/classes', '/my/qr', '/my/attendance', '/my/assessments', '/my/grades', '/my/badges']],
     ['calendar', ['/calendar', '/announcements']],
     ['account', ['/profile']],
   ],
@@ -226,6 +226,7 @@ export async function loadAppShell(_request: PageRequest) {
     items.push({ label: 'My PDS', href: '/teaching/pds', match: ['/teaching/pds'], icon: 'pds', group: 'account' });
   }
   if (studentPortalPolicy.use(user)) {
+    items.push({ label: 'My Classes', href: '/my/classes', match: ['/my/classes'], icon: 'classes', group: 'learning' });
     items.push({ label: 'My QR Code', href: '/my/qr', match: ['/my/qr'], icon: 'qr', group: 'learning' });
     items.push({ label: 'My Attendance', href: '/my/attendance', match: ['/my/attendance'], icon: 'attendance', group: 'learning' });
     items.push({ label: 'Quizzes & Exams', href: '/my/assessments', match: ['/my/assessments'], icon: 'quiz', group: 'learning' });

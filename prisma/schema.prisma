@@ -491,12 +491,18 @@ model Subject {
   description  String?
   subjectType  String    @map("subject_type") @db.VarChar(255)
   defaultUnits Decimal   @map("default_units") @db.Decimal(4, 1)
+  /// Weekly contact hours; total contact hours is their sum (not stored).
+  lectureHours Decimal?  @map("lecture_hours") @db.Decimal(4, 1)
+  labHours     Decimal?  @map("lab_hours") @db.Decimal(4, 1)
+  recommendedClassSize Int? @map("recommended_class_size") @db.SmallInt
+  remarks      String?
   isActive     Boolean   @default(true) @map("is_active")
   createdAt    DateTime? @map("created_at") @db.Timestamp(0)
   updatedAt    DateTime? @map("updated_at") @db.Timestamp(0)
 
   curriculumSubjects CurriculumSubject[] @relation("CurriculumSubjectSubject")
   prerequisiteFor    CurriculumSubject[] @relation("CurriculumSubjectPrerequisite")
+  requiredBy         CurriculumSubjectPrerequisite[]
   classes            ClassOffering[]
 
   @@map("subjects")
@@ -520,6 +526,8 @@ model CurriculumSubject {
   prerequisite Subject?   @relation("CurriculumSubjectPrerequisite", fields: [prerequisiteSubjectId], references: [id], onDelete: SetNull, map: "curriculum_subjects_prerequisite_subject_id_foreign", onUpdate: NoAction)
 
   classes      ClassOffering[]
+  /// All prerequisites. prerequisiteSubjectId above is kept for history and mirrors the first.
+  prerequisites CurriculumSubjectPrerequisite[]
 
   @@unique([curriculumId, subjectId], map: "curriculum_subjects_curriculum_id_subject_id_unique")
   @@index([curriculumId, yearLevel, semester], map: "curriculum_subjects_term_index")
@@ -742,6 +750,21 @@ model SectionStudent {
   @@unique([schoolYearId, studentId], map: "section_students_one_per_year")
   @@index([sectionId])
   @@map("section_students")
+}
+
+/// A prerequisite of a curriculum entry: the subject a student must have
+/// taken first. Several per entry; each pair once.
+model CurriculumSubjectPrerequisite {
+  id                  BigInt @id @default(autoincrement())
+  curriculumSubjectId BigInt @map("curriculum_subject_id")
+  subjectId           BigInt @map("subject_id")
+
+  curriculumSubject CurriculumSubject @relation(fields: [curriculumSubjectId], references: [id], onDelete: Cascade)
+  subject           Subject           @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+
+  @@unique([curriculumSubjectId, subjectId], map: "curriculum_subject_prerequisites_unique")
+  @@index([subjectId])
+  @@map("curriculum_subject_prerequisites")
 }
 
 /// A classroom or laboratory that classes are scheduled in. Deactivated, not

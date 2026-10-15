@@ -222,6 +222,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
   mount(app, 'GET', `${API_PREFIX}/curricula/:id/subjects`, c70.GET);
   mount(app, 'POST', `${API_PREFIX}/curricula/:id/subjects`, c70.POST);
   mount(app, 'DELETE', `${API_PREFIX}/curricula/:id/subjects/:entryId`, c71.DELETE);
+  mount(app, 'PUT', `${API_PREFIX}/curricula/:id/subjects/:entryId`, c71.PUT);
   mount(app, 'POST', `${API_PREFIX}/documents`, c72.POST);
   mount(app, 'PUT', `${API_PREFIX}/documents/:id`, c73.PUT);
   mount(app, 'DELETE', `${API_PREFIX}/documents/:id`, c73.DELETE);

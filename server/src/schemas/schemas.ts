@@ -241,14 +241,33 @@ export const subjectSchema = z.object({
   description: nullableString(2000),
   subjectType: subjectTypeSchema,
   defaultUnits: z.coerce.number().min(0, 'Units cannot be negative.').max(99, 'Units is too large.'),
+  /** Weekly contact hours; which apply depends on the type (shared/lib/subjects). */
+  lectureHours: z.coerce.number().min(0, 'Hours cannot be negative.').max(60, 'At most 60 hours a week.').nullable().optional(),
+  labHours: z.coerce.number().min(0, 'Hours cannot be negative.').max(60, 'At most 60 hours a week.').nullable().optional(),
+  recommendedClassSize: z.coerce.number().int('A whole number.').min(1, 'At least 1.').max(200, 'At most 200.').nullable().optional(),
+  remarks: nullableString(2000).optional(),
   isActive: z.boolean().default(true),
+});
+
+/**
+ * A new subject's place in a curriculum: program (its current curriculum),
+ * year level and semester. Creating a subject places it in one transaction.
+ */
+export const subjectPlacementSchema = z.object({
+  programId: idSchema,
+  yearLevel: yearLevelSchema,
+  semester: z.coerce.number().int().min(1, 'Choose a semester.').max(3, 'Choose a semester.'),
+  isRequired: z.boolean().default(true),
+  prerequisiteSubjectIds: z.array(idSchema).max(10).default([]),
 });
 
 export const curriculumSubjectSchema = z
   .object({
     curriculumId: idSchema,
     subjectId: idSchema,
+    /** Kept for older callers; prerequisiteSubjectIds is the list. */
     prerequisiteSubjectId: idSchema.nullable().optional(),
+    prerequisiteSubjectIds: z.array(idSchema).max(10).default([]),
     yearLevel: yearLevelSchema,
     // 1st Semester, 2nd Semester or Summer (3) — the terms classes are offered in.
     semester: z.coerce.number().int().min(1, 'Choose a semester.').max(3, 'Choose a semester.'),
@@ -260,7 +279,18 @@ export const curriculumSubjectSchema = z
   .refine((d) => !d.prerequisiteSubjectId || d.prerequisiteSubjectId !== d.subjectId, {
     message: 'The prerequisite must be a different subject.',
     path: ['prerequisiteSubjectId'],
+  })
+  .refine((d) => !d.prerequisiteSubjectIds.includes(d.subjectId), {
+    message: 'A subject cannot be its own prerequisite.',
+    path: ['prerequisiteSubjectIds'],
   });
+
+/** Changing a mapping: required/elective, units and prerequisites (not its term — remove and map again). */
+export const curriculumSubjectUpdateSchema = z.object({
+  units: z.coerce.number().min(0).max(99),
+  isRequired: z.boolean(),
+  prerequisiteSubjectIds: z.array(idSchema).max(10).default([]),
+});
 
 // --- Students --------------------------------------------------------------
 

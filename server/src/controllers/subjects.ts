@@ -1,8 +1,8 @@
 import { ok } from '@/server/lib/http';
-import { withErrorHandling, parseJson, requestContext } from '@/server/lib/api-handler';
+import { withErrorHandling } from '@/server/lib/api-handler';
 import { requireApiUser, authorize } from '@/server/auth/current-user';
-import { subjectPolicy } from '@/server/auth/policies';
-import { subjectSchema } from '@/server/schemas/schemas';
+import { curriculumSubjectPolicy, subjectPolicy } from '@/server/auth/policies';
+import { subjectPlacementSchema, subjectSchema } from '@/server/schemas/schemas';
 import { listSubjects, createSubject } from '@/server/services/catalogue-service';
 
 export const GET = withErrorHandling(async (request: Request) => {
@@ -14,7 +14,10 @@ export const GET = withErrorHandling(async (request: Request) => {
 
 export const POST = withErrorHandling(async (request: Request) => {
   const user = await requireApiUser();
-  authorize(subjectPolicy.create(user));
-  const input = await parseJson(request, subjectSchema);
-  return ok(await createSubject(input), 201);
+  // A new subject is created in its place in a curriculum (program, year level, semester).
+  authorize(subjectPolicy.create(user) && curriculumSubjectPolicy.create(user));
+  const body = (await request.json().catch(() => null)) as { placement?: unknown } | null;
+  const input = subjectSchema.parse(body);
+  const placement = subjectPlacementSchema.parse(body?.placement ?? {});
+  return ok(await createSubject(input, placement), 201);
 });

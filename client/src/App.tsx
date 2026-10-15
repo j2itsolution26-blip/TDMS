@@ -49,6 +49,7 @@ const P14 = lazy(() => import('@/pages/app/my/assessments/_id'));
 const P15 = lazy(() => import('@/pages/app/my/attendance'));
 const P16 = lazy(() => import('@/pages/app/my/badges'));
 const P17 = lazy(() => import('@/pages/app/my/grades'));
+const P17c = lazy(() => import('@/pages/app/my/classes'));
 const P18 = lazy(() => import('@/pages/app/my/qr'));
 const P19 = lazy(() => import('@/pages/app/notifications'));
 const P20 = lazy(() => import('@/pages/app/profile'));
@@ -126,6 +127,7 @@ export default function App() {
               <Route path="/my/attendance" element={<P15 />} />
               <Route path="/my/badges" element={<P16 />} />
               <Route path="/my/grades" element={<P17 />} />
+              <Route path="/my/classes" element={<P17c />} />
               <Route path="/my/qr" element={<P18 />} />
               <Route path="/notifications" element={<P19 />} />
               <Route path="/profile" element={<P20 />} />

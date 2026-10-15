@@ -7,6 +7,7 @@ import { USER_MODEL_TYPE } from '@/server/auth/rbac';
 import { actorLabel, recordAudit, type AuditContext } from '@/server/services/audit-log';
 import type { classCheckSchema, classSchema, classUpdateSchema, sectionSchema } from '@/server/schemas/teaching';
 import { assertNoConflicts, previewConflicts } from './schedule-conflicts';
+import { needsLaboratory } from '@shared/lib/subjects';
 import { notifyStudents, notifyUsers } from './notifications';
 import { assertWritableYear } from './school-years';
 import { studentCredentialPolicy, studentPolicy } from '@/server/auth/policies';
@@ -497,10 +498,18 @@ async function requireCurriculumEntry(
 }
 
 /** Every room named on a class or its meetings must exist and be active. */
+/** The rooms a class actually meets in: each meeting's own room, otherwise the class's room. */
+function effectiveRooms(input: { roomId?: bigint | null; schedules: { roomId?: bigint | null }[] }) {
+  if (input.schedules.length === 0) return [input.roomId ?? null];
+  return input.schedules.map((m) => m.roomId ?? input.roomId ?? null);
+}
+
+type RoomFacts = { id: bigint; code: string; isActive: boolean; type: string; capacity: number | null };
+
 async function requireActiveRooms(ids: (bigint | null | undefined)[]) {
   const unique = [...new Set(ids.filter((x): x is bigint => x != null).map(String))].map(BigInt);
-  if (unique.length === 0) return new Map<string, { id: bigint; code: string }>();
-  const rooms = await prisma.room.findMany({ where: { id: { in: unique } }, select: { id: true, code: true, isActive: true } });
+  if (unique.length === 0) return new Map<string, RoomFacts>();
+  const rooms = await prisma.room.findMany({ where: { id: { in: unique } }, select: { id: true, code: true, isActive: true, type: true, capacity: true } });
   if (rooms.length !== unique.length) throw new AppError('Choose a room from the list.', 422, { roomId: ['Choose a room from the list.'] });
   const inactive = rooms.filter((r) => !r.isActive);
   if (inactive.length) {
@@ -508,6 +517,39 @@ async function requireActiveRooms(ids: (bigint | null | undefined)[]) {
     throw new AppError(text, 422, { roomId: [text] });
   }
   return new Map(rooms.map((r) => [r.id.toString(), r]));
+}
+
+/**
+ * The rooms a class meets in must suit it: a laboratory subject meets in a
+ * laboratory (a lecture-and-laboratory subject may use either), and a room
+ * with a seat count must seat the whole section — a class is its section.
+ */
+async function assertRoomsFit(
+  rooms: Map<string, RoomFacts>,
+  used: (bigint | null | undefined)[],
+  subject: { code: string; subjectType: string },
+  sectionId: bigint,
+) {
+  const ids = [...new Set(used.filter((x): x is bigint => x != null).map(String))];
+  if (ids.length === 0) return;
+  const chosen = ids.map((id) => rooms.get(id)).filter((r): r is RoomFacts => Boolean(r));
+  if (needsLaboratory(subject.subjectType)) {
+    const lecture = chosen.filter((r) => r.type !== 'LABORATORY');
+    if (lecture.length) {
+      const text = `${subject.code} is a laboratory subject, so it meets in a laboratory. Room ${lecture.map((r) => r.code).join(', ')} is not one.`;
+      throw new AppError(text, 422, { roomId: [text] }, 'ROOM_UNSUITABLE');
+    }
+  }
+  const sized = chosen.filter((r) => r.capacity !== null);
+  if (sized.length) {
+    const students = await prisma.sectionStudent.count({ where: { sectionId } });
+    const small = sized.filter((r) => students > (r.capacity ?? 0));
+    if (small.length) {
+      const r = small[0]!;
+      const text = `Room ${r.code} seats ${r.capacity}, but the section has ${students} students. Choose a larger room.`;
+      throw new AppError(text, 422, { roomId: [text] }, 'ROOM_TOO_SMALL');
+    }
+  }
 }
 
 /**
@@ -524,7 +566,7 @@ export async function createClass(user: AuthUser, input: z.output<typeof classSc
   if (!section) throw new AppError('Choose a section.', 422, { sectionId: ['Choose a section.'] });
   assertWritableYear(section.schoolYear);
 
-  const subject = await prisma.subject.findUnique({ where: { id: input.subjectId }, select: { id: true, code: true, title: true, isActive: true } });
+  const subject = await prisma.subject.findUnique({ where: { id: input.subjectId }, select: { id: true, code: true, title: true, isActive: true, subjectType: true } });
   if (!subject?.isActive) throw new AppError('Choose an active subject.', 422, { subjectId: ['Choose an active subject.'] });
 
   const clash = await prisma.classOffering.findFirst({ where: { sectionId: input.sectionId, subjectId: input.subjectId, semester: input.semester } });
@@ -533,6 +575,7 @@ export async function createClass(user: AuthUser, input: z.output<typeof classSc
   const entry = await requireCurriculumEntry(section, subject, input.semester);
   const instructor = input.instructorId ? await requireInstructorAccount(input.instructorId) : null;
   const rooms = await requireActiveRooms([input.roomId, ...input.schedules.map((s) => s.roomId)]);
+  await assertRoomsFit(rooms, effectiveRooms(input), subject, section.id);
   // The room's code is mirrored into the legacy text columns, which the
   // Instructor's screens show; the room id is what conflicts are checked on.
   const code = (id: bigint | null | undefined, text: string | null | undefined) => (id ? rooms.get(id.toString())?.code ?? null : text ?? null);
@@ -594,7 +637,7 @@ export async function updateClass(user: AuthUser, id: bigint, input: z.output<ty
     where: { id },
     include: {
       schoolYear: true,
-      subject: { select: { id: true, code: true, title: true } },
+      subject: { select: { id: true, code: true, title: true, subjectType: true } },
       section: { select: { id: true, name: true, yearLevel: true, programId: true, program: { select: { code: true } } } },
     },
   });
@@ -609,6 +652,7 @@ export async function updateClass(user: AuthUser, id: bigint, input: z.output<ty
     ? await requireActiveRooms(roomIds)
     : new Map((await prisma.room.findMany({ where: { id: { in: roomIds.filter((x): x is bigint => x != null) } }, select: { id: true, code: true } })).map((r) => [r.id.toString(), r]));
   const code = (id: bigint | null | undefined, text: string | null | undefined) => (id ? rooms.get(id.toString())?.code ?? null : text ?? null);
+  if (active) await assertRoomsFit(rooms as Map<string, RoomFacts>, effectiveRooms(input), cls.subject, cls.section.id);
   const changedInstructor = (instructor?.id ?? null)?.toString() !== cls.instructorId?.toString();
   const label = `${cls.subject.title} — ${sectionLabel(cls.section.program.code, cls.section.yearLevel, cls.section.name)}`;
   const entry = cls.curriculumSubjectId ?? (await requireCurriculumEntry(cls.section, cls.subject, cls.semester).then((e) => e.id).catch(() => null));

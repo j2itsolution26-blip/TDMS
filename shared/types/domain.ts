@@ -9,7 +9,7 @@ import { z } from 'zod';
  * reaching the database and tripping a constraint violation at runtime.
  */
 
-export const SUBJECT_TYPES = ['lecture', 'laboratory', 'practical', 'capstone', 'ojt'] as const;
+export const SUBJECT_TYPES = ['lecture', 'laboratory', 'lecture_laboratory', 'practical', 'capstone', 'ojt'] as const;
 export const STUDENT_STATUSES = ['applicant', 'active', 'transferred', 'archived', 'graduated', 'dropped', 'inactive'] as const;
 export const APPLICATION_STATUSES = ['submitted', 'under_review', 'approved', 'returned'] as const;
 export const CREDENTIAL_STATUSES = ['missing', 'submitted', 'under_review', 'verified', 'rejected', 'expired'] as const;
@@ -187,6 +187,7 @@ export interface PendingRegistration {
 export const SUBJECT_TYPE_LABELS: Record<SubjectType, string> = {
   lecture: 'Lecture',
   laboratory: 'Laboratory',
+  lecture_laboratory: 'Lecture and Laboratory',
   practical: 'Practical',
   capstone: 'Capstone',
   ojt: 'OJT',

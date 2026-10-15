@@ -24,6 +24,7 @@ import { loadMyAssessmentsId } from '@/server/controllers/pages/app/my/assessmen
 import { loadMyAttendance } from '@/server/controllers/pages/app/my/attendance';
 import { loadMyBadges } from '@/server/controllers/pages/app/my/badges';
 import { loadMyGrades } from '@/server/controllers/pages/app/my/grades';
+import { loadMyClasses } from '@/server/controllers/pages/app/my/classes';
 import { loadMyQr } from '@/server/controllers/pages/app/my/qr';
 import { loadNotifications } from '@/server/controllers/pages/app/notifications';
 import { loadProfile } from '@/server/controllers/pages/app/profile';
@@ -95,6 +96,7 @@ export function registerPageRoutes(app: FastifyInstance): void {
   mountPage(app, '/my/attendance', loadMyAttendance);
   mountPage(app, '/my/badges', loadMyBadges);
   mountPage(app, '/my/grades', loadMyGrades);
+  mountPage(app, '/my/classes', loadMyClasses);
   mountPage(app, '/my/qr', loadMyQr);
   mountPage(app, '/notifications', loadNotifications);
   mountPage(app, '/profile', loadProfile);

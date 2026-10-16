@@ -1,6 +1,7 @@
 import { requireUser, authorizePage } from '@/server/auth/current-user';
 import { studentPolicy } from '@/server/auth/policies';
 import { listStudents } from '@/server/services/student-service';
+import { countStudentsWithoutEnrollment } from '@/server/services/enrollment-gaps';
 import { activePrograms } from '@/server/services/catalogue-service';
 import type { PageRequest } from '@/server/controllers/pages/types';
 import { prisma } from '@/server/lib/prisma';
@@ -24,13 +25,16 @@ export async function loadStudents({ query }: PageRequest) {
   const program = programs.find((p) => p.id === query.program)?.id ?? '';
   const yearLevel = (YEAR_LEVELS as readonly number[]).includes(Number(query.yearLevel)) ? Number(query.yearLevel) : 0;
   const status = (STUDENT_STATUSES as readonly string[]).includes(query.status ?? '') ? query.status! : '';
-  const data = await listStudents({
+  // ?enrollment=none: records with no enrollment at all, which never reach Enrollments.
+  const enrollment = query.enrollment === 'none' ? 'none' : '';
+  const [data, withoutEnrollment] = await Promise.all([listStudents({
     page: Number.isFinite(parsed) && parsed > 0 ? parsed : 1,
     search,
     programId: program ? BigInt(program) : undefined,
     yearLevel: yearLevel || undefined,
     status: status || undefined,
-  });
+    withoutEnrollment: enrollment === 'none',
+  }), countStudentsWithoutEnrollment()]);
 
   return {
     rows: data.rows,
@@ -38,7 +42,9 @@ export async function loadStudents({ query }: PageRequest) {
     lastPage: data.lastPage,
     total: data.total,
     search: search ?? '',
-    filters: { program, yearLevel: yearLevel ? String(yearLevel) : '', status },
+    filters: { program, yearLevel: yearLevel ? String(yearLevel) : '', status, enrollment },
+    /** Student records with no enrollment, whatever the filters. */
+    withoutEnrollment,
     programs,
     schoolYears: years.map((y) => ({ id: y.id.toString(), label: y.label, status: y.status, currentSemester: y.currentSemester })),
     canCreate: studentPolicy.create(user),

@@ -15,6 +15,7 @@ import { MAX_YEAR_LEVEL, SECTION_CAPACITY, SEMESTER_LABELS } from '@shared/lib/t
 import { APPLICATION_STATUS_LABELS, ENROLLMENT_STATUS_LABELS } from '@shared/types/domain';
 import { localDayKey, startOfLocalDay } from '@shared/lib/institution-time';
 import { calendarEntries } from '@/server/services/teaching/calendar';
+import { WITHOUT_ENROLLMENT } from '@/server/services/enrollment-gaps';
 import type { AuthUser } from '@shared/types/domain';
 import type {
   CoordinatorWorkspace,
@@ -657,7 +658,7 @@ export async function secretaryWorkspace(user: AuthUser): Promise<SecretaryWorks
   const canEnroll = enrollmentPolicy.viewAny(user);
   const canPrograms = programPolicy.viewAny(user);
 
-  const [students, registrations, incompleteRecords, apps, newApps, enroll, docs, programRows, appsByProgram, enrollByProgram, studentsByProgram, events] = await Promise.all([
+  const [students, registrations, incompleteRecords, apps, newApps, enroll, docs, programRows, appsByProgram, enrollByProgram, studentsByProgram, events, notEnrolled] = await Promise.all([
     canStudents ? prisma.student.count() : null,
     canStudents ? prisma.student.count({ where: { createdAt: { gte: weekStart } } }) : null,
     // A record the office cannot contact or identify the student from.
@@ -678,6 +679,8 @@ export async function secretaryWorkspace(user: AuthUser): Promise<SecretaryWorks
     canPrograms && canStudents ? prisma.student.groupBy({ by: ['programId'], _count: { _all: true } }) : null,
     // The school calendar is open to every signed-in member of staff.
     upcomingEvents(user, now),
+    // Records that never reach Enrollments: no enrollment of any status.
+    canStudents ? prisma.student.count({ where: WITHOUT_ENROLLMENT }) : null,
   ]);
 
   // Pending applications are submitted OR under review. The list filters one
@@ -716,6 +719,7 @@ export async function secretaryWorkspace(user: AuthUser): Promise<SecretaryWorks
   if (apps) queue.push({ key: 'applications', group: 'applications', label: 'Applications to Review', description: 'Submitted or under review', count: apps.waiting, href: pendingAppsHref, action: 'Review', icon: 'applications', oldestAt: apps.oldestWaiting });
   if (enroll) queue.push({ key: 'enrollments', group: 'enrollment', label: 'Pending Enrollment', description: 'Approved applicants awaiting enrollment approval', count: enroll.pending, href: '/enrollments?status=pending', action: 'Open', icon: 'enrollment', oldestAt: enroll.oldestPending });
   if (docs) queue.push({ key: 'documents', group: 'documents', label: 'Documents to Verify', description: 'Verified on each student’s record', count: docs.pending, href: '/students', action: 'Open', icon: 'documents', oldestAt: docs.oldestPending });
+  if (notEnrolled !== null) queue.push({ key: 'not-enrolled', group: 'enrollment', label: 'Students Without an Enrollment', description: 'Not in Enrollments until one is opened for them', count: notEnrolled, href: '/students?enrollment=none', action: 'Review', icon: 'enrollment' });
   if (incompleteRecords !== null) queue.push({ key: 'incomplete', group: 'records', label: 'Incomplete Student Records', description: 'Missing email, phone or date of birth', count: incompleteRecords, href: '/students', action: 'Review', icon: 'records' });
 
   // Every application status, in the order an application moves through them.

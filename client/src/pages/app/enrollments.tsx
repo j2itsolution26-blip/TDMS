@@ -145,7 +145,7 @@ function Decision({ row }: { row: Row }) {
 
 const TAB = 'rounded-lg px-3 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2';
 
-function View({ canOpenStudent, canDecide, data, filters, status, programTabs, program, search, years, schoolYear, yearLevel }: Data) {
+function View({ canOpenStudent, canDecide, data, filters, status, programTabs, program, search, years, schoolYear, yearLevel, withoutEnrollment }: Data) {
   const router = useRouter();
   const [reviewing, setReviewing] = useState<Row | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -167,6 +167,18 @@ function View({ canOpenStudent, canDecide, data, filters, status, programTabs, p
         title="Enrollments"
         subtitle={canDecide ? 'Term enrollments across all students. Review a pending enrollment to approve or reject it.' : 'Term enrollments across all students.'}
       />
+
+      {/* A student record with no enrollment is not listed here at all; say so rather than let the counts look short. */}
+      {withoutEnrollment ? (
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <span>
+            <span className="font-semibold">{withoutEnrollment} student {withoutEnrollment === 1 ? 'record has' : 'records have'} no enrollment</span> and {withoutEnrollment === 1 ? 'is' : 'are'} not counted here. Open {withoutEnrollment === 1 ? 'one' : 'one for each'} from the student’s Enrollment page.
+          </span>
+          <Link href="/students?enrollment=none" className="font-semibold underline underline-offset-2 hover:no-underline">
+            Show {withoutEnrollment === 1 ? 'the student' : 'the students'}
+          </Link>
+        </p>
+      ) : null}
 
       {/* Program tabs: All Programs, then each program by code. */}
       <nav aria-label="Filter by program" className="flex flex-wrap gap-2">

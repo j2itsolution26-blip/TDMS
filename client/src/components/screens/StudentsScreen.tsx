@@ -23,6 +23,8 @@ export interface StudentRow {
   status: string;
   program: { id: string; name: string; code: string };
   curriculum: { id: string; versionLabel: string };
+  /** Has at least one enrollment; without one the student never reaches Enrollments. */
+  hasEnrollment: boolean;
 }
 
 export interface ProgramOption { id: string; name: string; code: string }
@@ -35,8 +37,10 @@ interface Props {
   lastPage: number;
   total: number;
   search: string;
-  /** Program (id), year level and status filters from the URL; '' is all. */
-  filters: { program: string; yearLevel: string; status: string };
+  /** Program (id), year level, status and enrollment filters from the URL; '' is all. */
+  filters: { program: string; yearLevel: string; status: string; enrollment: string };
+  /** Student records with no enrollment at all, whatever the filters. */
+  withoutEnrollment: number;
   programs: ProgramOption[];
   /** Open school years, for a new student's first enrollment. */
   schoolYears: SchoolYearOption[];
@@ -45,7 +49,7 @@ interface Props {
 }
 
 export default function StudentsScreen({
-  rows, page, lastPage, total, search, filters, programs, schoolYears, canCreate, canUpdate,
+  rows, page, lastPage, total, search, filters, withoutEnrollment, programs, schoolYears, canCreate, canUpdate,
 }: Props) {
   const router = useRouter();
   useOpenOnNew(canCreate, openCreate);
@@ -75,8 +79,8 @@ export default function StudentsScreen({
     go({ search: term });
   }
 
-  const filtered = Boolean(search || filters.program || filters.yearLevel || filters.status);
-  const SELECT = `${INPUT_CLASS} sm:w-auto`;
+  const filtered = Boolean(search || filters.program || filters.yearLevel || filters.status || filters.enrollment);
+  const SELECT = `${INPUT_CLASS} 2xl:w-auto`;
 
   return (
     <div className="space-y-6">
@@ -93,8 +97,8 @@ export default function StudentsScreen({
         ) : null}
       />
 
-      <form onSubmit={submitSearch} className="flex flex-col gap-3 lg:flex-row" role="search" aria-label="Find students">
-        <div className="flex min-w-0 flex-1 gap-3">
+      <form onSubmit={submitSearch} className="flex flex-col gap-3 2xl:flex-row" role="search" aria-label="Find students">
+        <div className="flex min-w-0 flex-1 gap-3 2xl:min-w-[18rem]">
           <label htmlFor="students-search" className="sr-only">Search by student number or name</label>
           <input
             id="students-search"
@@ -105,9 +109,9 @@ export default function StudentsScreen({
           />
           <button type="submit" className={BUTTON_SECONDARY}>Search</button>
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:flex">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:flex 2xl:shrink-0">
           <label className="sr-only" htmlFor="students-program">Program</label>
-          <select id="students-program" className={SELECT} value={filters.program} onChange={(e) => go({ program: e.target.value })}>
+          <select id="students-program" className={`${SELECT} 2xl:max-w-[14rem]`} value={filters.program} onChange={(e) => go({ program: e.target.value })}>
             <option value="">All programs</option>
             {programs.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}
           </select>
@@ -121,8 +125,25 @@ export default function StudentsScreen({
             <option value="">All statuses</option>
             {STUDENT_STATUSES.map((st) => <option key={st} value={st}>{STUDENT_STATUS_LABELS[st]}</option>)}
           </select>
+          <label className="sr-only" htmlFor="students-enrollment">Enrollment</label>
+          <select id="students-enrollment" className={SELECT} value={filters.enrollment} onChange={(e) => go({ enrollment: e.target.value })}>
+            <option value="">Any enrollment</option>
+            <option value="none">Not enrolled ({withoutEnrollment})</option>
+          </select>
         </div>
       </form>
+
+      {/* A record with no enrollment never reaches Enrollments: say so, and where to fix it. */}
+      {withoutEnrollment > 0 && filters.enrollment !== 'none' && (
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <span>
+            <span className="font-semibold">{withoutEnrollment} student {withoutEnrollment === 1 ? 'record has' : 'records have'} no enrollment</span>, so {withoutEnrollment === 1 ? 'it does' : 'they do'} not appear in Enrollments. Open an enrollment from the student’s Enrollment page.
+          </span>
+          <button type="button" onClick={() => go({ enrollment: 'none' })} className="font-semibold underline underline-offset-2 hover:no-underline">
+            Show {withoutEnrollment === 1 ? 'it' : 'them'}
+          </button>
+        </p>
+      )}
 
       {notice && <Alert type={notice.tone}>{notice.text}</Alert>}
 
@@ -131,7 +152,7 @@ export default function StudentsScreen({
           <EmptyState
             title={filtered ? 'No students match these filters' : 'No students yet'}
             description={filtered
-              ? `Nothing for ${[filters.program && programs.find((p) => p.id === filters.program)?.code, filters.yearLevel && yearLevelLabel(Number(filters.yearLevel)), filters.status && STUDENT_STATUS_LABELS[filters.status as keyof typeof STUDENT_STATUS_LABELS], search && `“${search}”`].filter(Boolean).join(' · ')}. Change or clear the filters.`
+              ? `Nothing for ${[filters.program && programs.find((p) => p.id === filters.program)?.code, filters.yearLevel && yearLevelLabel(Number(filters.yearLevel)), filters.status && STUDENT_STATUS_LABELS[filters.status as keyof typeof STUDENT_STATUS_LABELS], filters.enrollment === 'none' && 'not enrolled', search && `“${search}”`].filter(Boolean).join(' · ')}. Change or clear the filters.`
               : 'Add a student record with New Student.'}
           />
         ) : (
@@ -161,11 +182,20 @@ export default function StudentsScreen({
                         <p className="max-w-[14rem] truncate text-xs text-slate-500" title={s.program.name}>{s.program.name}</p>
                       </td>
                       <td className="whitespace-nowrap px-6 py-3.5 text-sm text-slate-500">{yearLevelLabel(s.yearLevel)}</td>
-                      <td className="px-6 py-3.5"><Badge status={s.status} /></td>
+                      <td className="px-6 py-3.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Badge status={s.status} />
+                          {!s.hasEnrollment && (
+                            <span className="inline-flex items-center whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800 ring-1 ring-inset ring-amber-200">
+                              Not enrolled
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-6 py-3.5 text-right text-sm">
                         <div className="flex items-center justify-end gap-3">
-                          <Link href={`/students/${s.id}/enrollment`} className="font-medium text-slate-600 hover:text-indigo-600">
-                            Enrollment
+                          <Link href={`/students/${s.id}/enrollment`} className={`font-medium hover:text-indigo-600 ${s.hasEnrollment ? 'text-slate-600' : 'text-indigo-600'}`}>
+                            {s.hasEnrollment ? 'Enrollment' : 'Open enrollment'}
                           </Link>
                           {canUpdate && (
                             <button type="button" onClick={() => openEdit(s)} className="font-medium text-slate-600 hover:text-indigo-600">

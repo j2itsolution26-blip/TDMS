@@ -4,6 +4,7 @@ import type { z } from 'zod';
 import type { studentSchema } from '@/server/schemas/schemas';
 import type { Prisma } from '@prisma/client';
 import { openPendingEnrollment, type RegistrationTerm } from './registration-enrollment';
+import { WITHOUT_ENROLLMENT } from './enrollment-gaps';
 
 /** Port of the students/index Volt component and App\Models\Student. */
 
@@ -19,6 +20,8 @@ export interface StudentRow {
   status: string;
   program: { id: string; name: string; code: string };
   curriculum: { id: string; versionLabel: string };
+  /** Has at least one enrollment, of any status. Without one the student never reaches Enrollments. */
+  hasEnrollment: boolean;
 }
 
 /** trim("{first} {middle} {last}") — the Eloquent fullName() accessor. */
@@ -26,7 +29,7 @@ export function fullName(p: { firstName: string; middleName: string | null; last
   return `${p.firstName} ${p.middleName ?? ''} ${p.lastName}`.replace(/\s+/g, ' ').trim();
 }
 
-export async function listStudents(options: { page?: number; search?: string; programId?: bigint; yearLevel?: number; status?: string } = {}) {
+export async function listStudents(options: { page?: number; search?: string; programId?: bigint; yearLevel?: number; status?: string; withoutEnrollment?: boolean } = {}) {
   const page = options.page ?? 1;
   const search = options.search?.trim() ?? '';
 
@@ -50,12 +53,14 @@ export async function listStudents(options: { page?: number; search?: string; pr
     ...(options.programId ? { programId: options.programId } : {}),
     ...(options.yearLevel ? { yearLevel: options.yearLevel } : {}),
     ...(options.status ? { status: options.status } : {}),
+    // Records with no enrollment at all (enrollment-gaps.ts).
+    ...(options.withoutEnrollment ? WITHOUT_ENROLLMENT : {}),
   };
 
   const [rows, total] = await Promise.all([
     prisma.student.findMany({
       where,
-      include: { program: true, curriculum: true },
+      include: { program: true, curriculum: true, _count: { select: { enrollments: true } } },
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
@@ -75,6 +80,7 @@ export async function listStudents(options: { page?: number; search?: string; pr
         status: s.status,
         program: { id: s.program.id.toString(), name: s.program.name, code: s.program.code },
         curriculum: { id: s.curriculum.id.toString(), versionLabel: s.curriculum.versionLabel },
+        hasEnrollment: s._count.enrollments > 0,
       }),
     ),
     page,

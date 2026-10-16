@@ -2,6 +2,7 @@ import { requireUser, authorizePage } from '@/server/auth/current-user';
 import { enrollmentPolicy, studentPolicy } from '@/server/auth/policies';
 import { listAllEnrollments } from '@/server/services/enrollment-service';
 import { activePrograms } from '@/server/services/catalogue-service';
+import { countStudentsWithoutEnrollment } from '@/server/services/enrollment-gaps';
 import { ENROLLMENT_STATUSES, ENROLLMENT_STATUS_LABELS } from '@shared/types/domain';
 import type { PageRequest } from '@/server/controllers/pages/types';
 import { prisma } from '@/server/lib/prisma';
@@ -53,8 +54,11 @@ export async function loadEnrollments({ query }: PageRequest) {
     ...programs.map((p) => ({ value: p.id.toString(), label: p.code, name: p.name, count: data.programCounts[p.id.toString()] ?? 0 })),
   ];
 
+  // Student records with no enrollment never appear here; those who may see students are told how many.
+  const withoutEnrollment = studentPolicy.viewAny(user) ? await countStudentsWithoutEnrollment() : null;
+
   return {
     canOpenStudent, canDecide: enrollmentPolicy.transition(user), data, filters, status, programTabs, program, search,
-    years, schoolYear, yearLevel: yearLevel ? String(yearLevel) : '',
+    years, schoolYear, yearLevel: yearLevel ? String(yearLevel) : '', withoutEnrollment,
   };
 }

@@ -28,6 +28,7 @@
     "db:seed": "tsx --env-file-if-exists=.env prisma/seed.ts",
     "db:fresh": "tsx --env-file-if-exists=.env --tsconfig server/tsconfig.json scripts/db-fresh.ts",
     "admin:create": "tsx --env-file-if-exists=.env --tsconfig server/tsconfig.json scripts/create-admin.ts",
+    "reconcile:enrollments": "tsx --env-file-if-exists=.env --tsconfig server/tsconfig.json scripts/reconcile-enrollments.ts",
     "mail:check": "node --env-file-if-exists=.env scripts/mail-check.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -52,7 +53,8 @@
     "test:scheduling": "node scripts/e2e/class-scheduling.mjs",
     "test:subjects": "node scripts/e2e/subjects-management.mjs",
     "test:applications": "node scripts/e2e/applications-workflow.mjs",
-    "test:security": "node scripts/e2e/security-hardening.mjs"
+    "test:security": "node scripts/e2e/security-hardening.mjs",
+    "test:enrollment-gaps": "node scripts/e2e/enrollment-gaps.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

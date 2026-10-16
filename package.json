@@ -54,7 +54,8 @@
     "test:subjects": "node scripts/e2e/subjects-management.mjs",
     "test:applications": "node scripts/e2e/applications-workflow.mjs",
     "test:security": "node scripts/e2e/security-hardening.mjs",
-    "test:enrollment-gaps": "node scripts/e2e/enrollment-gaps.mjs"
+    "test:enrollment-gaps": "node scripts/e2e/enrollment-gaps.mjs",
+    "test:enrollment-term": "node scripts/e2e/enrollment-term.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

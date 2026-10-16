@@ -1,6 +1,7 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/server/lib/prisma';
-import { sectionLabel } from '@shared/lib/teaching';
+import { sectionLabel, yearLevelLabel } from '@shared/lib/teaching';
+import { validYearLevels } from '@shared/lib/enrollment-term';
 import { AppError, NotFoundError } from '@/server/lib/http';
 import type { z } from 'zod';
 import type { enrollmentSchema } from '@/server/schemas/schemas';
@@ -315,28 +316,55 @@ export async function createEnrollment(input: z.infer<typeof enrollmentSchema>) 
     );
   }
 
-  // Linked to the school year as a record when one exists; an archived year
-  // is read-only, so nobody can be enrolled into it after the fact.
+  // A school year that has been set up: approval places the student in one of
+  // its sections, so a term in a year that does not exist could never be
+  // approved. An archived year is read-only, so nobody is enrolled into it.
   const year = await prisma.schoolYear.findUnique({ where: { label: input.schoolYear }, select: { id: true, status: true } });
-  if (year?.status === 'ARCHIVED') {
+  if (!year) {
+    throw new AppError(`School year ${input.schoolYear} has not been set up.`, 422, {
+      schoolYear: ['Choose a school year that has been set up under School Years.'],
+    });
+  }
+  if (year.status === 'ARCHIVED') {
     throw new AppError(`School year ${input.schoolYear} is archived.`, 422, {
       schoolYear: ['This school year is archived and cannot take new enrollments.'],
     });
   }
 
-  return prisma.enrollment.create({
-    data: {
-      studentId: input.studentId,
-      curriculumId: input.curriculumId,
-      schoolYear: input.schoolYear,
-      schoolYearId: year?.id ?? null,
-      semester: input.semester,
-      yearLevel: input.yearLevel,
-      status: 'pending',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-  });
+  // No year level beyond the student's curriculum's final year (enrollment-term.ts).
+  const [{ final_year: finalYear } = { final_year: null }] = await prisma.$queryRaw<{ final_year: number | null }[]>`
+    SELECT max(year_level)::int AS final_year FROM curriculum_subjects WHERE curriculum_id = ${input.curriculumId}`;
+  const levels = validYearLevels(finalYear);
+  if (!levels.includes(input.yearLevel)) {
+    throw new AppError(`This curriculum runs to ${yearLevelLabel(levels[levels.length - 1]!)}.`, 422, {
+      yearLevel: [`Choose ${levels.map(yearLevelLabel).join(', ').replace(/, ([^,]*)$/, ' or $1')}.`],
+    });
+  }
+
+  try {
+    return await prisma.enrollment.create({
+      data: {
+        studentId: input.studentId,
+        curriculumId: input.curriculumId,
+        schoolYear: input.schoolYear,
+        schoolYearId: year.id,
+        semester: input.semester,
+        yearLevel: input.yearLevel,
+        status: 'pending',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+  } catch (error) {
+    // Two submissions at once: the check above passed for both, the unique
+    // index stops the second. It gets the same message the check gives.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      throw new AppError('This student already has an enrollment for that term.', 422, {
+        schoolYear: ['This student already has an enrollment for that term.'],
+      });
+    }
+    throw error;
+  }
 }
 
 /**

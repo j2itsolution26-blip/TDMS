@@ -17,7 +17,7 @@ const stamp = Date.now();
 const M = `ZZE2E${String(stamp).slice(-6)}`;
 const PASSWORD = `Enrol#Check${stamp}xY`;
 const started = new Date();
-const created = { users: [], students: [], programs: [], curricula: [] };
+const created = { users: [], students: [], programs: [], curricula: [], years: [] };
 let passed = 0;
 const failures = [];
 
@@ -58,6 +58,10 @@ try {
   created.programs.push(program.id);
   const cur = await prisma.curriculum.create({ data: { programId: program.id, versionLabel: 'v2026', effectiveSchoolYear: '2026-2027', isActive: true, createdAt: new Date() } });
   created.curricula.push(cur.id);
+  // A term is only opened in a school year that is set up (createEnrollment); make sure 2026-2027 is.
+  if (!(await prisma.schoolYear.findUnique({ where: { label: '2026-2027' } }))) {
+    created.years.push((await prisma.schoolYear.create({ data: { label: '2026-2027', startsOn: new Date('2026-06-01'), endsOn: new Date('2027-03-31'), status: 'UPCOMING', currentSemester: 1 } })).id);
+  }
   const required = await prisma.credentialRequirement.findMany({ where: { isActive: true, isRequired: true, OR: [{ programId: null }, { programId: program.id }] }, select: { id: true } });
 
   const mkStudent = async (n, docs) => {
@@ -181,9 +185,13 @@ try {
     await prisma.enrollmentStatusHistory.deleteMany({ where: { enrollmentId: { in: enrolls } } });
     await prisma.enrollment.deleteMany({ where: { id: { in: enrolls } } });
     await prisma.studentCredential.deleteMany({ where: { studentId: { in: ids } } });
+    // Approval placed students in this program's sections; those go with it.
+    await prisma.sectionStudent.deleteMany({ where: { studentId: { in: ids } } });
+    await prisma.section.deleteMany({ where: { programId: { in: created.programs } } });
     await prisma.student.deleteMany({ where: { id: { in: ids } } });
     await prisma.curriculum.deleteMany({ where: { id: { in: created.curricula } } });
     await prisma.program.deleteMany({ where: { id: { in: created.programs } } });
+    await prisma.schoolYear.deleteMany({ where: { id: { in: created.years } } });
     await prisma.notification.deleteMany({ where: { userId: { in: created.users } } });
     await prisma.session.deleteMany({ where: { userId: { in: created.users } } });
     await prisma.modelHasRole.deleteMany({ where: { modelId: { in: created.users }, modelType: 'App\\Models\\User' } });

@@ -211,7 +211,7 @@ export function Alert({
 // Fields take Fluent's bottom stroke: a light outline with a darker underline
 // (#7D8F88, 3.4:1 on white) so the control stays identifiable at WCAG's 3:1.
 const BUTTON_BASE =
-  'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
+  'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:disabled:opacity-40';
 
 export const BUTTON_PRIMARY = `${BUTTON_BASE} bg-primary-600 text-white shadow-sm hover:bg-primary-700 active:bg-primary-800 focus-visible:ring-primary-600`;
 

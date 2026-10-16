@@ -8,8 +8,9 @@ import {
   BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_SUCCESS, BUTTON_DANGER, INPUT_CLASS, LABEL_CLASS,
 } from '@/components/ui';
 import { formatDate } from '@shared/lib/dates';
-import { MAX_YEAR_LEVEL, yearLevelLabel } from '@shared/lib/teaching';
+import { SEMESTER_LABELS, yearLevelLabel } from '@shared/lib/teaching';
 import { approvalNotice, type Placement } from '@/lib/enrollment-notice';
+import NewEnrollmentTermDialog, { type TermOptions } from './NewEnrollmentTermDialog';
 
 /** Port of livewire/enrollment/show.blade.php. */
 
@@ -51,13 +52,14 @@ interface Props {
   credentials: CredentialRow[];
   enrollments: EnrollmentRow[];
   allVerified: boolean;
-  defaultSchoolYear: string;
+  /** The New Enrollment Term choices (school years, year levels). */
+  termOptions: TermOptions;
   canVerify: boolean;
   canEnroll: boolean;
 }
 
 export default function EnrollmentScreen({
-  student, credentials, enrollments, allVerified, defaultSchoolYear, canVerify, canEnroll,
+  student, credentials, enrollments, allVerified, termOptions, canVerify, canEnroll,
 }: Props) {
   const router = useRouter();
   const [flash, setFlash] = useState<string | null>(null);
@@ -69,11 +71,6 @@ export default function EnrollmentScreen({
   const [rejectionReason, setRejectionReason] = useState('');
 
   const [showEnrollForm, setShowEnrollForm] = useState(false);
-  const [enrollForm, setEnrollForm] = useState({
-    schoolYear: defaultSchoolYear,
-    semester: 1,
-    yearLevel: student.yearLevel || 1,
-  });
 
   const [dropping, setDropping] = useState<string | null>(null);
   const [dropReason, setDropReason] = useState('');
@@ -100,17 +97,6 @@ export default function EnrollmentScreen({
     if (!result.ok) { setErrors(result.errors ?? {}); if (!result.errors) setFlashError(result.message); return; }
     setRejecting(null); setRejectionReason('');
     setFlash('Credential rejected.');
-    router.refresh();
-  }
-
-  async function saveEnrollment(event: React.FormEvent) {
-    event.preventDefault();
-    setBusy(true); reset();
-    const result = await api.post(`/api/v1/students/${student.id}/enrollments`, enrollForm);
-    setBusy(false);
-    if (!result.ok) { setErrors(result.errors ?? {}); if (!result.errors) setFlashError(result.message); return; }
-    setShowEnrollForm(false);
-    setFlash('Enrollment term created as pending.');
     router.refresh();
   }
 
@@ -265,7 +251,7 @@ export default function EnrollmentScreen({
                 {enrollments.map((e) => (
                   <tr key={e.id}>
                     <td className="px-6 py-3.5 text-sm font-medium text-navy-900">{e.schoolYear}</td>
-                    <td className="px-6 py-3.5 text-sm text-slate-500">{e.semester}</td>
+                    <td className="px-6 py-3.5 text-sm text-slate-500">{SEMESTER_LABELS[e.semester] ?? e.semester}</td>
                     <td className="whitespace-nowrap px-6 py-3.5 text-sm text-slate-500">{yearLevelLabel(e.yearLevel)}</td>
                     <td className="px-6 py-3.5 text-sm text-slate-600">{e.section ?? <span className="text-xs text-slate-400">{e.status === 'pending' ? 'Assigned on approval' : '—'}</span>}</td>
                     <td className="px-6 py-3.5"><Badge status={e.status} /></td>
@@ -317,37 +303,14 @@ export default function EnrollmentScreen({
       </Modal>
 
       {/* New enrollment term */}
-      <Modal open={showEnrollForm} onClose={() => setShowEnrollForm(false)} title="New Enrollment Term" maxWidth="sm:max-w-lg">
-        <form onSubmit={saveEnrollment} className="space-y-4">
-          <div>
-            <label className={LABEL_CLASS} htmlFor="en-year">School Year</label>
-            <input id="en-year" className={INPUT_CLASS} placeholder="2025-2026" value={enrollForm.schoolYear}
-              onChange={(e) => setEnrollForm({ ...enrollForm, schoolYear: e.target.value })} required />
-            <FieldError messages={errors.schoolYear} />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className={LABEL_CLASS} htmlFor="en-sem">Semester</label>
-              <select id="en-sem" className={INPUT_CLASS} value={enrollForm.semester}
-                onChange={(e) => setEnrollForm({ ...enrollForm, semester: Number(e.target.value) })}>
-                <option value={1}>1</option>
-                <option value={2}>2</option>
-              </select>
-              <FieldError messages={errors.semester} />
-            </div>
-            <div>
-              <label className={LABEL_CLASS} htmlFor="en-level">Year Level</label>
-              <input id="en-level" type="number" min={1} max={MAX_YEAR_LEVEL} className={INPUT_CLASS} value={enrollForm.yearLevel}
-                onChange={(e) => setEnrollForm({ ...enrollForm, yearLevel: Number(e.target.value) })} required />
-              <FieldError messages={errors.yearLevel} />
-            </div>
-          </div>
-          <div className="flex justify-end gap-3">
-            <button type="button" className={BUTTON_SECONDARY} onClick={() => setShowEnrollForm(false)}>Cancel</button>
-            <button type="submit" className={BUTTON_PRIMARY} disabled={busy}>{busy ? 'Saving…' : 'Create'}</button>
-          </div>
-        </form>
-      </Modal>
+      <NewEnrollmentTermDialog
+        open={showEnrollForm}
+        onClose={() => setShowEnrollForm(false)}
+        onCreated={(message) => { setShowEnrollForm(false); setFlash(message); router.refresh(); }}
+        student={{ id: student.id, fullName: student.fullName, studentNumber: student.studentNumber, yearLevel: student.yearLevel, programCode: student.program.code }}
+        existing={enrollments}
+        options={termOptions}
+      />
 
       {/* Drop enrollment */}
       <Modal open={dropping !== null} onClose={() => setDropping(null)} title={dropAs === 'rejected' ? 'Reject Enrollment' : 'Drop Enrollment'} maxWidth="sm:max-w-lg">

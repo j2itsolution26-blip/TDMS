@@ -418,7 +418,8 @@ export const enrollmentSchema = z.object({
     .string()
     .trim()
     .regex(/^\d{4}-\d{4}$/, 'Use the format 2025-2026.'),
-  semester: z.coerce.number().int().min(1).max(2),
+  // A term enrollment is for the 1st or 2nd semester (shared/lib/enrollment-term.ts).
+  semester: z.coerce.number().int().min(1, 'Choose 1st or 2nd Semester.').max(2, 'Choose 1st or 2nd Semester.'),
   yearLevel: yearLevelSchema,
 });
 

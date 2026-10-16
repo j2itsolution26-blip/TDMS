@@ -16,6 +16,7 @@
  *
  * No security code: nothing in this workflow asks for one.
  */
+import './_guard.mjs';
 import { fetchPage, isPagePath } from './lib/pages.mjs';
 
 const BASE = process.env.TDMS_BASE ?? 'http://localhost:3000';

@@ -7,6 +7,7 @@ import { guardRequest, API_PREFIX } from '@/server/middleware/request-guard';
 import { registerApiRoutes } from '@/server/routes/api.routes';
 import { registerPageRoutes } from '@/server/routes/pages.routes';
 import { sendWebResponse } from '@/server/routes/bridge';
+import { securityHeaders } from '@/server/lib/security-headers';
 
 /**
  * The TDMS HTTP server.
@@ -19,14 +20,22 @@ import { sendWebResponse } from '@/server/routes/bridge';
 /** Uploads are capped at 4 MB in the storage layer; this leaves room for the form. */
 const BODY_LIMIT = 10 * 1024 * 1024;
 
-const SECURITY_HEADERS: Record<string, string> = {
-  'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'DENY',
-  'Referrer-Policy': 'strict-origin-when-cross-origin',
-  'X-DNS-Prefetch-Control': 'off',
-  // The camera is allowed for this site only: QR attendance scans with it.
-  'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()',
-};
+const SECURITY_HEADERS = securityHeaders(process.env.NODE_ENV === 'production');
+
+/**
+ * Whether X-Forwarded-* headers come from a proxy we trust.
+ *
+ * True by default: on Vercel (and behind Render or nginx) the platform sets
+ * X-Forwarded-For and strips anything the client sent, and the rate limits
+ * and Secure cookies depend on it. A self-hosted server that faces the
+ * internet directly must set TRUST_PROXY=false — otherwise any client could
+ * send its own X-Forwarded-For and appear to come from a fresh address on
+ * every request, walking straight past the sign-in throttle.
+ */
+export function proxyTrusted(env: NodeJS.ProcessEnv = process.env): boolean {
+  const value = env.TRUST_PROXY?.trim().toLowerCase();
+  return !(value === 'false' || value === '0' || value === 'no');
+}
 
 export interface AppOptions {
   /** The built React app (client/dist). Omitted in development and tests. */
@@ -39,7 +48,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     logger: options.logger ?? false,
     // Behind Vercel/Render/nginx the client's address and scheme arrive in
     // X-Forwarded-* headers; the rate limits and Secure cookies need them.
-    trustProxy: true,
+    trustProxy: proxyTrusted(),
     bodyLimit: BODY_LIMIT,
   });
 
@@ -57,6 +66,18 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     for (const [name, value] of Object.entries(SECURITY_HEADERS)) reply.header(name, value);
     return payload;
   });
+
+  /*
+   * Without a trusted proxy the forwarded headers are whatever the client
+   * typed. Replace them with the socket address, so every reader — the rate
+   * limits (clientIp), the audit log, the request context — sees the real one.
+   */
+  if (!proxyTrusted()) {
+    app.addHook('onRequest', async (request) => {
+      request.headers['x-forwarded-for'] = request.socket.remoteAddress ?? '';
+      delete request.headers['x-real-ip'];
+    });
+  }
 
   app.addHook('onRequest', async (request, reply) => {
     if (!request.url.startsWith(`${API_PREFIX}/`)) return;

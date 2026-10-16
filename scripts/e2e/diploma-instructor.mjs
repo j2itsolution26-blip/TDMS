@@ -9,6 +9,7 @@
 // the marker ZZE2E and is removed at the end, including notifications it
 // caused; audit rows are kept, as always. School-year archiving is exercised
 // on a throwaway year (2098-2099) only — the real active year is never touched.
+import './_guard.mjs';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'node:crypto';

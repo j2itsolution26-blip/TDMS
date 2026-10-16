@@ -410,6 +410,30 @@ export function createFakePrisma(): FakePrisma {
     })),
 
     /**
+     * The one raw statement the services use: rate-limit.ts's atomic counter
+     * (INSERT INTO "cache" … ON CONFLICT DO UPDATE … RETURNING). Mirrors its
+     * SQL — a missing, expired or non-numeric row restarts at 1, a live one
+     * adds 1 and keeps its expiry. Synchronous, so atomic like the real one.
+     * Anything else is refused, so a new raw query cannot pass a test silently.
+     */
+    $queryRaw: async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      const sql = strings.join('?');
+      if (!sql.includes('INSERT INTO "cache"')) throw new Error(`fake-prisma: unsupported raw query: ${sql.slice(0, 80)}`);
+      const [key, initialExpiration, now] = values as [string, bigint, bigint];
+      const rows = table('cache');
+      const row = rows.find((r) => r.key === key);
+      if (!row) {
+        rows.push({ key, value: '1', expiration: initialExpiration });
+        return [{ value: '1', expiration: initialExpiration }];
+      }
+      const expired = BigInt(row.expiration as bigint) <= now;
+      const numeric = /^[0-9]+$/.test(String(row.value));
+      row.value = expired || !numeric ? '1' : String(Number(row.value) + 1);
+      if (expired) row.expiration = initialExpiration;
+      return [{ value: row.value, expiration: row.expiration }];
+    },
+
+    /**
      * Real rollback, and one transaction at a time.
      *
      * The store is snapshotted and restored on failure, so a test can assert

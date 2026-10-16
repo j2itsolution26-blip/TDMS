@@ -51,7 +51,8 @@
     "test:registration": "node scripts/e2e/registration-enrollment.mjs",
     "test:scheduling": "node scripts/e2e/class-scheduling.mjs",
     "test:subjects": "node scripts/e2e/subjects-management.mjs",
-    "test:applications": "node scripts/e2e/applications-workflow.mjs"
+    "test:applications": "node scripts/e2e/applications-workflow.mjs",
+    "test:security": "node scripts/e2e/security-hardening.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
@@ -61,5 +62,11 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "@playwright/mcp": "^0.0.83"
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.2"
   }
 }

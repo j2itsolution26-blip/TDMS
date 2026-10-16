@@ -16,6 +16,7 @@
  *   mailpit          # SMTP on :1025, HTTP API and UI on :8025
  *   MAIL_HOST=127.0.0.1 MAIL_PORT=1025  *     MAIL_FROM_ADDRESS=no-reply@asiancollege.edu.ph npm run dev
  */
+import './_guard.mjs';
 import { pathToFileURL } from 'node:url';
 
 const BASE = process.env.BASE ?? 'http://127.0.0.1:3100';

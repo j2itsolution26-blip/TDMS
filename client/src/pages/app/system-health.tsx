@@ -79,8 +79,8 @@ function View(d: Data) {
       </Card>
 
       <p className="text-xs text-slate-500">
-        The same checks are available without signing in at <code>/api/v1/health</code>, for when nobody
-        can sign in.
+        The database checks are available without signing in at <code>/api/v1/health</code>, for when nobody
+        can sign in. The configuration detail on this page is shown to the Super Admin only.
       </p>
     </div>
   );

@@ -12,6 +12,7 @@
 //
 // Throwaway records only (marker ZZE2E…), removed at the end. Run it against a
 // disposable database — never production.
+import './_guard.mjs';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { rm } from 'node:fs/promises';

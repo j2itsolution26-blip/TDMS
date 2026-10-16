@@ -10,6 +10,7 @@
 //
 // Run it against a disposable database. It only removes what it created, but
 // it does create rows while it runs.
+import './_guard.mjs';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 

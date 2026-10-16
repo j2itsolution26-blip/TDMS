@@ -83,6 +83,7 @@ stale in the build cache.
 | `DATABASE_URL`             | yes*     | PostgreSQL connection string, pooled. *See the fallback below |
 | `NODE_ENV`                 | yes      | `production` on Vercel; drives the `secure` cookie flag     |
 | `SESSION_LIFETIME_MINUTES` | no       | Default 120                                                 |
+| `TRUST_PROXY`              | no       | Default trusted (right for Vercel). Set `false` when self-hosting with no proxy in front |
 | `BCRYPT_ROUNDS`            | no       | Default 12 — cost for one-time codes; passwords use Argon2id |
 | `GOOGLE_DOMAIN_RESTRICTION_ENABLED` | no | Default **false** (open). Set `true` for launch            |
 | `GOOGLE_ALLOWED_DOMAIN`    | no       | Enforced domain when the above is true                      |

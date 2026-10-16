@@ -9,6 +9,7 @@
  * known access code, straight into the database), drives everything through the
  * real API, and deletes every account it made on the way out.
  */
+import './_guard.mjs';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { fetchPage, isPagePath } from './lib/pages.mjs';

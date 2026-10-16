@@ -7,6 +7,7 @@
 //
 // Throwaway accounts and records only (marker ZZE2E), removed at the end.
 // Audit rows are kept. Run it against a disposable database.
+import './_guard.mjs';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 

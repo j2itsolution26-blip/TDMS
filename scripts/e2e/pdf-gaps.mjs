@@ -8,6 +8,7 @@
 // Throwaway accounts and records only, all carrying the marker ZZE2E, removed
 // at the end with the notifications they caused. Audit rows are kept. Run it
 // against a disposable database.
+import './_guard.mjs';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 

@@ -7,6 +7,7 @@
 //
 // Throwaway records only (marker ZZE2E), in a throwaway school year that is
 // never activated; removed at the end. Run it against a disposable database.
+import './_guard.mjs';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 

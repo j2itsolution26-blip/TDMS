@@ -40,7 +40,11 @@ import {
  * attacker could not read in the repository.
  *
  * It is unauthenticated on purpose: it is needed precisely when nobody can
- * sign in.
+ * sign in. Unauthenticated callers get the database diagnostics only
+ * (`detail: "public"`); the configuration detail — mail, domain policy,
+ * Google sign-in, the Admin access-control settings — is returned only to a
+ * signed-in Super Admin (`detail: "full"`), because it maps the security
+ * setup for anyone probing it.
  */
 
 /** Names only — see the note above. */
@@ -117,15 +121,48 @@ export async function GET() {
 
   const healthy = database === 'ok' && missingRequired.length === 0;
 
+  const base = {
+    status: healthy ? 'ok' : 'degraded',
+    database,
+    ...(latencyMs !== null ? { latencyMs } : {}),
+    ...(errorCode ? { errorCode } : {}),
+    env,
+    databaseUrlSource: source,
+    installation,
+    ...(missingRequired.length > 0 ? { missingRequiredEnv: missingRequired } : {}),
+    ...(databaseEnvNamesPresent ? { databaseEnvNamesPresent } : {}),
+    region: process.env.VERCEL_REGION ?? null,
+    commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
+  };
+  const init = { status: healthy ? 200 : 503, headers: { 'Cache-Control': 'no-store' } };
+
+  /*
+   * Configuration detail — mail, the domain policy, Google sign-in, the
+   * Admin access-control timings — is for the Super Admin only. Anonymous
+   * callers get the database diagnostics above (what is needed when nobody
+   * can sign in) and nothing that maps the security setup: whether a static
+   * Super Admin code exists, how many access-code attempts are allowed, or
+   * which mail host to aim at. A failed lookup (database down) is anonymous.
+   */
+  let superAdmin = false;
+  if (database === 'ok') {
+    try {
+      const { getCurrentUser } = await import('@/server/auth/current-user');
+      const { isSuperAdmin } = await import('@shared/lib/policies');
+      const user = await getCurrentUser();
+      superAdmin = user !== null && isSuperAdmin(user);
+    } catch {
+      superAdmin = false;
+    }
+  }
+  if (!superAdmin) {
+    return Response.json({ ...base, detail: 'public' }, init);
+  }
+
   return Response.json(
     {
-      status: healthy ? 'ok' : 'degraded',
-      database,
-      ...(latencyMs !== null ? { latencyMs } : {}),
-      ...(errorCode ? { errorCode } : {}),
-      env,
-      databaseUrlSource: source,
-      installation,
+      ...base,
+      detail: 'full',
       /*
        * Surfaced because a wrong value here breaks every verification and
        * reset link silently: the mail sends, the link just points somewhere
@@ -192,14 +229,7 @@ export async function GET() {
         loginChallengeTtlMinutes: loginChallengeTtlMinutes(),
       },
       autoActivateNewGoogleUsers: autoActivateNewGoogleUsers(),
-      ...(missingRequired.length > 0 ? { missingRequiredEnv: missingRequired } : {}),
-      ...(databaseEnvNamesPresent ? { databaseEnvNamesPresent } : {}),
-      region: process.env.VERCEL_REGION ?? null,
-      commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
     },
-    {
-      status: healthy ? 200 : 503,
-      headers: { 'Cache-Control': 'no-store' },
-    },
+    init,
   );
 }

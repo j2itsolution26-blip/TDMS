@@ -49,8 +49,8 @@ exposed, for root-level operations that need it.
 
 It is never hard-coded, never `NEXT_PUBLIC_`, never stored in the database,
 never returned by an API, never rendered, never logged, never put in an audit
-record. `/api/v1/health` and the dashboard report `configured: true/false` and
-nothing else.
+record. `/api/v1/health` (to the Super Admin only) and the dashboard report
+`configured: true/false` and nothing else.
 
 **On Vercel:** Settings → Environment Variables → Add `SUPER_ADMIN_STATIC_CODE`
 → tick the environments → Save → Deployments → ⋯ → **Redeploy**. Generate a value

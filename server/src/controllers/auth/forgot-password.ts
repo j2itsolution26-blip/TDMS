@@ -3,8 +3,7 @@ import { withErrorHandling, parseJson, clientIp } from '@/server/lib/api-handler
 import { requestPasswordReset } from '@/server/services/account-service';
 import { forgotPasswordSchema } from '@/server/schemas/schemas';
 import {
-  checkLoginThrottle,
-  hitLoginThrottle,
+  consumeLoginAttempt,
   loginThrottleKey,
 } from '@/server/auth/rate-limit';
 
@@ -25,13 +24,11 @@ export const POST = withErrorHandling(async (request: Request) => {
   const { email } = await parseJson(request, forgotPasswordSchema);
   const key = loginThrottleKey(`reset:${email}`, clientIp(request));
 
-  const throttle = await checkLoginThrottle(key);
+  // Counted first (atomically), so parallel requests cannot exceed the budget.
   // Even when throttled, answer identically — a different response here
   // would leak that the address is being targeted.
-  if (!throttle.limited) {
-    await hitLoginThrottle(key);
-    await requestPasswordReset(email);
-  }
+  const throttle = await consumeLoginAttempt(key);
+  if (!throttle.limited) await requestPasswordReset(email);
 
   return ok({ message: SAME_ANSWER });
 });

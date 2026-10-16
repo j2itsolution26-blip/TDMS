@@ -8,8 +8,7 @@ import {
   DOMAIN_REJECTION_MESSAGE,
 } from '@/server/lib/institutional-email';
 import {
-  checkLoginThrottle,
-  hitLoginThrottle,
+  consumeLoginAttempt,
   clearLoginThrottle,
   loginThrottleKey,
 } from '@/server/auth/rate-limit';
@@ -102,7 +101,9 @@ export async function login(input: LoginInput, context: LoginContext): Promise<L
   const { column, value } = resolveIdentifier(input.identifier);
   const throttleKey = loginThrottleKey(value, context.ip);
 
-  const throttle = await checkLoginThrottle(throttleKey);
+  // Counted before anything is checked, so parallel guesses cannot slip
+  // past the budget; success clears it below.
+  const throttle = await consumeLoginAttempt(throttleKey);
   if (throttle.limited) {
     throw new AppError(
       `Too many login attempts. Please try again in ${throttle.retryAfterSeconds} seconds.`,
@@ -120,7 +121,6 @@ export async function login(input: LoginInput, context: LoginContext): Promise<L
    * behind it still had to be created with an institutional address.
    */
   if (column === 'email' && !isInstitutionalEmail(value)) {
-    await hitLoginThrottle(throttleKey);
     throw new AppError(DOMAIN_REJECTION_MESSAGE, 403);
   }
 
@@ -148,7 +148,6 @@ export async function login(input: LoginInput, context: LoginContext): Promise<L
   const passwordValid = await verifyPassword(input.password, user?.password ?? DUMMY_HASH);
 
   if (!user || !passwordValid) {
-    await hitLoginThrottle(throttleKey);
     logAuthDebug({ column, userFound: Boolean(user), passwordVerified: false });
     throw new AppError(GENERIC_FAILURE, 401);
   }
@@ -157,13 +156,11 @@ export async function login(input: LoginInput, context: LoginContext): Promise<L
   // reason is safe — and necessary, or they cannot act on it.
 
   if (!user.emailVerifiedAt) {
-    await hitLoginThrottle(throttleKey);
     logAuthDebug({ column, userFound: true, passwordVerified: true, status: user.status });
     throw new AppError(UNVERIFIED_MESSAGE, 403);
   }
 
   if (user.status !== 'ACTIVE') {
-    await hitLoginThrottle(throttleKey);
     logAuthDebug({ column, userFound: true, passwordVerified: true, status: user.status });
     throw new AppError(
       user.status === 'SUSPENDED' ? SUSPENDED_MESSAGE : INACTIVE_MESSAGE,
@@ -177,7 +174,6 @@ export async function login(input: LoginInput, context: LoginContext): Promise<L
    * in the database.
    */
   if (!isInstitutionalEmail(user.email)) {
-    await hitLoginThrottle(throttleKey);
     throw new AppError(DOMAIN_REJECTION_MESSAGE, 403);
   }
 

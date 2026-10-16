@@ -157,7 +157,9 @@ token that resolves to no row grants nothing.
 nobody can sign in. It reports whether a trivial query succeeds, the Prisma
 error **code** if not (`P1001` unreachable, `P1000` credentials rejected,
 `P2021` missing table), and for each required variable whether it is **set**
-— a boolean, never a value.
+— a boolean, never a value. That is all an anonymous caller gets
+(`detail: "public"`); mail, domain-policy, Google and Admin access-control
+settings are added only for a signed-in Super Admin (`detail: "full"`).
 
 ```bash
 curl -s https://<deployment>/api/v1/health | jq

@@ -18,6 +18,7 @@
  *
  *   BASE=http://localhost:3000 DATABASE_URL=… npm run test:e2e
  */
+import './_guard.mjs';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { fetchPage, isPagePath } from './lib/pages.mjs';

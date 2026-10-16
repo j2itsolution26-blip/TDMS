@@ -1,0 +1,85 @@
+# Checks every push and pull request before it can reach main (which Vercel
+# deploys). Two jobs:
+#
+#   checks  typecheck, unit tests, production build — no database needed
+#   e2e     the end-to-end suites against a throwaway Postgres service, with
+#           the built server running locally (never a real database: the
+#           suites refuse anything but localhost — scripts/e2e/_guard.mjs)
+name: CI
+
+on:
+  push:
+    branches: [main, migrate-fastify]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Production dependencies have no known vulnerabilities
+        run: npm audit --omit=dev --audit-level=high
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: checks
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tdms_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      # Throwaway service credentials, not a secret.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/tdms_test
+      BASE: http://localhost:3001
+      TDMS_BASE: http://localhost:3001
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx prisma migrate deploy
+      - run: npm run db:seed
+      - name: Start the built server
+        run: |
+          NODE_ENV=production PORT=3001 FILE_STORAGE=local node server/dist/server.js > server.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3001/login > /dev/null && exit 0; sleep 1; done
+          cat server.log; exit 1
+      - name: End-to-end suites
+        run: |
+          set -e
+          for suite in session-redirect security-hardening applications-workflow registration-enrollment \
+            enrollment-approval dit-dht-enrollment section-auto-assign section-capacity section-hierarchy \
+            section-roster section-student-profile student-accounts staff-roles staff-accounts \
+            subjects-management class-scheduling assessment-center pdf-gaps; do
+            echo "::group::$suite"
+            node scripts/e2e/$suite.mjs
+            echo "::endgroup::"
+          done
+      - name: Server log
+        if: failure()
+        run: cat server.log

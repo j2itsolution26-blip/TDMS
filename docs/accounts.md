@@ -36,10 +36,11 @@ Only an explicit `true`, `1`, `yes` or `on` enables it, so a typo leaves it
 off rather than half-on. The value is read per call, so a deployment can
 change it without a rebuild.
 
-Check which way a deployment is set:
+Check which way a deployment is set — on System Health, or from `/api/v1/health`
+while signed in as the Super Admin (anonymous callers get the database checks only):
 
 ```bash
-curl -s https://<deployment>/api/v1/health | jq .domainPolicy
+curl -s -b "tdms_session=<super admin session>" https://<deployment>/api/v1/health | jq .domainPolicy
 # { "enabled": false, "allowedDomain": "asiancollege.edu.ph",
 #   "summary": "OPEN — any well-formed Google account is accepted (development setting)" }
 ```

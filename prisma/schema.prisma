@@ -572,6 +572,7 @@ model Student {
   learningSupports   LearningSupport[]
   assessmentResults  AssessmentResult[]
 
+  @@index([programId])
   @@map("students")
 }
 
@@ -618,6 +619,9 @@ model Application {
   documents  ApplicationDocument[]
 
   @@index([status])
+  @@index([programId])
+  @@index([schoolYearId])
+  @@index([studentId])
   @@map("applications")
 }
 
@@ -687,6 +691,7 @@ model StudentCredential {
   verifier    User?                 @relation("CredentialVerifier", fields: [verifiedBy], references: [id], onDelete: SetNull, map: "student_credentials_verified_by_foreign", onUpdate: NoAction)
 
   @@unique([studentId, credentialRequirementId], map: "student_credentials_student_id_credential_requirement_id_unique")
+  @@index([credentialRequirementId])
   @@map("student_credentials")
 }
 
@@ -713,6 +718,7 @@ model Enrollment {
   schoolYearRef SchoolYear?               @relation(fields: [schoolYearId], references: [id], onDelete: Restrict, onUpdate: NoAction)
 
   @@unique([studentId, schoolYear, semester], map: "enrollments_student_id_school_year_semester_unique")
+  @@index([schoolYearId])
   @@map("enrollments")
 }
 
@@ -728,6 +734,7 @@ model EnrollmentStatusHistory {
   enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade, map: "enrollment_status_history_enrollment_id_foreign", onUpdate: NoAction)
   actor      User?      @relation("EnrollmentStatusActor", fields: [changedBy], references: [id], onDelete: SetNull, map: "enrollment_status_history_changed_by_foreign", onUpdate: NoAction)
 
+  @@index([enrollmentId])
   @@map("enrollment_status_history")
 }
 
@@ -964,6 +971,7 @@ model AttendanceRecord {
   student Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, studentId], map: "attendance_records_unique")
+  @@index([studentId])
   @@map("attendance_records")
 }
 
@@ -1036,6 +1044,7 @@ model AssessmentScore {
   student    Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@unique([assessmentId, studentId], map: "assessment_scores_unique")
+  @@index([studentId])
   @@map("assessment_scores")
 }
 
@@ -1055,6 +1064,7 @@ model ClassGrade {
   student Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@unique([classId, studentId], map: "class_grades_unique")
+  @@index([studentId])
   @@map("class_grades")
 }
 

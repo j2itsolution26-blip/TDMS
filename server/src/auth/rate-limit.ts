@@ -47,6 +47,34 @@ async function read(key: string): Promise<Counter | null> {
   return readCounter(cacheKey(key));
 }
 
+/**
+ * Add one to a counter in a single statement and return the new count.
+ *
+ * Atomic on purpose. Reading the count and writing count + 1 back as two
+ * queries let a burst of parallel requests all read the same number, so 20
+ * simultaneous guesses each saw "0 attempts so far". Postgres serialises
+ * INSERT … ON CONFLICT DO UPDATE on one row, so every hit lands. An expired
+ * window restarts at 1; a live one keeps its original expiry.
+ */
+async function increment(fullKey: string, windowSeconds: number): Promise<Counter> {
+  const now = nowSeconds();
+  const rows = await prisma.$queryRaw<{ value: string; expiration: bigint }[]>`
+    INSERT INTO "cache" ("key", "value", "expiration")
+    VALUES (${fullKey}, '1', ${BigInt(now + windowSeconds)})
+    ON CONFLICT ("key") DO UPDATE SET
+      "value" = CASE
+        WHEN "cache"."expiration" <= ${BigInt(now)} OR "cache"."value" !~ '^[0-9]+$' THEN '1'
+        ELSE ("cache"."value"::bigint + 1)::text
+      END,
+      "expiration" = CASE
+        WHEN "cache"."expiration" <= ${BigInt(now)} THEN EXCLUDED."expiration"
+        ELSE "cache"."expiration"
+      END
+    RETURNING "value", "expiration"`;
+  const row = rows[0]!;
+  return { attempts: Number.parseInt(row.value, 10), expiresAt: Number(row.expiration) };
+}
+
 export interface ThrottleState {
   limited: boolean;
   retryAfterSeconds: number;
@@ -63,19 +91,24 @@ export async function checkLoginThrottle(key: string): Promise<ThrottleState> {
   };
 }
 
-/** Record one failed attempt. */
-export async function hitLoginThrottle(key: string): Promise<void> {
-  const counter = await read(key);
-  const attempts = (counter?.attempts ?? 0) + 1;
-  // The window starts at the first failure and is not extended by later
+/**
+ * Count this attempt BEFORE checking anything, and say whether it is over
+ * budget. Every attempt counts; a successful one clears the counter
+ * (clearLoginThrottle). Counting first is what stops parallel guesses: with
+ * check-then-record, a burst all passed the check before any was recorded.
+ * Same budget as before — five attempts, the sixth is refused.
+ */
+export async function consumeLoginAttempt(key: string): Promise<ThrottleState> {
+  // The window starts at the first attempt and is not extended by later
   // ones, matching Laravel's decay behaviour.
-  const expiration = counter?.expiresAt ?? nowSeconds() + DECAY_SECONDS;
+  const counter = await increment(cacheKey(key), DECAY_SECONDS);
+  if (counter.attempts <= MAX_ATTEMPTS) return { limited: false, retryAfterSeconds: 0 };
+  return { limited: true, retryAfterSeconds: Math.max(1, counter.expiresAt - nowSeconds()) };
+}
 
-  await prisma.legacyCache.upsert({
-    where: { key: cacheKey(key) },
-    create: { key: cacheKey(key), value: String(attempts), expiration: BigInt(expiration) },
-    update: { value: String(attempts), expiration: BigInt(expiration) },
-  });
+/** Record one failed attempt (atomically). */
+export async function hitLoginThrottle(key: string): Promise<void> {
+  await increment(cacheKey(key), DECAY_SECONDS);
 }
 
 /** Clear the counter after a successful sign-in. */
@@ -129,17 +162,7 @@ export async function consumeRateLimit(
   key: string,
   limit: { max: number; windowSeconds: number },
 ): Promise<RateLimitVerdict> {
-  const fullKey = namespaced(bucket, key);
-  const counter = await readCounter(fullKey);
-
-  const attempts = (counter?.attempts ?? 0) + 1;
-  const expiration = counter?.expiresAt ?? nowSeconds() + limit.windowSeconds;
-
-  await prisma.legacyCache.upsert({
-    where: { key: fullKey },
-    create: { key: fullKey, value: String(attempts), expiration: BigInt(expiration) },
-    update: { value: String(attempts), expiration: BigInt(expiration) },
-  });
+  const { attempts, expiresAt: expiration } = await increment(namespaced(bucket, key), limit.windowSeconds);
 
   if (attempts > limit.max) {
     return {

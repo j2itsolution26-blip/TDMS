@@ -82,29 +82,31 @@ model User {
   /// The student record this login belongs to, if it is a student's.
   /// One-to-one since migration 20261013000000_student_account_link:
   /// students.user_id is unique, so one login can never serve two records.
-  student                    Student?                  @relation("StudentAccount")
-  sessions                   Session[]
-  emailVerificationTokens    EmailVerificationToken[]
-  passwordResetRequests      PasswordResetRequest[]
-  reviewedApplications       Application[]             @relation("ApplicationReviewer")
-  submittedCredentials       StudentCredential[]       @relation("CredentialSubmitter")
-  verifiedCredentials        StudentCredential[]       @relation("CredentialVerifier")
-  approvedEnrollments        Enrollment[]              @relation("EnrollmentApprover")
-  enrollmentChanges          EnrollmentStatusHistory[] @relation("EnrollmentStatusActor")
-  accessCodes                AdminAccessCode[]         @relation("AdminAccessCodeSubject")
-  issuedAccessCodes          AdminAccessCode[]         @relation("AdminAccessCodeIssuer")
-  revokedAccessCodes         AdminAccessCode[]         @relation("AdminAccessCodeRevoker")
-  temporaryCredentials       TemporaryCredential[]     @relation("TemporaryCredentialOwner")
-  issuedTemporaryCredentials TemporaryCredential[]     @relation("TemporaryCredentialIssuer")
-  loginChallenges            AdminLoginChallenge[]
+  student                     Student?                    @relation("StudentAccount")
+  sessions                    Session[]
+  emailVerificationTokens     EmailVerificationToken[]
+  passwordResetRequests       PasswordResetRequest[]
+  reviewedApplications        Application[]               @relation("ApplicationReviewer")
+  submittedCredentials        StudentCredential[]         @relation("CredentialSubmitter")
+  verifiedCredentials         StudentCredential[]         @relation("CredentialVerifier")
+  uploadedCredentialDocuments StudentCredentialDocument[] @relation("CredentialDocumentUploader")
+  reviewedCredentialDocuments StudentCredentialDocument[] @relation("CredentialDocumentReviewer")
+  approvedEnrollments         Enrollment[]                @relation("EnrollmentApprover")
+  enrollmentChanges           EnrollmentStatusHistory[]   @relation("EnrollmentStatusActor")
+  accessCodes                 AdminAccessCode[]           @relation("AdminAccessCodeSubject")
+  issuedAccessCodes           AdminAccessCode[]           @relation("AdminAccessCodeIssuer")
+  revokedAccessCodes          AdminAccessCode[]           @relation("AdminAccessCodeRevoker")
+  temporaryCredentials        TemporaryCredential[]       @relation("TemporaryCredentialOwner")
+  issuedTemporaryCredentials  TemporaryCredential[]       @relation("TemporaryCredentialIssuer")
+  loginChallenges             AdminLoginChallenge[]
   /// Classes this account teaches, as a Diploma Instructor.
-  taughtClasses              ClassOffering[]           @relation("ClassInstructor")
-  notifications              Notification[]
-  instructorProfile          InstructorProfile?
+  taughtClasses               ClassOffering[]             @relation("ClassInstructor")
+  notifications               Notification[]
+  instructorProfile           InstructorProfile?
   /// TVET Assessment Center.
-  assessedBatches            AssessmentBatch[]         @relation("AssessmentBatchAssessor")
-  assignedActivities         TrainingActivity[]        @relation("TrainingActivityAssignee")
-  responsibleActivities      TrainingActivity[]        @relation("TrainingActivityResponsible")
+  assessedBatches             AssessmentBatch[]           @relation("AssessmentBatchAssessor")
+  assignedActivities          TrainingActivity[]          @relation("TrainingActivityAssignee")
+  responsibleActivities       TrainingActivity[]          @relation("TrainingActivityResponsible")
 
   @@map("users")
 }
@@ -689,14 +691,54 @@ model StudentCredential {
   createdAt               DateTime? @map("created_at") @db.Timestamp(0)
   updatedAt               DateTime? @map("updated_at") @db.Timestamp(0)
 
-  student     Student               @relation(fields: [studentId], references: [id], onDelete: Cascade, map: "student_credentials_student_id_foreign", onUpdate: NoAction)
-  requirement CredentialRequirement @relation(fields: [credentialRequirementId], references: [id], onDelete: Restrict, map: "student_credentials_credential_requirement_id_foreign", onUpdate: NoAction)
-  submitter   User?                 @relation("CredentialSubmitter", fields: [submittedBy], references: [id], onDelete: SetNull, map: "student_credentials_submitted_by_foreign", onUpdate: NoAction)
-  verifier    User?                 @relation("CredentialVerifier", fields: [verifiedBy], references: [id], onDelete: SetNull, map: "student_credentials_verified_by_foreign", onUpdate: NoAction)
+  student     Student                     @relation(fields: [studentId], references: [id], onDelete: Cascade, map: "student_credentials_student_id_foreign", onUpdate: NoAction)
+  requirement CredentialRequirement       @relation(fields: [credentialRequirementId], references: [id], onDelete: Restrict, map: "student_credentials_credential_requirement_id_foreign", onUpdate: NoAction)
+  submitter   User?                       @relation("CredentialSubmitter", fields: [submittedBy], references: [id], onDelete: SetNull, map: "student_credentials_submitted_by_foreign", onUpdate: NoAction)
+  verifier    User?                       @relation("CredentialVerifier", fields: [verifiedBy], references: [id], onDelete: SetNull, map: "student_credentials_verified_by_foreign", onUpdate: NoAction)
+  documents   StudentCredentialDocument[]
 
   @@unique([studentId, credentialRequirementId], map: "student_credentials_student_id_credential_requirement_id_unique")
   @@index([credentialRequirementId])
   @@map("student_credentials")
+}
+
+/// Every soft copy ever handed in for a credential, one row per version, never
+/// rewritten except for its own review verdict. student_credentials holds the
+/// current state; this is the history behind it (who uploaded which file, and
+/// who verified or rejected it). The student and requirement are the
+/// credential's own, so they are not repeated here.
+model StudentCredentialDocument {
+  id                  BigInt    @id @default(autoincrement())
+  studentCredentialId BigInt    @map("student_credential_id")
+  version             Int
+  /// Private storage key (server only).
+  filePath            String    @map("file_path") @db.VarChar(255)
+  fileName            String    @map("file_name") @db.VarChar(255)
+  fileType            String?   @map("file_type") @db.VarChar(120)
+  fileSize            Int?      @map("file_size")
+  uploadedBy          BigInt?   @map("uploaded_by")
+  uploadedAt          DateTime? @map("uploaded_at") @db.Timestamp(0)
+  /// pending | verified | rejected — the verdict on this version.
+  reviewStatus        String    @default("pending") @map("review_status") @db.VarChar(20)
+  reviewedBy          BigInt?   @map("reviewed_by")
+  reviewedAt          DateTime? @map("reviewed_at") @db.Timestamp(0)
+  rejectionReason     String?   @map("rejection_reason")
+  /// When a newer version took its place (null: the current document).
+  supersededAt        DateTime? @map("superseded_at") @db.Timestamp(0)
+  previousDocumentId  BigInt?   @map("previous_document_id")
+  createdAt           DateTime? @map("created_at") @db.Timestamp(0)
+
+  credential       StudentCredential           @relation(fields: [studentCredentialId], references: [id], onDelete: Cascade, map: "student_credential_documents_credential_foreign", onUpdate: NoAction)
+  uploader         User?                       @relation("CredentialDocumentUploader", fields: [uploadedBy], references: [id], onDelete: SetNull, map: "student_credential_documents_uploaded_by_foreign", onUpdate: NoAction)
+  reviewer         User?                       @relation("CredentialDocumentReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull, map: "student_credential_documents_reviewed_by_foreign", onUpdate: NoAction)
+  previousDocument StudentCredentialDocument?  @relation("CredentialDocumentPrevious", fields: [previousDocumentId], references: [id], onDelete: SetNull, map: "student_credential_documents_previous_foreign", onUpdate: NoAction)
+  nextDocuments    StudentCredentialDocument[] @relation("CredentialDocumentPrevious")
+
+  @@unique([studentCredentialId, version], map: "student_credential_documents_credential_version_unique")
+  @@index([uploadedBy])
+  @@index([reviewedBy])
+  @@index([previousDocumentId])
+  @@map("student_credential_documents")
 }
 
 model Enrollment {

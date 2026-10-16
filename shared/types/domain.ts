@@ -214,7 +214,8 @@ export const APPLICATION_STATUS_LABELS: Record<ApplicationStatus, string> = {
 
 export const CREDENTIAL_STATUS_LABELS: Record<CredentialStatus, string> = {
   missing: 'Missing',
-  submitted: 'Submitted',
+  // An uploaded document awaiting a verifier's decision.
+  submitted: 'Pending Review',
   under_review: 'Under Review',
   verified: 'Verified',
   rejected: 'Rejected',

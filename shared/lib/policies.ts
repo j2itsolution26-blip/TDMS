@@ -173,6 +173,8 @@ export const studentCredentialPolicy = {
   verify: (u: AuthUser) => can(u, 'credentials.verify'),
   // A soft copy is handed in by whoever verifies credentials or manages student records.
   upload: (u: AuthUser) => can(u, 'credentials.verify') || can(u, 'students.manage'),
+  // Replacing a verified document undoes a verification, so it is the verifiers' call; it goes back to review.
+  replaceVerified: (u: AuthUser) => can(u, 'credentials.verify'),
   delete: (u: AuthUser) => isSuperAdmin(u),
 };
 

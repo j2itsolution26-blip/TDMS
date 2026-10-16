@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { AuthUser } from '@shared/types/domain';
+import { CREDENTIAL_STATUS_LABELS, type AuthUser } from '@shared/types/domain';
 import { studentCredentialPolicy } from './policies';
 import {
-  CREDENTIAL_UPLOAD_ACCEPT, CREDENTIAL_UPLOAD_TYPES, credentialFileLabel, isPreviewable, precheckCredentialFile,
+  CREDENTIAL_UPLOAD_ACCEPT, CREDENTIAL_UPLOAD_MAX_BYTES, CREDENTIAL_UPLOAD_MAX_LABEL, CREDENTIAL_UPLOAD_TYPES,
+  credentialFileLabel, fileTypeLabel, isPreviewable, precheckCredentialFile,
 } from './credential-files';
 
 const user = (roles: string[], permissions: string[] = []) => ({ id: '1', name: 'X', email: 'x@example.test', roles, permissions }) as unknown as AuthUser;
@@ -49,5 +50,30 @@ describe('studentCredentialPolicy.upload', () => {
     expect(studentCredentialPolicy.upload(user(['director']))).toBe(false);
     expect(studentCredentialPolicy.upload(user(['teacher']))).toBe(false);
     expect(studentCredentialPolicy.upload(user(['student']))).toBe(false);
+  });
+});
+
+describe('studentCredentialPolicy.replaceVerified', () => {
+  it('only a credential verifier may replace a verified document', () => {
+    expect(studentCredentialPolicy.replaceVerified(user(['secretary'], ['credentials.verify']))).toBe(true);
+    expect(studentCredentialPolicy.replaceVerified(user(['director'], ['students.manage']))).toBe(false);
+    expect(studentCredentialPolicy.replaceVerified(user(['teacher']))).toBe(false);
+  });
+});
+
+describe('how a document is described', () => {
+  it('a short type name', () => {
+    expect(fileTypeLabel('application/pdf')).toBe('PDF');
+    expect(fileTypeLabel('image/jpeg')).toBe('JPG');
+    expect(fileTypeLabel('image/png')).toBe('PNG');
+    expect(fileTypeLabel(null)).toBeNull();
+  });
+  it('the limit is 4 MB, named the same everywhere', () => {
+    expect(CREDENTIAL_UPLOAD_MAX_BYTES).toBe(4 * 1024 * 1024);
+    expect(CREDENTIAL_UPLOAD_MAX_LABEL).toBe('4 MB');
+  });
+  it('an upload reads as Pending Review', () => {
+    expect(CREDENTIAL_STATUS_LABELS.submitted).toBe('Pending Review');
+    expect(CREDENTIAL_STATUS_LABELS.missing).toBe('Missing');
   });
 });

@@ -12,6 +12,5 @@ export const POST = withErrorHandling(async (request: Request, { params }: Param
   authorize(studentCredentialPolicy.verify(user));
   const { id } = await params;
   const input = await parseJson(request, rejectCredentialSchema);
-  await rejectCredential(idSchema.parse(id), BigInt(user.id), input.reason);
-  return ok({ status: 'rejected' });
+  return ok(await rejectCredential(user, idSchema.parse(id), input, requestContext(request)));
 });

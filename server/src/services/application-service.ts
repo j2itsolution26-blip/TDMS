@@ -6,6 +6,7 @@ import { recordAudit, actorLabel, type AuditContext } from './audit-log';
 import { prisma } from '@/server/lib/prisma';
 import { AppError, NotFoundError } from '@/server/lib/http';
 import { checkUpload, deleteStored, readStored, storeUpload } from '@/server/lib/storage';
+import { addCredentialDocument, nextDocumentVersion, reviewOf } from './credential-documents';
 import type { applicationSchema, applicationDocumentStatusSchema, approveApplicationSchema } from '@/server/schemas/schemas';
 import type { AuthUser } from '@shared/types/domain';
 import { APPLICATION_STATUSES } from '@shared/types/domain';
@@ -529,9 +530,17 @@ export async function approveApplication(
     await ensureCredentialChecklist(student.id, tx);
     for (const d of application.documents) {
       if (!isHandedIn(d.status)) continue;
+      const current = await tx.studentCredential.findUnique({
+        where: { studentId_credentialRequirementId: { studentId: student.id, credentialRequirementId: d.credentialRequirementId } },
+        select: { id: true, version: true, filePath: true, status: true },
+      });
+      if (!current || current.status === 'verified') continue;
+      // A carried-over file is a document version of its own, in the credential's history.
+      const version = d.fileKey ? await nextDocumentVersion(tx, current) : current.version;
       await tx.studentCredential.updateMany({
-        where: { studentId: student.id, credentialRequirementId: d.credentialRequirementId, status: { not: 'verified' } },
+        where: { id: current.id, status: { not: 'verified' } },
         data: {
+          version,
           status: d.status,
           filePath: d.fileKey,
           // The file's own name, type and size come with it.
@@ -547,6 +556,21 @@ export async function approveApplication(
           updatedAt: new Date(),
         },
       });
+      if (d.fileKey) {
+        await addCredentialDocument(tx, {
+          credentialId: current.id,
+          version,
+          key: d.fileKey,
+          name: d.fileName ?? `document-v${version}.${d.fileKey.split('.').pop()}`,
+          type: d.fileType,
+          size: d.fileSize,
+          uploadedBy: d.submittedBy,
+          uploadedAt: d.submittedAt,
+          review: reviewOf(d.status),
+          reviewedBy: d.verifiedBy,
+          reviewedAt: d.verifiedAt,
+        });
+      }
     }
 
     // A pending enrollment for the chosen term — unless the student already has one.

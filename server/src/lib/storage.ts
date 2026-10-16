@@ -72,15 +72,17 @@ export interface CheckedUpload {
  */
 export async function checkUpload(
   file: File,
-  // A narrower allowlist for a particular kind of document (student credentials: PDF, JPG, PNG).
-  allowed: { types: Record<string, string>; label: string } = { types: UPLOAD_TYPES, label: 'PDF, Word, Excel, PowerPoint, JPG or PNG' },
+  // A narrower allowlist (and limit) for a particular kind of document (student credentials: PDF, JPG, PNG).
+  allowed: { types: Record<string, string>; label: string; maxBytes?: number } = { types: UPLOAD_TYPES, label: 'PDF, Word, Excel, PowerPoint, JPG or PNG' },
 ): Promise<CheckedUpload> {
+  const maxBytes = allowed.maxBytes ?? UPLOAD_MAX_BYTES;
+  const tooLarge = `The file is larger than ${Math.round(maxBytes / (1024 * 1024))} MB.`;
   const name = file.name.replace(/[\\/]/g, '_').slice(-200) || 'file';
   const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : '';
   const type = allowed.types[ext];
   if (!type) throw new AppError(`That file type is not allowed. Upload a ${allowed.label} file.`, 422, { file: [`Upload a ${allowed.label} file.`] });
   if (file.size === 0) throw new AppError('The file is empty.', 422, { file: ['The file is empty.'] });
-  if (file.size > UPLOAD_MAX_BYTES) throw new AppError('The file is larger than 4 MB.', 422, { file: ['The file is larger than 4 MB.'] });
+  if (file.size > maxBytes) throw new AppError(tooLarge, 422, { file: [tooLarge] });
 
   const bytes = Buffer.from(await file.arrayBuffer());
   const ok = (SIGNATURES[ext] ?? []).some((sig) => sig.every((b, i) => bytes[i] === b));

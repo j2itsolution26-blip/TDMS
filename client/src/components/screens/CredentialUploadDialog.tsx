@@ -3,7 +3,7 @@ import { FileUp, FileText, UploadCloud, X } from 'lucide-react';
 import Modal from '@/components/Modal';
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from '@/components/ui';
 import {
-  CREDENTIAL_UPLOAD_ACCEPT, CREDENTIAL_UPLOAD_LABEL, formatBytes, precheckCredentialFile,
+  CREDENTIAL_UPLOAD_ACCEPT, CREDENTIAL_UPLOAD_LABEL, CREDENTIAL_UPLOAD_MAX_LABEL, CREDENTIAL_UPLOAD_TYPES, fileTypeLabel, formatBytes, precheckCredentialFile,
 } from '@shared/lib/credential-files';
 
 /**
@@ -23,6 +23,14 @@ export interface UploadTarget {
   requirement: string;
   /** The document already on record, when this is a replacement. */
   current: string | null;
+  /** The document being replaced was verified: the new one goes back to review. */
+  wasVerified?: boolean;
+}
+
+/** The type the file will be stored as, from its extension (the server confirms it from the content). */
+function typeOf(name: string): string | null {
+  const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : '';
+  return fileTypeLabel(CREDENTIAL_UPLOAD_TYPES[ext]);
 }
 
 export default function CredentialUploadDialog({
@@ -89,7 +97,7 @@ export default function CredentialUploadDialog({
       try { body = JSON.parse(xhr.responseText); } catch { /* not JSON */ }
       if (xhr.status >= 200 && xhr.status < 300) {
         setProgress(100);
-        onUploaded(`${target.requirement}: ${file.name} uploaded. It is awaiting review.`);
+        onUploaded(`${target.requirement}: ${file.name} uploaded. It is Pending Review${target.wasVerified ? ' and must be verified again' : ''}.`);
         return;
       }
       setProgress(null);
@@ -127,7 +135,10 @@ export default function CredentialUploadDialog({
           <div className="rounded-lg border border-tdms-hairline bg-tdms-bg px-3.5 py-2.5 text-sm">
             <p className="text-xs font-semibold text-tdms-muted">Credential</p>
             <p className="font-semibold text-tdms-ink">{target.requirement}</p>
-            {target.current && <p className="mt-0.5 text-xs text-tdms-muted">Replaces {target.current}. The new document awaits review; the old one is kept on record.</p>}
+            {target.current && <p className="mt-0.5 text-xs text-tdms-muted">Replaces {target.current}. The new document is Pending Review; the old one is kept in the history.</p>}
+            {target.wasVerified && (
+              <p className="mt-1.5 text-xs font-medium text-amber-800">The current document is verified. Its replacement must be verified again before the credential counts as verified.</p>
+            )}
           </div>
 
           <div
@@ -155,7 +166,7 @@ export default function CredentialUploadDialog({
               aria-label={`Document for ${target.requirement}`}
               onChange={(e) => { choose(e.target.files?.[0]); e.target.value = ''; }}
             />
-            <p id={`${id}-rules`} className="mt-3 text-xs text-tdms-muted">{CREDENTIAL_UPLOAD_LABEL}, up to 4 MB.</p>
+            <p id={`${id}-rules`} className="mt-3 text-xs text-tdms-muted">{CREDENTIAL_UPLOAD_LABEL}, up to {CREDENTIAL_UPLOAD_MAX_LABEL}.</p>
           </div>
 
           {file && (
@@ -165,7 +176,7 @@ export default function CredentialUploadDialog({
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold text-tdms-ink" title={file.name}>{file.name}</span>
-                <span className="block text-xs text-tdms-muted">{formatBytes(file.size)}</span>
+                <span className="block text-xs text-tdms-muted">{[typeOf(file.name) ?? 'Unsupported type', formatBytes(file.size)].join(' · ')}</span>
               </span>
               {!busy && (
                 <button type="button" onClick={() => { setFile(null); setError(null); }} aria-label={`Remove ${file.name}`}

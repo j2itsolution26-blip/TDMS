@@ -50,6 +50,8 @@ export async function loadStudentsIdEnrollment({ params }: PageRequest) {
     canVerify: studentCredentialPolicy.verify(user),
     // Uploading a credential's soft copy (Secretary, Processing Officer, Admin).
     canUpload: studentCredentialPolicy.upload(user),
+    // Replacing a verified document (it goes back to review): verifiers only.
+    canReplaceVerified: studentCredentialPolicy.replaceVerified(user),
     canEnroll: enrollmentPolicy.create(user),
   };
 }

@@ -81,6 +81,7 @@ import * as c66 from '@/server/controllers/classes/_id/weights';
 import * as c67 from '@/server/controllers/credentials/_id/reject';
 import * as c68 from '@/server/controllers/credentials/_id/verify';
 import * as c68f from '@/server/controllers/credentials/_id/file';
+import * as c68d from '@/server/controllers/credentials/_id/documents/_documentId/file';
 import * as c69 from '@/server/controllers/curricula/_id';
 import * as c70 from '@/server/controllers/curricula/_id/subjects';
 import * as c71 from '@/server/controllers/curricula/_id/subjects/_entryId';
@@ -234,6 +235,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
   mount(app, 'POST', `${API_PREFIX}/credentials/:id/verify`, c68.POST);
   mount(app, 'GET', `${API_PREFIX}/credentials/:id/file`, c68f.GET);
   mount(app, 'POST', `${API_PREFIX}/credentials/:id/file`, c68f.POST);
+  mount(app, 'GET', `${API_PREFIX}/credentials/:id/documents/:documentId/file`, c68d.GET);
   mount(app, 'GET', `${API_PREFIX}/curricula/:id`, c69.GET);
   mount(app, 'PUT', `${API_PREFIX}/curricula/:id`, c69.PUT);
   mount(app, 'PATCH', `${API_PREFIX}/curricula/:id`, c69.PATCH);

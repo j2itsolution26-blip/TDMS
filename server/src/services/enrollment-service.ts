@@ -5,12 +5,14 @@ import { validYearLevels } from '@shared/lib/enrollment-term';
 import { AppError, NotFoundError } from '@/server/lib/http';
 import type { z } from 'zod';
 import type { enrollmentSchema } from '@/server/schemas/schemas';
-import { ensureCredentialChecklist, hasAllRequiredCredentialsVerified } from './student-service';
+import { ensureCredentialChecklist, hasAllRequiredCredentialsVerified, isUniqueViolation } from './student-service';
+import { addCredentialDocument, nextDocumentVersion, reviewCurrentDocument } from './credential-documents';
+import { studentCredentialPolicy } from '@/server/auth/policies';
 import { recordAudit, actorLabel, type AuditContext } from './audit-log';
 import { ENROLLMENT_STATUS_LABELS, ENROLLMENT_TRANSITIONS, type AuthUser, type EnrollmentStatus } from '@shared/types/domain';
 import { assignSection, isRetryable, releaseSeats, type Placement } from './teaching/section-assignment';
 import { checkUpload, deleteStored, readStored, storeUpload } from '@/server/lib/storage';
-import { CREDENTIAL_UPLOAD_LABEL, CREDENTIAL_UPLOAD_TYPES, credentialFileLabel } from '@shared/lib/credential-files';
+import { CREDENTIAL_UPLOAD_LABEL, CREDENTIAL_UPLOAD_MAX_BYTES, CREDENTIAL_UPLOAD_TYPES, credentialFileLabel } from '@shared/lib/credential-files';
 
 /**
  * Enrolment and credential verification.
@@ -25,7 +27,15 @@ export async function listStudentCredentials(studentId: bigint) {
   await ensureCredentialChecklist(studentId);
   const rows = await prisma.studentCredential.findMany({
     where: { studentId },
-    include: { requirement: true, verifier: true, submitter: true },
+    include: {
+      requirement: true,
+      verifier: true,
+      submitter: true,
+      documents: {
+        orderBy: { version: 'desc' },
+        include: { uploader: { select: { name: true } }, reviewer: { select: { name: true } } },
+      },
+    },
   });
 
   // Laravel sorted in PHP by requirement name after fetching.
@@ -51,6 +61,23 @@ export async function listStudentCredentials(studentId: bigint) {
       isRequired: c.requirement.isRequired,
     },
     verifier: c.verifier ? { name: c.verifier.name } : null,
+    // Earlier versions, newest first; each is served by its own authorized route.
+    history: c.documents
+      .filter((d) => d.supersededAt !== null)
+      .map((d) => ({
+        id: d.id.toString(),
+        version: d.version,
+        fileName: d.fileName,
+        fileType: d.fileType,
+        fileSize: d.fileSize,
+        uploadedAt: d.uploadedAt?.toISOString() ?? null,
+        uploader: d.uploader ? { name: d.uploader.name } : null,
+        review: d.reviewStatus,
+        reviewedAt: d.reviewedAt?.toISOString() ?? null,
+        reviewer: d.reviewer ? { name: d.reviewer.name } : null,
+        rejectionReason: d.rejectionReason,
+        replacedAt: d.supersededAt!.toISOString(),
+      })),
   }));
 }
 
@@ -60,38 +87,79 @@ export async function getCredential(id: bigint) {
   return credential;
 }
 
-/** Port of StudentCredential::verify() — and only a document that has been uploaded can be verified. */
-export async function verifyCredential(id: bigint, actorId: bigint, remarks: string | null) {
-  const credential = await getCredential(id);
+const credentialChanged = (name: string) =>
+  new AppError(`${name} was changed by someone else just now. Reload and review it again.`, 409, undefined, 'CREDENTIAL_CHANGED');
+
+async function credentialForReview(id: bigint) {
+  const credential = await prisma.studentCredential.findUnique({
+    where: { id },
+    include: { requirement: { select: { name: true } }, student: { select: { studentNumber: true } } },
+  });
+  if (!credential) throw new NotFoundError('Credential not found.');
+  return credential;
+}
+
+/**
+ * Port of StudentCredential::verify() — and only a document that has been
+ * uploaded can be verified, once. When the reviewer names the version they
+ * looked at, a document replaced in the meantime is not verified in its place.
+ */
+export async function verifyCredential(user: AuthUser, id: bigint, input: { remarks: string | null; version?: number }, context?: AuditContext) {
+  const credential = await credentialForReview(id);
   if (!credential.filePath) {
     throw new AppError('Upload the document before verifying it: there is no file on record.', 422, { file: ['No document has been uploaded yet.'] }, 'CREDENTIAL_NO_FILE');
   }
-  return prisma.studentCredential.update({
-    where: { id },
-    data: {
-      status: 'verified',
-      verifiedBy: actorId,
-      verifiedAt: new Date(),
-      remarks,
-      rejectionReason: null,
-      updatedAt: new Date(),
-    },
+  if (credential.status === 'verified') throw new AppError(`${credential.requirement.name} is already verified.`, 409, undefined, 'CREDENTIAL_ALREADY_VERIFIED');
+  if (input.version !== undefined && input.version !== credential.version) throw credentialChanged(credential.requirement.name);
+
+  const now = new Date();
+  const actorId = BigInt(user.id);
+  await prisma.$transaction(async (tx) => {
+    const done = await tx.studentCredential.updateMany({
+      where: { id, filePath: credential.filePath, status: credential.status },
+      data: { status: 'verified', verifiedBy: actorId, verifiedAt: now, remarks: input.remarks, rejectionReason: null, updatedAt: now },
+    });
+    if (done.count !== 1) throw credentialChanged(credential.requirement.name);
+    await reviewCurrentDocument(tx, id, credential.filePath, { review: 'verified', reviewedBy: actorId, reviewedAt: now, rejectionReason: null });
   });
+
+  await recordAudit({
+    action: 'credential.verified',
+    actor: actorLabel(user),
+    target: `Student ${credential.student.studentNumber}`,
+    details: { credential_id: id.toString(), requirement: credential.requirement.name, version: credential.version, file: credential.fileName },
+    context,
+  });
+  return { status: 'verified' as const };
 }
 
-/** Port of StudentCredential::reject(). */
-export async function rejectCredential(id: bigint, actorId: bigint, reason: string) {
-  await getCredential(id);
-  return prisma.studentCredential.update({
-    where: { id },
-    data: {
-      status: 'rejected',
-      verifiedBy: actorId,
-      verifiedAt: new Date(),
-      rejectionReason: reason,
-      updatedAt: new Date(),
-    },
+/**
+ * Port of StudentCredential::reject(): the document is not accepted and a
+ * replacement is needed; the reason says why. Its verdict stays in the history.
+ */
+export async function rejectCredential(user: AuthUser, id: bigint, input: { reason: string; version?: number }, context?: AuditContext) {
+  const credential = await credentialForReview(id);
+  if (input.version !== undefined && input.version !== credential.version) throw credentialChanged(credential.requirement.name);
+
+  const now = new Date();
+  const actorId = BigInt(user.id);
+  await prisma.$transaction(async (tx) => {
+    const done = await tx.studentCredential.updateMany({
+      where: { id, filePath: credential.filePath, status: credential.status },
+      data: { status: 'rejected', verifiedBy: actorId, verifiedAt: now, rejectionReason: input.reason, updatedAt: now },
+    });
+    if (done.count !== 1) throw credentialChanged(credential.requirement.name);
+    await reviewCurrentDocument(tx, id, credential.filePath, { review: 'rejected', reviewedBy: actorId, reviewedAt: now, rejectionReason: input.reason });
   });
+
+  await recordAudit({
+    action: 'credential.rejected',
+    actor: actorLabel(user),
+    target: `Student ${credential.student.studentNumber}`,
+    details: { credential_id: id.toString(), requirement: credential.requirement.name, version: credential.version, file: credential.fileName, reason: input.reason, previous_status: credential.status },
+    context,
+  });
+  return { status: 'rejected' as const };
 }
 
 /**
@@ -99,65 +167,84 @@ export async function rejectCredential(id: bigint, actorId: bigint, reason: stri
  *
  *   * the credential names its own student and requirement, so a file can
  *     only ever land on the record it was sent for;
- *   * a verified credential is locked against replacement (isCredentialLocked);
+ *   * a verified credential may be replaced only by a verifier
+ *     (studentCredentialPolicy.replaceVerified); it then goes back to review —
+ *     its verification is cleared on the credential, kept on the old version's
+ *     history row, and the replacement is audited as such;
  *   * the file is checked (PDF, JPG or PNG, at most 4 MB, content matching the
  *     extension) and stored under a generated key BEFORE the record changes;
- *     the record is then updated only if nobody changed it meanwhile (the
- *     version it was read at). If that update does not happen, the new file is
- *     removed and the record is exactly as it was;
- *   * the new version is Submitted — awaiting review — never Verified; the
- *     previous verdict is cleared, the version goes up, uploader and time are
- *     recorded;
- *   * the previous file is kept: a first version may be the application's own
- *     file (carried over at approval), and the older versions are history.
+ *     the record and its history row are then written in one transaction, only
+ *     if nobody changed the credential meanwhile (the file it was read with).
+ *     If that does not happen, the new file is removed and nothing changed;
+ *   * the new version is Pending Review — never Verified — numbered one past
+ *     the newest on record (v1 for a first document), uploader and time recorded;
+ *   * the previous file is kept, with its own history row and verdict.
  */
 export async function uploadCredentialFile(user: AuthUser, id: bigint, file: File, context?: AuditContext) {
   const credential = await prisma.studentCredential.findUnique({
     where: { id },
-    include: { requirement: { select: { name: true } }, student: { select: { studentNumber: true } } },
+    include: { requirement: { select: { name: true } }, student: { select: { studentNumber: true } }, verifier: { select: { name: true } } },
   });
   if (!credential) throw new NotFoundError('Credential not found.');
-  if (isCredentialLocked(credential.status)) {
-    throw new AppError(`${credential.requirement.name} is verified, so its document cannot be replaced.`, 409, { file: ['This credential is verified.'] }, 'CREDENTIAL_LOCKED');
+  const wasVerified = credential.status === 'verified';
+  if (wasVerified && !studentCredentialPolicy.replaceVerified(user)) {
+    throw new AppError(`${credential.requirement.name} is verified; only a credential verifier can replace its document.`, 403, { file: ['This credential is verified.'] }, 'CREDENTIAL_LOCKED');
   }
 
-  const upload = await checkUpload(file, { types: CREDENTIAL_UPLOAD_TYPES, label: CREDENTIAL_UPLOAD_LABEL });
+  const upload = await checkUpload(file, { types: CREDENTIAL_UPLOAD_TYPES, label: CREDENTIAL_UPLOAD_LABEL, maxBytes: CREDENTIAL_UPLOAD_MAX_BYTES });
   const key = await storeUpload(`students/${credential.studentId}/credentials`, upload);
 
   let updated;
   try {
-    const done = await prisma.studentCredential.updateMany({
-      where: { id, version: credential.version, status: { not: 'verified' } },
-      data: {
-        filePath: key,
-        fileName: upload.name,
-        fileType: upload.type,
-        fileSize: upload.size,
-        submittedBy: BigInt(user.id),
-        submittedAt: new Date(),
-        status: 'submitted',
-        version: credential.version + 1,
-        verifiedBy: null,
-        verifiedAt: null,
-        rejectionReason: null,
-        updatedAt: new Date(),
-      },
+    updated = await prisma.$transaction(async (tx) => {
+      const now = new Date();
+      const version = await nextDocumentVersion(tx, credential);
+      const done = await tx.studentCredential.updateMany({
+        where: { id, filePath: credential.filePath, status: credential.status },
+        data: {
+          filePath: key,
+          fileName: upload.name,
+          fileType: upload.type,
+          fileSize: upload.size,
+          submittedBy: BigInt(user.id),
+          submittedAt: now,
+          status: 'submitted',
+          version,
+          verifiedBy: null,
+          verifiedAt: null,
+          rejectionReason: null,
+          updatedAt: now,
+        },
+      });
+      if (done.count !== 1) {
+        throw new AppError(`${credential.requirement.name} was changed by someone else just now. Reload and try again.`, 409, undefined, 'CREDENTIAL_CHANGED');
+      }
+      await addCredentialDocument(tx, {
+        credentialId: id, version, key, name: upload.name, type: upload.type, size: upload.size, uploadedBy: BigInt(user.id), uploadedAt: now,
+      });
+      return tx.studentCredential.findUniqueOrThrow({ where: { id } });
     });
-    if (done.count !== 1) {
-      throw new AppError(`${credential.requirement.name} was changed by someone else just now. Reload and try again.`, 409, undefined, 'CREDENTIAL_CHANGED');
-    }
-    updated = await prisma.studentCredential.findUniqueOrThrow({ where: { id } });
   } catch (error) {
     // The record did not take the new file: do not leave it behind in storage.
     await deleteStored(key);
+    if (isUniqueViolation(error, 'version')) throw credentialChanged(credential.requirement.name);
     throw error;
   }
 
   await recordAudit({
-    action: 'credential.document_uploaded',
+    action: wasVerified ? 'credential.verified_document_replaced' : 'credential.document_uploaded',
     actor: actorLabel(user),
     target: `Student ${credential.student.studentNumber}`,
-    details: { credential_id: id.toString(), requirement: credential.requirement.name, version: updated.version, file: upload.name, size: upload.size, replaced: Boolean(credential.filePath) },
+    details: {
+      credential_id: id.toString(),
+      requirement: credential.requirement.name,
+      version: updated.version,
+      file: upload.name,
+      size: upload.size,
+      replaced: Boolean(credential.filePath),
+      ...(credential.filePath ? { previous_version: credential.version, previous_status: credential.status } : {}),
+      ...(wasVerified ? { previously_verified_by: credential.verifier?.name ?? null, previously_verified_at: credential.verifiedAt?.toISOString() ?? null } : {}),
+    },
     context,
   });
 
@@ -173,25 +260,30 @@ export async function uploadCredentialFile(user: AuthUser, id: bigint, file: Fil
   };
 }
 
+async function streamStored(key: string, name: string, type: string | null) {
+  const stored = await readStored(key);
+  if (!stored) throw new NotFoundError('The document could not be found in storage.');
+  const ext = key.split('.').pop()!.toLowerCase();
+  return { name, type: type ?? CREDENTIAL_UPLOAD_TYPES[ext] ?? 'application/octet-stream', size: stored.size, body: stored.body };
+}
+
 /** A credential's current file, for the authorized preview/download route. The key never leaves the server. */
 export async function credentialFile(id: bigint) {
   const c = await prisma.studentCredential.findUnique({ where: { id }, include: { requirement: { select: { name: true } } } });
   if (!c) throw new NotFoundError('Credential not found.');
   if (!c.filePath) throw new NotFoundError('No document has been uploaded for this credential.');
-  const stored = await readStored(c.filePath);
-  if (!stored) throw new NotFoundError('The document could not be found in storage.');
-  const ext = c.filePath.split('.').pop()!.toLowerCase();
-  return {
-    name: credentialFileLabel({ fileName: c.fileName, filePath: c.filePath, requirementName: c.requirement.name, version: c.version })!,
-    type: c.fileType ?? CREDENTIAL_UPLOAD_TYPES[ext] ?? 'application/octet-stream',
-    size: stored.size,
-    body: stored.body,
-  };
+  return streamStored(c.filePath, credentialFileLabel({ fileName: c.fileName, filePath: c.filePath, requirementName: c.requirement.name, version: c.version })!, c.fileType);
 }
 
-/** A verified credential is locked against replacement. */
-export function isCredentialLocked(status: string): boolean {
-  return status === 'verified';
+/**
+ * An earlier version of a credential's file. The document must belong to the
+ * credential in the address — another credential's (or student's) document id
+ * is "not found", never served.
+ */
+export async function credentialDocumentFile(credentialId: bigint, documentId: bigint) {
+  const d = await prisma.studentCredentialDocument.findFirst({ where: { id: documentId, studentCredentialId: credentialId } });
+  if (!d) throw new NotFoundError('Document not found.');
+  return streamStored(d.filePath, d.fileName, d.fileType);
 }
 
 // --- Enrollments -----------------------------------------------------------

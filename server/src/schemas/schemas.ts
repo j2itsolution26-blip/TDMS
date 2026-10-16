@@ -393,12 +393,15 @@ export const rejectApplicationSchema = z.object({
 
 // --- Credentials -----------------------------------------------------------
 
+// version: the document version the reviewer looked at (optional, for older clients).
 export const verifyCredentialSchema = z.object({
   remarks: nullableString(2000),
+  version: z.number().int().positive().optional(),
 });
 
 export const rejectCredentialSchema = z.object({
   reason: z.string().trim().min(1, 'A rejection reason is required.').max(500),
+  version: z.number().int().positive().optional(),
 });
 
 export const credentialRequirementSchema = z.object({

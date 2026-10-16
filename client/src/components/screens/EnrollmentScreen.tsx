@@ -13,8 +13,8 @@ import { SEMESTER_LABELS, yearLevelLabel } from '@shared/lib/teaching';
 import { approvalNotice, type Placement } from '@/lib/enrollment-notice';
 import NewEnrollmentTermDialog, { type TermOptions } from './NewEnrollmentTermDialog';
 import CredentialUploadDialog, { type UploadTarget } from './CredentialUploadDialog';
-import { CredentialActions, CredentialSummary } from './CredentialParts';
-import { CREDENTIAL_UPLOAD_LABEL } from '@shared/lib/credential-files';
+import { CredentialActions, CredentialDocument, CredentialRequirement, CredentialReview } from './CredentialParts';
+import { CREDENTIAL_UPLOAD_LABEL, CREDENTIAL_UPLOAD_MAX_LABEL } from '@shared/lib/credential-files';
 import { CREDENTIAL_STATUS_LABELS } from '@shared/types/domain';
 
 /** Port of livewire/enrollment/show.blade.php. */
@@ -35,6 +35,24 @@ export interface CredentialRow {
   verifiedAt: string | null;
   requirement: { id: string; name: string; isRequired: boolean };
   verifier: { name: string } | null;
+  /** Earlier versions of the document, newest first. */
+  history: CredentialHistoryRow[];
+}
+
+export interface CredentialHistoryRow {
+  id: string;
+  version: number;
+  fileName: string;
+  fileType: string | null;
+  fileSize: number | null;
+  uploadedAt: string | null;
+  uploader: { name: string } | null;
+  /** pending (replaced before review) | verified | rejected */
+  review: string;
+  reviewedAt: string | null;
+  reviewer: { name: string } | null;
+  rejectionReason: string | null;
+  replacedAt: string;
 }
 
 export interface EnrollmentRow {
@@ -67,11 +85,13 @@ interface Props {
   canVerify: boolean;
   /** May upload or replace a credential's soft copy. */
   canUpload: boolean;
+  /** May replace a verified credential's document (it goes back to review). */
+  canReplaceVerified: boolean;
   canEnroll: boolean;
 }
 
 export default function EnrollmentScreen({
-  student, credentials, enrollments, allVerified, termOptions, canVerify, canUpload, canEnroll,
+  student, credentials, enrollments, allVerified, termOptions, canVerify, canUpload, canReplaceVerified, canEnroll,
 }: Props) {
   const router = useRouter();
   const confirm = useConfirm();
@@ -80,7 +100,7 @@ export default function EnrollmentScreen({
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [busy, setBusy] = useState(false);
 
-  const [rejecting, setRejecting] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<CredentialRow | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
 
   const [showEnrollForm, setShowEnrollForm] = useState(false);
@@ -108,13 +128,32 @@ export default function EnrollmentScreen({
       pendingLabel: 'Verifying…',
       action: async () => {
         setBusy(true); reset();
-        const result = await api.post(`/api/v1/credentials/${credential.id}/verify`, { remarks: '' });
+        const result = await api.post(`/api/v1/credentials/${credential.id}/verify`, { remarks: '', version: credential.version });
         setBusy(false);
         if (!result.ok) { setFlashError(result.message); return false; }
-        setFlash('Credential verified.');
+        setFlash(`${credential.requirement.name} verified.`);
         router.refresh();
         return true;
       },
+    });
+  }
+
+  /** Upload or Replace. Replacing a verified document reopens its review, so that is confirmed first. */
+  async function startUpload(credential: CredentialRow) {
+    reset();
+    const target: UploadTarget = { credentialId: credential.id, requirement: credential.requirement.name, current: credential.hasFile ? credential.fileName : null, wasVerified: credential.status === 'verified' };
+    if (credential.status !== 'verified') { setUploading(target); return; }
+    await confirm({
+      tone: 'warning',
+      title: 'Replace Verified Document',
+      description: 'The new document will need to be verified again: the credential returns to Pending Review and counts as unverified for enrollment approval until it is. The verified version stays in the history.',
+      details: [
+        { label: 'Student', value: `${student.fullName} (${student.studentNumber})` },
+        { label: 'Requirement', value: credential.requirement.name },
+        { label: 'Verified document', value: credential.fileName ? `${credential.fileName} (v${credential.version})` : '—' },
+      ],
+      confirmLabel: 'Choose replacement',
+      action: async () => { setUploading(target); return true; },
     });
   }
 
@@ -122,11 +161,11 @@ export default function EnrollmentScreen({
     event.preventDefault();
     if (!rejecting) return;
     setBusy(true); reset();
-    const result = await api.post(`/api/v1/credentials/${rejecting}/reject`, { reason: rejectionReason });
+    const result = await api.post(`/api/v1/credentials/${rejecting.id}/reject`, { reason: rejectionReason, ...(rejecting.hasFile ? { version: rejecting.version } : {}) });
     setBusy(false);
     if (!result.ok) { setErrors(result.errors ?? {}); if (!result.errors) setFlashError(result.message); return; }
+    setFlash(`${rejecting.requirement.name} rejected. A replacement document is needed.`);
     setRejecting(null); setRejectionReason('');
-    setFlash('Credential rejected.');
     router.refresh();
   }
 
@@ -220,7 +259,7 @@ export default function EnrollmentScreen({
       <Card padding="p-0">
         <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-5 py-4 sm:px-6">
           <h2 className="text-base font-semibold text-navy-900">Credentials</h2>
-          <p className="text-xs text-slate-500">{CREDENTIAL_UPLOAD_LABEL} up to 4 MB · an upload awaits review until it is verified</p>
+          <p className="text-xs text-slate-500">{CREDENTIAL_UPLOAD_LABEL} up to {CREDENTIAL_UPLOAD_MAX_LABEL} · an upload is Pending Review until it is verified</p>
         </div>
 
         {credentials.length === 0 ? (
@@ -233,6 +272,7 @@ export default function EnrollmentScreen({
                 <thead className="bg-slate-50">
                   <tr>
                     <th scope="col" className="px-5 py-3 text-left text-xs font-semibold text-slate-500 lg:px-6">Requirement</th>
+                    <th scope="col" className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Document</th>
                     <th scope="col" className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Status</th>
                     <th scope="col" className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Version</th>
                     <th scope="col" className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Verified</th>
@@ -242,20 +282,22 @@ export default function EnrollmentScreen({
                 <tbody className="divide-y divide-border">
                   {credentials.map((c) => (
                     <tr key={c.id} className="align-top">
-                      <td className="max-w-[26rem] px-5 py-4 text-sm lg:px-6">
-                        <CredentialSummary c={c} />
+                      <td className="min-w-[11rem] max-w-[16rem] px-5 py-4 text-sm lg:px-6">
+                        <CredentialRequirement c={c} />
+                      </td>
+                      <td className="min-w-[12rem] max-w-[18rem] px-3 py-4 text-sm">
+                        <CredentialDocument c={c} />
                       </td>
                       <td className="whitespace-nowrap px-3 py-4"><Badge status={c.status} label={CREDENTIAL_STATUS_LABELS[c.status as keyof typeof CREDENTIAL_STATUS_LABELS]} /></td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm tabular-nums text-slate-600">v{c.version}</td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm tabular-nums text-slate-600">{c.hasFile ? `v${c.version}` : <span className="text-slate-400">—</span>}</td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-slate-600">
-                        {c.verifiedAt ? formatDate(c.verifiedAt) : '—'}
-                        {c.verifier && <p className="text-xs text-slate-500">{c.verifier.name}</p>}
+                        <CredentialReview c={c} />
                       </td>
                       <td className="px-5 py-4 lg:px-6">
-                        <CredentialActions c={c} busy={busy} canUpload={canUpload} canVerify={canVerify}
-                          onUpload={() => { reset(); setUploading({ credentialId: c.id, requirement: c.requirement.name, current: c.hasFile ? c.fileName : null }); }}
+                        <CredentialActions c={c} busy={busy} canUpload={canUpload} canReplaceVerified={canReplaceVerified} canVerify={canVerify}
+                          onUpload={() => startUpload(c)}
                           onVerify={() => verify(c)}
-                          onReject={() => { reset(); setRejecting(c.id); setRejectionReason(''); }} />
+                          onReject={() => { reset(); setRejecting(c); setRejectionReason(''); }} />
                       </td>
                     </tr>
                   ))}
@@ -268,16 +310,17 @@ export default function EnrollmentScreen({
               {credentials.map((c) => (
                 <li key={c.id} className="space-y-3 px-4 py-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 text-sm"><CredentialSummary c={c} /></div>
+                    <div className="min-w-0 text-sm"><CredentialRequirement c={c} /></div>
                     <Badge status={c.status} label={CREDENTIAL_STATUS_LABELS[c.status as keyof typeof CREDENTIAL_STATUS_LABELS]} />
                   </div>
+                  <div className="text-sm"><CredentialDocument c={c} /></div>
                   <p className="text-xs text-slate-500">
-                    Version {c.version} · {c.verifiedAt ? `Verified ${formatDate(c.verifiedAt)}${c.verifier ? ` by ${c.verifier.name}` : ''}` : 'Not verified'}
+                    {c.hasFile ? `Version ${c.version}` : 'No version yet'} · <CredentialReview c={c} compact />
                   </p>
-                  <CredentialActions c={c} busy={busy} canUpload={canUpload} canVerify={canVerify} align="start"
-                    onUpload={() => { reset(); setUploading({ credentialId: c.id, requirement: c.requirement.name, current: c.hasFile ? c.fileName : null }); }}
+                  <CredentialActions c={c} busy={busy} canUpload={canUpload} canReplaceVerified={canReplaceVerified} canVerify={canVerify} align="start"
+                    onUpload={() => startUpload(c)}
                     onVerify={() => verify(c)}
-                    onReject={() => { reset(); setRejecting(c.id); setRejectionReason(''); }} />
+                    onReject={() => { reset(); setRejecting(c); setRejectionReason(''); }} />
                 </li>
               ))}
             </ul>
@@ -354,17 +397,29 @@ export default function EnrollmentScreen({
       </Card>
 
       {/* Reject credential */}
-      <Modal open={rejecting !== null} onClose={() => setRejecting(null)} title="Reject Credential" maxWidth="sm:max-w-lg">
+      <Modal open={rejecting !== null} onClose={() => setRejecting(null)} title="Reject Document"
+        subtitle={rejecting ? `${student.fullName} · ${student.studentNumber}` : undefined} maxWidth="sm:max-w-lg">
         <form onSubmit={confirmReject} className="space-y-4">
+          {rejecting && (
+            <div className="rounded-lg border border-border bg-slate-50 px-3.5 py-2.5 text-sm">
+              <p className="font-semibold text-navy-900">{rejecting.requirement.name}</p>
+              <p className="text-xs text-slate-500">
+                {rejecting.hasFile && rejecting.fileName ? `${rejecting.fileName} (v${rejecting.version})` : 'No document uploaded'}
+              </p>
+              <p className="mt-1.5 text-xs text-slate-600">
+                The credential is marked Rejected and a replacement document is requested. The reason is kept with this version in its history.
+              </p>
+            </div>
+          )}
           <div>
-            <label className={LABEL_CLASS} htmlFor="rej-reason">Reason</label>
+            <label className={LABEL_CLASS} htmlFor="rej-reason">Reason (required)</label>
             <textarea id="rej-reason" rows={4} maxLength={500} className={INPUT_CLASS}
               value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} required />
             <FieldError messages={errors.reason} />
           </div>
           <div className="flex justify-end gap-3">
             <button type="button" className={BUTTON_SECONDARY} onClick={() => setRejecting(null)}>Cancel</button>
-            <button type="submit" className={BUTTON_DANGER} disabled={busy}>{busy ? 'Rejecting…' : 'Reject'}</button>
+            <button type="submit" className={BUTTON_DANGER} disabled={busy || !rejectionReason.trim()}>{busy ? 'Rejecting…' : 'Reject document'}</button>
           </div>
         </form>
       </Modal>

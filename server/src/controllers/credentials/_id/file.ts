@@ -8,15 +8,8 @@ import { isPreviewable } from '@shared/lib/credential-files';
 
 type Params = { params: Promise<{ id: string }> };
 
-/**
- * A credential's soft copy, streamed after the policy check; ?inline=1 opens a
- * PDF or image in the browser, anything else downloads. The storage key never
- * leaves the server, and nothing is cached.
- */
-export const GET = withErrorHandling(async (request: Request, { params }: Params) => {
-  const user = await requireApiUser();
-  authorize(studentCredentialPolicy.view(user));
-  const file = await credentialFile(idSchema.parse((await params).id));
+/** Send a stored credential file: ?inline=1 opens a PDF or image in the browser, anything else downloads. Never cached. */
+export function fileResponse(request: Request, file: { name: string; type: string; size: number | null; body: ReadableStream<Uint8Array> | Buffer }) {
   const inline = new URL(request.url).searchParams.get('inline') === '1' && isPreviewable(file.type);
   const safeName = file.name.replace(/[^\w.\- ]+/g, '_');
   const body = file.body instanceof ReadableStream ? file.body : new Uint8Array(file.body);
@@ -29,6 +22,16 @@ export const GET = withErrorHandling(async (request: Request, { params }: Params
       'X-Content-Type-Options': 'nosniff',
     },
   });
+}
+
+/**
+ * A credential's current soft copy, streamed after the policy check. The
+ * storage key never leaves the server.
+ */
+export const GET = withErrorHandling(async (request: Request, { params }: Params) => {
+  const user = await requireApiUser();
+  authorize(studentCredentialPolicy.view(user));
+  return fileResponse(request, await credentialFile(idSchema.parse((await params).id)));
 });
 
 /** Multipart, the file in `file`. Type, size and content are checked on the server (enrollment-service). */

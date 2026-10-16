@@ -266,8 +266,8 @@ export default function EnrollmentScreen({
           <EmptyState title="No credential records" description="Requirements are created when an application is approved." />
         ) : (
           <>
-            {/* Laptop and up: the table. */}
-            <div className="hidden overflow-x-auto md:block">
+            {/* Wide screens: the table, every column and action in view without scrolling. */}
+            <div className="hidden overflow-x-auto xl:block">
               <table className="min-w-full divide-y divide-border">
                 <thead className="bg-slate-50">
                   <tr>
@@ -282,10 +282,10 @@ export default function EnrollmentScreen({
                 <tbody className="divide-y divide-border">
                   {credentials.map((c) => (
                     <tr key={c.id} className="align-top">
-                      <td className="min-w-[11rem] max-w-[16rem] px-5 py-4 text-sm lg:px-6">
+                      <td className="px-5 py-4 text-sm lg:px-6">
                         <CredentialRequirement c={c} />
                       </td>
-                      <td className="min-w-[12rem] max-w-[18rem] px-3 py-4 text-sm">
+                      <td className="px-3 py-4 text-sm">
                         <CredentialDocument c={c} />
                       </td>
                       <td className="whitespace-nowrap px-3 py-4"><Badge status={c.status} label={CREDENTIAL_STATUS_LABELS[c.status as keyof typeof CREDENTIAL_STATUS_LABELS]} /></td>
@@ -293,7 +293,8 @@ export default function EnrollmentScreen({
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-slate-600">
                         <CredentialReview c={c} />
                       </td>
-                      <td className="px-5 py-4 lg:px-6">
+                      {/* Never narrower than one action group (CredentialActions keeps each group on one line). */}
+                      <td className="min-w-[13rem] px-5 py-4 lg:px-6">
                         <CredentialActions c={c} busy={busy} canUpload={canUpload} canReplaceVerified={canReplaceVerified} canVerify={canVerify}
                           onUpload={() => startUpload(c)}
                           onVerify={() => verify(c)}
@@ -305,8 +306,8 @@ export default function EnrollmentScreen({
               </table>
             </div>
 
-            {/* Phones and small tablets: one card per requirement, nothing hidden. */}
-            <ul className="divide-y divide-border md:hidden">
+            {/* Phones, tablets and small laptops: one card per requirement, nothing hidden. */}
+            <ul className="divide-y divide-border xl:hidden">
               {credentials.map((c) => (
                 <li key={c.id} className="space-y-3 px-4 py-4">
                   <div className="flex items-start justify-between gap-3">

@@ -46,8 +46,9 @@ export function CredentialRequirement({ c }: { c: CredentialRow }) {
 }
 
 export function CredentialDocument({ c }: { c: CredentialRow }) {
+  // A fixed width, so a long file name is truncated (full name on hover) instead of widening the table.
   return (
-    <>
+    <div className="w-full xl:max-w-[13rem]">
       {c.hasFile && c.fileName ? (
         <p className="flex min-w-0 items-start gap-1.5 text-xs text-slate-600">
           <FileText className="mt-px h-3.5 w-3.5 shrink-0 text-primary-600" strokeWidth={STROKE} aria-hidden="true" />
@@ -65,7 +66,7 @@ export function CredentialDocument({ c }: { c: CredentialRow }) {
         <p className="text-xs font-medium text-slate-500">No document uploaded</p>
       )}
       {c.history.length > 0 && <CredentialHistory credentialId={c.id} requirement={c.requirement.name} history={c.history} />}
-    </>
+    </div>
   );
 }
 
@@ -152,8 +153,11 @@ export function CredentialActions({
   const upload = canUpload && (!verified || canReplaceVerified);
   const review = canVerify && !verified;
 
+  // Two groups that each stay on one line — the document's actions, then the review —
+  // so a narrow column wraps between them, never in the middle of one.
   return (
     <div className={`flex flex-wrap items-center gap-1.5 ${align === 'end' ? 'justify-end' : 'justify-start'}`}>
+      <div className="flex flex-nowrap items-center gap-1.5">
       {upload && (
         <button type="button" onClick={onUpload} disabled={busy} className={c.hasFile ? SECONDARY : PRIMARY}
           aria-label={`${c.hasFile ? 'Replace' : 'Upload'} document: ${label}`}>
@@ -173,8 +177,9 @@ export function CredentialActions({
           <Download className="h-4 w-4" strokeWidth={STROKE} aria-hidden="true" />
         </a>
       )}
+      </div>
       {review && (
-        <>
+        <div className="flex flex-nowrap items-center gap-1.5">
           <span aria-hidden="true" className="mx-0.5 hidden h-5 w-px bg-border sm:block" />
           <button type="button" onClick={onVerify} disabled={busy || !c.hasFile} className={PRIMARY}
             aria-label={`Verify: ${label}`} aria-describedby={c.hasFile ? undefined : hint}
@@ -185,7 +190,7 @@ export function CredentialActions({
             Reject
           </button>
           {!c.hasFile && <span id={hint} className="sr-only">Verify is available once the document has been uploaded.</span>}
-        </>
+        </div>
       )}
     </div>
   );

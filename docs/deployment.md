@@ -110,7 +110,7 @@ stale in the build cache.
 | `SUPER_ADMIN_CODE_MAX_RESENDS` | no   | Default 3 codes per registration                            |
 | `SUPER_ADMIN_CODE_RESEND_COOLDOWN_SECONDS` | no | Default 60                                       |
 | `SUPER_ADMIN_COMPLETION_WINDOW_MINUTES` | no | Default 30 after verification                         |
-| `BLOB_READ_WRITE_TOKEN`    | yes*     | *For lesson plan / TOS / PT uploads. Set by Vercel when a Blob store is connected. Server-only |
+| `BLOB_READ_WRITE_TOKEN`    | yes*     | *For every upload: student credentials, application documents, lesson plans / TOS / PT. Set by Vercel when a Blob store is connected. Server-only |
 | `BLOB_ACCESS`              | no       | `private` (default) or `public`, matching how the Blob store was created |
 | `FILE_STORAGE`             | no       | `local` keeps uploads in `.data/uploads` — **self-hosted servers with a persistent disk only**; ignored on Vercel |
 | `APP_TIMEZONE`             | no       | Default `Asia/Manila`. Class schedules, attendance and quiz windows are read in it |
@@ -128,9 +128,33 @@ Performance Task documentation (PDF, Word, Excel, PowerPoint or images, up to
 Vercel sets `BLOB_READ_WRITE_TOKEN`. Files are private; they are only served
 through `/api/v1/documents/[id]/file`, which checks who is asking.
 
+Student credential soft copies (Student → Enrollment → Credentials: PDF, JPG
+or PNG, up to 4 MB) and application documents use the same store, under
+`students/<id>/credentials/` and `applications/<id>/` with generated names.
+They are served only through `/api/v1/credentials/[id]/file` (and
+`…/documents/[documentId]/file` for earlier versions), after the
+credential-viewer check; the storage key never reaches the browser.
+
 Until a store is connected, uploads are refused with "File storage is not
-configured" and a document cannot be submitted for review — nothing is
-accepted and then lost. The rest of the Instructor module works without it.
+configured" (HTTP 503, code `STORAGE_NOT_CONFIGURED`) and nothing is recorded —
+nothing is accepted and then lost. The rest of the application works without it.
+
+To connect one (once per Vercel project):
+
+1. Vercel dashboard → the project → **Storage** → **Create Database** →
+   **Blob**. Choose **Private** access, and a region next to the server
+   (`cle1`, see `vercel.json`).
+2. **Connect** it to the project for the **Production** environment (and
+   Preview, if previews should accept uploads). Vercel adds
+   `BLOB_READ_WRITE_TOKEN` to those environments — never copy it into a file
+   or a `VITE_` variable.
+3. If the store was created **Public** instead, add `BLOB_ACCESS=public`
+   (files are still served only through the authorized routes).
+4. **Redeploy** the latest Production deployment: variables apply only to new
+   deployments.
+5. Sign in as a Secretary, open a student's Enrollment page, upload a small
+   PDF to one credential, reload the page, and open Preview: the file should
+   be there, Pending Review.
 
 ### If only the Laravel DB_* variables are set
 

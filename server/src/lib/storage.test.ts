@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { put } from '@vercel/blob';
 import { checkUpload, storeUpload } from './storage';
+
+vi.mock('@vercel/blob', () => ({ put: vi.fn(), get: vi.fn(), del: vi.fn() }));
 
 /** What may be uploaded, and where it may be kept. */
 
@@ -43,5 +46,23 @@ describe('where files are kept', () => {
     vi.stubEnv('VERCEL', '1');
     const upload = await checkUpload(file('%PDF-1.4\n', 'plan.pdf'));
     await expect(storeUpload('documents/test', upload)).rejects.toMatchObject({ code: 'STORAGE_NOT_CONFIGURED' });
+  });
+});
+
+describe('when Vercel Blob is configured', () => {
+  it('stores the file privately under a generated key, never the uploaded name', async () => {
+    vi.stubEnv('BLOB_READ_WRITE_TOKEN', 'test-token');
+    vi.mocked(put).mockImplementation(async (pathname) => ({ pathname }) as Awaited<ReturnType<typeof put>>);
+    const upload = await checkUpload(file('%PDF-1.4\n', '../../etc/passwd.pdf'));
+    const key = await storeUpload('students/7/credentials', upload);
+    expect(key).toMatch(/^students\/7\/credentials\/[0-9a-f]{32}\.pdf$/);
+    expect(vi.mocked(put).mock.calls[0][2]).toMatchObject({ access: 'private', addRandomSuffix: false, contentType: 'application/pdf' });
+  });
+
+  it('a storage failure is reported, not swallowed — the caller changes no record', async () => {
+    vi.stubEnv('BLOB_READ_WRITE_TOKEN', 'test-token');
+    vi.mocked(put).mockRejectedValue(new Error('Blob store unavailable'));
+    const upload = await checkUpload(file('%PDF-1.4\n', 'birth-certificate.pdf'));
+    await expect(storeUpload('students/7/credentials', upload)).rejects.toThrow('Blob store unavailable');
   });
 });

@@ -12,6 +12,8 @@
  * never shown without saying what it means.
  */
 
+import type { QueueGroup } from '@shared/lib/work-queue';
+
 export type DashboardRole =
   | 'super_admin'
   | 'admin'
@@ -221,6 +223,10 @@ export interface WorkItem {
   /** The button's verb: Review, Open, View. */
   action: string;
   icon: WorkIcon;
+  /** The Secretary's queue: which tab the row belongs to. */
+  group?: QueueGroup;
+  /** ISO time of the oldest item still waiting, where the records keep one. */
+  oldestAt?: string | null;
 }
 
 /** One stage of a breakdown — a pipeline step, a document state. */
@@ -291,6 +297,8 @@ export interface EnrollmentByProgramRow {
   approved: number;
   enrolled: number;
   pending: number;
+  /** Student records in the program; null when the viewer may not see students. */
+  students: number | null;
 }
 
 interface WorkspaceBase {
@@ -358,6 +366,19 @@ export interface SecretaryWorkspace extends WorkspaceBase {
   pipeline: WorkSegment[] | null;
   enrollmentByProgram: EnrollmentByProgramRow[] | null;
   documents: WorkSegment[] | null;
+  /** The school calendar's next entries, soonest first. */
+  events: UpcomingEvent[];
+  /** May create a student record (the header's primary action). */
+  canAddStudent: boolean;
+}
+
+/** One school-calendar entry from today on. Dates are calendar days, "2026-10-20". */
+export interface UpcomingEvent {
+  id: string;
+  title: string;
+  typeLabel: string;
+  startsOn: string;
+  endsOn: string;
 }
 
 export type RoleWorkspace = DirectorWorkspace | CoordinatorWorkspace | SecretaryWorkspace;

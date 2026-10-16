@@ -40,3 +40,7 @@ node_modules/
 
 # db:fresh backups (contain password hashes and personal data)
 /backups/
+
+# Skill launcher binaries (downloaded on first run; ~19 MB each)
+/.agent/skills/*/scripts/bin/
+/.claude/skills/*/scripts/bin/

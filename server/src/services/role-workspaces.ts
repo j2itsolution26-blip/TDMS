@@ -13,6 +13,8 @@ import {
 } from '@/server/auth/policies';
 import { MAX_YEAR_LEVEL, SECTION_CAPACITY, SEMESTER_LABELS } from '@shared/lib/teaching';
 import { APPLICATION_STATUS_LABELS, ENROLLMENT_STATUS_LABELS } from '@shared/types/domain';
+import { localDayKey, startOfLocalDay } from '@shared/lib/institution-time';
+import { calendarEntries } from '@/server/services/teaching/calendar';
 import type { AuthUser } from '@shared/types/domain';
 import type {
   CoordinatorWorkspace,
@@ -27,6 +29,7 @@ import type {
   SectionLoad,
   StatusMix,
   TermEnrollment,
+  UpcomingEvent,
   WorkItem,
   WorkMetric,
   WorkProgress,
@@ -63,8 +66,6 @@ import type {
  * says so, instead of showing zeros that look like measurements.
  */
 
-const DAY = 86_400_000;
-
 function plural(n: number, one: string, many = `${one}s`): string {
   return `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`;
 }
@@ -77,27 +78,46 @@ const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 
 // --- Shared queries ---------------------------------------------------------------------
 
+/** The earliest of a timestamp across the given statuses' groups, as ISO; null when none. */
+function oldestOf<R extends { status: string; _min: Record<string, Date | null> }>(rows: R[], statuses: string[], field: string): string | null {
+  const times = rows
+    .filter((r) => statuses.includes(r.status))
+    .map((r) => r._min[field])
+    .filter((d): d is Date => d instanceof Date);
+  return times.length ? new Date(Math.min(...times.map((d) => d.getTime()))).toISOString() : null;
+}
+
 async function applicationStatuses() {
-  const rows = await prisma.application.groupBy({ by: ['status'], _count: { _all: true } });
+  const rows = await prisma.application.groupBy({ by: ['status'], _count: { _all: true }, _min: { submittedAt: true } });
   const c = byStatus(rows);
   return {
+    draft: c.draft ?? 0,
     submitted: c.submitted ?? 0,
     underReview: c.under_review ?? 0,
     approved: c.approved ?? 0,
     returned: c.returned ?? 0,
+    rejected: c.rejected ?? 0,
     waiting: (c.submitted ?? 0) + (c.under_review ?? 0),
+    /** The earliest submission still awaiting a decision. */
+    oldestWaiting: oldestOf(rows, ['submitted', 'under_review'], 'submittedAt'),
     total: sum(Object.values(c)),
   };
 }
 
 async function enrollmentStatuses() {
-  const rows = await prisma.enrollment.groupBy({ by: ['status'], _count: { _all: true } });
+  const rows = await prisma.enrollment.groupBy({ by: ['status'], _count: { _all: true }, _min: { createdAt: true } });
   const c = byStatus(rows);
-  return { pending: c.pending ?? 0, enrolled: c.enrolled ?? 0, rejected: c.rejected ?? 0, dropped: c.dropped ?? 0 };
+  return {
+    pending: c.pending ?? 0,
+    enrolled: c.enrolled ?? 0,
+    rejected: c.rejected ?? 0,
+    dropped: c.dropped ?? 0,
+    oldestPending: oldestOf(rows, ['pending'], 'createdAt'),
+  };
 }
 
 async function credentialStatuses() {
-  const rows = await prisma.studentCredential.groupBy({ by: ['status'], _count: { _all: true } });
+  const rows = await prisma.studentCredential.groupBy({ by: ['status'], _count: { _all: true }, _min: { submittedAt: true } });
   const c = byStatus(rows);
   return {
     verified: c.verified ?? 0,
@@ -105,7 +125,21 @@ async function credentialStatuses() {
     returned: c.rejected ?? 0,
     missing: c.missing ?? 0,
     expired: c.expired ?? 0,
+    oldestPending: oldestOf(rows, ['submitted', 'under_review'], 'submittedAt'),
   };
+}
+
+/** The school calendar's next entries, from today to two months out, soonest first. */
+async function upcomingEvents(user: AuthUser, now: Date, take = 4): Promise<UpcomingEvent[]> {
+  const from = localDayKey(now);
+  const to = localDayKey(startOfLocalDay(now, 60));
+  const entries = await calendarEntries(user, from, to);
+  return entries
+    // An entry already under way stays listed until its last day.
+    .filter((e) => e.endsOn >= from)
+    .sort((a, b) => a.startsOn.localeCompare(b.startsOn) || a.title.localeCompare(b.title))
+    .slice(0, take)
+    .map((e) => ({ id: e.id, title: e.title, typeLabel: e.typeLabel, startsOn: e.startsOn, endsOn: e.endsOn }));
 }
 
 /** Teacher accounts — joined to users, as model_has_roles has no foreign key. */
@@ -612,20 +646,25 @@ async function coordinatorCharts(
 
 /** "Are student records, applications and enrollment processed?" */
 export async function secretaryWorkspace(user: AuthUser): Promise<SecretaryWorkspace> {
-  const weekAgo = new Date(Date.now() - 7 * DAY);
+  const now = new Date();
+  // "The last 7 days" is the campus's today and the six days before it — the
+  // same days the Applications list's date filter selects from weekFrom.
+  const weekStart = startOfLocalDay(now, -6);
+  const weekFrom = localDayKey(weekStart);
   const canStudents = studentPolicy.viewAny(user);
   const canApps = applicationPolicy.viewAny(user);
   const canDocs = studentCredentialPolicy.viewAny(user);
   const canEnroll = enrollmentPolicy.viewAny(user);
   const canPrograms = programPolicy.viewAny(user);
 
-  const [students, registrations, incompleteRecords, apps, newApps, enroll, docs, programRows, appsByProgram, enrollByProgram] = await Promise.all([
+  const [students, registrations, incompleteRecords, apps, newApps, enroll, docs, programRows, appsByProgram, enrollByProgram, studentsByProgram, events] = await Promise.all([
     canStudents ? prisma.student.count() : null,
-    canStudents ? prisma.student.count({ where: { createdAt: { gte: weekAgo } } }) : null,
+    canStudents ? prisma.student.count({ where: { createdAt: { gte: weekStart } } }) : null,
     // A record the office cannot contact or identify the student from.
     canStudents ? prisma.student.count({ where: { OR: [{ email: null }, { phone: null }, { dateOfBirth: null }] } }) : null,
     canApps ? applicationStatuses() : null,
-    canApps ? prisma.application.count({ where: { createdAt: { gte: weekAgo } } }) : null,
+    // Received = submitted to the office; a draft still being typed up is not.
+    canApps ? prisma.application.count({ where: { submittedAt: { gte: weekStart } } }) : null,
     canEnroll ? enrollmentStatuses() : null,
     canDocs ? credentialStatuses() : null,
     canPrograms && (canApps || canEnroll) ? programs() : null,
@@ -636,17 +675,26 @@ export async function secretaryWorkspace(user: AuthUser): Promise<SecretaryWorks
           FROM enrollments e JOIN students s ON s.id = e.student_id
           GROUP BY s.program_id, e.status`
       : null,
+    canPrograms && canStudents ? prisma.student.groupBy({ by: ['programId'], _count: { _all: true } }) : null,
+    // The school calendar is open to every signed-in member of staff.
+    upcomingEvents(user, now),
   ]);
+
+  // Pending applications are submitted OR under review. The list filters one
+  // status at a time, so open the one that holds them all, else the whole list.
+  const pendingAppsHref = !apps || (apps.submitted > 0 && apps.underReview > 0)
+    ? '/applications'
+    : apps.underReview > 0 ? '/applications?status=under_review' : '/applications?status=submitted';
 
   const metrics: WorkMetric[] = [];
   if (students !== null) {
     metrics.push({ key: 'students', label: 'Total Students', value: students, icon: 'students', href: '/students', hint: students === 0 ? 'No student records yet' : 'Student records' });
   }
   if (newApps !== null) {
-    metrics.push({ key: 'new-applications', label: 'New Applications', value: newApps, icon: 'applications', href: '/applications', hint: 'Received in the last 7 days' });
+    metrics.push({ key: 'new-applications', label: 'New Applications', value: newApps, icon: 'applications', href: `/applications?from=${weekFrom}`, hint: 'Submitted in the last 7 days' });
   }
   if (apps) {
-    metrics.push({ key: 'pending-applications', label: 'Pending Applications', value: apps.waiting, icon: 'applications', href: '/applications?status=submitted',
+    metrics.push({ key: 'pending-applications', label: 'Pending Applications', value: apps.waiting, icon: 'applications', href: pendingAppsHref,
       hint: apps.waiting > 0 ? 'Submitted or under review' : 'None waiting', tone: apps.waiting > 0 ? 'attention' : 'neutral' });
   }
   if (enroll) {
@@ -661,28 +709,32 @@ export async function secretaryWorkspace(user: AuthUser): Promise<SecretaryWorks
     metrics.push({ key: 'registrations', label: 'Recent Registrations', value: registrations, icon: 'registrations', href: '/students', hint: 'Students added in the last 7 days' });
   }
 
-  // The work queue shows every stream, clear or not, so the office sees the whole picture.
+  // Work waiting on the office — every stream, clear or not, so the office
+  // sees the whole picture. New registrations are a figure rather than work,
+  // and stay in the KPI row.
   const queue: WorkItem[] = [];
-  if (apps) queue.push({ key: 'applications', label: 'Applications to Review', description: 'Submitted or under review', count: apps.waiting, href: '/applications?status=submitted', action: 'Open', icon: 'applications' });
-  if (enroll) queue.push({ key: 'enrollments', label: 'Enrollment Records', description: 'Awaiting approval', count: enroll.pending, href: '/enrollments?status=pending', action: 'Open', icon: 'enrollment' });
-  if (docs) queue.push({ key: 'documents', label: 'Documents to Verify', description: 'Reviewed on each student’s record', count: docs.pending, href: '/students', action: 'Open', icon: 'documents' });
-  if (incompleteRecords !== null) queue.push({ key: 'incomplete', label: 'Incomplete Student Records', description: 'Missing email, phone or date of birth', count: incompleteRecords, href: '/students', action: 'Review', icon: 'records' });
-  if (registrations !== null) queue.push({ key: 'registrations', label: 'Recent Registrations', description: 'Added in the last 7 days', count: registrations, href: '/students', action: 'View', icon: 'registrations' });
+  if (apps) queue.push({ key: 'applications', group: 'applications', label: 'Applications to Review', description: 'Submitted or under review', count: apps.waiting, href: pendingAppsHref, action: 'Review', icon: 'applications', oldestAt: apps.oldestWaiting });
+  if (enroll) queue.push({ key: 'enrollments', group: 'enrollment', label: 'Pending Enrollment', description: 'Approved applicants awaiting enrollment approval', count: enroll.pending, href: '/enrollments?status=pending', action: 'Open', icon: 'enrollment', oldestAt: enroll.oldestPending });
+  if (docs) queue.push({ key: 'documents', group: 'documents', label: 'Documents to Verify', description: 'Verified on each student’s record', count: docs.pending, href: '/students', action: 'Open', icon: 'documents', oldestAt: docs.oldestPending });
+  if (incompleteRecords !== null) queue.push({ key: 'incomplete', group: 'records', label: 'Incomplete Student Records', description: 'Missing email, phone or date of birth', count: incompleteRecords, href: '/students', action: 'Review', icon: 'records' });
 
+  // Every application status, in the order an application moves through them.
   const pipeline: WorkSegment[] | null = apps
     ? [
-        { key: 'submitted', label: 'New', value: apps.submitted, tone: 'info', href: '/applications?status=submitted' },
-        { key: 'under_review', label: 'Under Review', value: apps.underReview, tone: 'attention', href: '/applications?status=under_review' },
-        { key: 'approved', label: 'Accepted', value: apps.approved, tone: 'success', href: '/applications?status=approved' },
-        { key: 'returned', label: 'Returned', value: apps.returned, tone: 'failed', href: '/applications?status=returned' },
+        { key: 'draft', label: APPLICATION_STATUS_LABELS.draft, value: apps.draft, tone: 'neutral', href: '/applications?status=draft' },
+        { key: 'submitted', label: APPLICATION_STATUS_LABELS.submitted, value: apps.submitted, tone: 'info', href: '/applications?status=submitted' },
+        { key: 'under_review', label: APPLICATION_STATUS_LABELS.under_review, value: apps.underReview, tone: 'attention', href: '/applications?status=under_review' },
+        { key: 'approved', label: APPLICATION_STATUS_LABELS.approved, value: apps.approved, tone: 'success', href: '/applications?status=approved' },
+        { key: 'returned', label: APPLICATION_STATUS_LABELS.returned, value: apps.returned, tone: 'attention', href: '/applications?status=returned' },
+        { key: 'rejected', label: APPLICATION_STATUS_LABELS.rejected, value: apps.rejected, tone: 'failed', href: '/applications?status=rejected' },
       ]
     : null;
 
   const documents: WorkSegment[] | null = docs
     ? [
         { key: 'verified', label: 'Verified', value: docs.verified, tone: 'success' },
-        { key: 'pending', label: 'Pending', value: docs.pending, tone: 'attention' },
-        { key: 'returned', label: 'Returned', value: docs.returned, tone: 'failed' },
+        { key: 'pending', label: 'Awaiting verification', value: docs.pending, tone: 'attention' },
+        { key: 'returned', label: 'Rejected', value: docs.returned, tone: 'failed' },
         { key: 'missing', label: 'Missing', value: docs.missing, tone: 'neutral' },
         ...(docs.expired > 0 ? [{ key: 'expired', label: 'Expired', value: docs.expired, tone: 'failed' as const }] : []),
       ]
@@ -690,8 +742,12 @@ export async function secretaryWorkspace(user: AuthUser): Promise<SecretaryWorks
 
   let enrollmentByProgram: EnrollmentByProgramRow[] | null = null;
   if (programRows) {
+    const studentCounts = studentsByProgram ? new Map(studentsByProgram.map((r) => [r.programId.toString(), r._count._all])) : null;
     const rows = new Map<string, EnrollmentByProgramRow>(
-      programRows.map((p) => [p.id.toString(), { id: p.id.toString(), name: p.name, code: p.code, applications: 0, approved: 0, enrolled: 0, pending: 0 }]),
+      programRows.map((p) => [
+        p.id.toString(),
+        { id: p.id.toString(), name: p.name, code: p.code, applications: 0, approved: 0, enrolled: 0, pending: 0, students: studentCounts ? (studentCounts.get(p.id.toString()) ?? 0) : null },
+      ]),
     );
     for (const a of appsByProgram ?? []) {
       const r = rows.get(a.programId.toString());
@@ -708,7 +764,7 @@ export async function secretaryWorkspace(user: AuthUser): Promise<SecretaryWorks
     const active = new Set(programRows.filter((p) => p.isActive).map((p) => p.id.toString()));
     enrollmentByProgram = [...rows.values()]
       // Active programs, and any inactive one that still has records.
-      .filter((r) => active.has(r.id) || r.applications + r.enrolled + r.pending > 0)
+      .filter((r) => active.has(r.id) || r.applications + r.enrolled + r.pending + (r.students ?? 0) > 0)
       .sort((a, b) => b.applications - a.applications || b.enrolled - a.enrolled || a.code.localeCompare(b.code))
       .slice(0, 8);
   }
@@ -720,6 +776,8 @@ export async function secretaryWorkspace(user: AuthUser): Promise<SecretaryWorks
     pipeline,
     enrollmentByProgram,
     documents,
+    events,
+    canAddStudent: studentPolicy.create(user),
     activity: [],
     quickActions: links(user, ['addStudent', 'applications', 'enrollments', 'students']),
     notTracked: [],

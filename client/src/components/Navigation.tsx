@@ -237,8 +237,8 @@ function SidebarLink({
       onClick={onNavigate}
       aria-current={active ? 'page' : undefined}
       aria-label={compact ? item.label : undefined}
-      title={compact ? item.label : undefined}
-      className={`group flex items-center gap-3 rounded-[14px] text-sm font-semibold transition ${FOCUS_DARK} ${
+      title={item.label}
+      className={`group flex items-center gap-3 rounded-[14px] text-sm font-semibold leading-snug transition ${FOCUS_DARK} ${
         compact ? 'h-12 w-12 justify-center' : 'px-3.5 py-2.5'
       } ${
         active
@@ -247,7 +247,8 @@ function SidebarLink({
       }`}
     >
       <Icon className={`h-5 w-5 shrink-0 ${active ? 'text-primary-600' : 'text-primary-200 group-hover:text-white'}`} strokeWidth={STROKE} aria-hidden="true" />
-      {!compact && <span className="truncate">{item.label}</span>}
+      {/* A long label wraps to a second line rather than losing its end. */}
+      {!compact && <span className="line-clamp-2 min-w-0 break-words">{item.label}</span>}
     </Link>
   );
 }
@@ -829,18 +830,39 @@ export default function Navigation({
   });
   const closeButton = useRef<HTMLButtonElement>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
+  const drawer = useRef<HTMLElement>(null);
 
+  // The open drawer is a modal: Escape closes it, Tab stays inside it, and the
+  // page behind does not scroll.
   useEffect(() => {
     if (!drawerOpen) return;
     closeButton.current?.focus();
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         setDrawerOpen(false);
         menuButton.current?.focus();
+        return;
+      }
+      if (e.key !== 'Tab' || !drawer.current) return;
+      const focusable = drawer.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled])');
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) return;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
       }
     }
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = overflow;
+    };
   }, [drawerOpen]);
 
   // Close the drawer when navigation happens by any route, not only a click.
@@ -877,7 +899,7 @@ export default function Navigation({
       {drawerOpen && (
         <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
           <div className="fixed inset-0 bg-primary-950/60 backdrop-blur-[2px]" onClick={() => setDrawerOpen(false)} aria-hidden="true" />
-          <aside className="fixed bottom-3 left-3 top-3 z-50 w-[292px] max-w-[calc(100vw-1.5rem)] rounded-[24px] bg-gradient-to-b from-forest-light via-forest to-forest-dark shadow-2xl">
+          <aside ref={drawer} className="fixed bottom-3 left-3 top-3 z-50 w-[292px] max-w-[calc(100vw-1.5rem)] rounded-[24px] bg-gradient-to-b from-forest-light via-forest to-forest-dark shadow-2xl">
             <button
               ref={closeButton}
               type="button"
@@ -892,7 +914,8 @@ export default function Navigation({
         </div>
       )}
 
-      <div className={`relative transition-[padding] duration-200 md:pl-[120px] ${collapsed ? '' : 'lg:pl-[324px]'}`}>
+      {/* No padding transition: the sidebar swaps at once, so the content moves with it. */}
+      <div className={`relative md:pl-[120px] ${collapsed ? '' : 'lg:pl-[324px]'}`}>
         <header className="mx-auto flex h-[88px] max-w-[1600px] items-center gap-3 px-4 sm:px-6 lg:px-8">
           <button
             ref={menuButton}

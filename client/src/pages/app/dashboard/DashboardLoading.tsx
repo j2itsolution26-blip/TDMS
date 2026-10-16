@@ -34,46 +34,34 @@ export default function DashboardLoading() {
     <div className="space-y-6" aria-busy="true">
       <p className="sr-only" role="status">Loading your dashboard…</p>
 
+      {/* The office dashboards' shape: header, six figures, a 7/5 workspace, three status panels. */}
       <div aria-hidden="true" className="space-y-6">
-        <div className="space-y-2">
+        <div className="space-y-2 rounded-2xl border border-border bg-card px-5 py-6 shadow-card sm:px-7 sm:py-7">
           <Block className="h-3 w-56" />
           <Block className="h-7 w-72" />
-          <Block className="h-3 w-80" />
+          <Block className="h-3 w-80 max-w-full" />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-          {Array.from({ length: 5 }, (_, i) => (
-            <div key={i} className="flex gap-3 rounded-xl border border-border bg-card p-4 shadow-card">
-              <Block className="h-10 w-10 rounded-lg" />
-              <div className="flex-1 space-y-2">
-                <Block className="h-3 w-20" />
-                <Block className="h-6 w-14" />
-                <Block className="h-2.5 w-24" />
-              </div>
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 2xl:grid-cols-6">
+          {Array.from({ length: 6 }, (_, i) => (
+            <div key={i} className="space-y-3 rounded-xl border border-border bg-card p-4 shadow-card">
+              <Block className="h-9 w-9 rounded-lg" />
+              <Block className="h-3 w-20" />
+              <Block className="h-6 w-14" />
+              <Block className="h-2.5 w-24 max-w-full" />
             </div>
           ))}
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
-          <PanelSkeleton />
-          <PanelSkeleton />
-          <div className="rounded-xl border border-border bg-card p-5 shadow-card">
-            <Block className="h-4 w-32" />
-            <div className="mt-6 flex h-40 items-end gap-3">
-              {[45, 70, 55, 90, 65, 80, 50].map((height, i) => (
-                <div
-                  key={i}
-                  className="flex-1 rounded-t bg-border/70 motion-safe:animate-pulse"
-                  style={{ height: `${height}%` }}
-                />
-              ))}
-            </div>
-          </div>
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+          <div className="xl:col-span-7"><PanelSkeleton /></div>
+          <div className="xl:col-span-5"><PanelSkeleton /></div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <PanelSkeleton rows={2} />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
           <PanelSkeleton rows={3} />
+          <PanelSkeleton rows={3} />
+          <div className="lg:col-span-2 xl:col-span-1"><PanelSkeleton rows={3} /></div>
         </div>
       </div>
     </div>

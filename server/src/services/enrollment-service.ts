@@ -336,8 +336,10 @@ export async function listAllEnrollments(options: { page?: number; status?: stri
   const documentsFor = (studentId: bigint, programId: bigint) => {
     const required = requirements.filter((r) => r.programId === null || r.programId === programId);
     const done = new Set(verified.filter((v) => v.studentId === studentId).map((v) => v.credentialRequirementId.toString()));
-    const missing = required.filter((r) => !done.has(r.id.toString())).map((r) => r.name);
-    return { required: required.length, verified: required.length - missing.length, missing };
+    // Every required document by name, so the review names the verified ones too.
+    const items = required.map((r) => ({ name: r.name, verified: done.has(r.id.toString()) }));
+    const missing = items.filter((d) => !d.verified).map((d) => d.name);
+    return { required: required.length, verified: required.length - missing.length, missing, items };
   };
 
   return {

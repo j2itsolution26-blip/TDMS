@@ -55,21 +55,20 @@ function DocumentStatus({ docs }: { docs: Row['documents'] }) {
             </div>
             <span className="shrink-0 text-xs font-medium tabular-nums text-slate-600">{docs.verified} of {docs.required} verified</span>
           </div>
-          {!ready && (
-            <>
-              <p className="mt-3 text-xs font-medium text-slate-600">Not yet verified</p>
-              <ul className="mt-1.5 space-y-1.5">
-                {docs.missing.map((name) => (
-                  <li key={name} className="flex items-start gap-2 text-sm text-navy-900">
-                    <CircleDashed className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
-                    <span className="min-w-0 flex-1 break-words">{name}</span>
-                    <span className="shrink-0 rounded-md bg-white px-1.5 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-200">Not verified</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-3 text-sm text-slate-600">Verify them on the student&apos;s record before approving.</p>
-            </>
-          )}
+          <ul className="mt-3 space-y-1.5" aria-label="Required documents">
+            {docs.items.map((d) => (
+              <li key={d.name} className="flex items-start gap-2 text-sm text-navy-900">
+                {d.verified
+                  ? <CircleCheck className="mt-0.5 h-4 w-4 shrink-0 text-green-700" aria-hidden="true" />
+                  : <CircleDashed className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />}
+                <span className="min-w-0 flex-1 break-words">{d.name}</span>
+                <span className={`shrink-0 rounded-md bg-white px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset ${d.verified ? 'text-green-800 ring-green-200' : 'text-amber-800 ring-amber-200'}`}>
+                  {d.verified ? 'Verified' : 'Not verified'}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {!ready && <p className="mt-3 text-sm text-slate-600">Verify the remaining documents on the student&apos;s record before approving.</p>}
         </div>
       </div>
     </div>

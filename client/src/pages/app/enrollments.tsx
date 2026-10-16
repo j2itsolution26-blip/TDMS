@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { CircleCheck, CircleDashed, ExternalLink, FileText, Loader2, TriangleAlert } from 'lucide-react';
 import Link from '@/lib/link';
 import Modal from '@/components/Modal';
 import { Alert, Badge, BUTTON_DANGER, BUTTON_SECONDARY, BUTTON_SUCCESS, Card, EmptyState, FieldError, INPUT_CLASS, LABEL_CLASS, PageHeader, Pagination } from '@/components/ui';
@@ -10,44 +11,233 @@ import { useRouter } from '@/lib/navigation';
 import { Page } from '@/lib/page-data';
 import type { loadEnrollments } from '@/server/controllers/pages/app/enrollments';
 import { approvalNotice, type Placement } from '@/lib/enrollment-notice';
+import { DECISION_CONSEQUENCES, decisionSummary, type Decision } from '@/lib/enrollment-decision';
 
 type Data = Awaited<ReturnType<typeof loadEnrollments>>;
 type Row = Data['data']['rows'][number];
 
 const label = (s: string) => ENROLLMENT_STATUS_LABELS[s as EnrollmentStatus] ?? s;
 
+const FACT_LABEL = 'text-xs font-medium uppercase tracking-wide text-slate-500';
+
+/** The required-documents check, said in words and icons as well as colour. */
+function DocumentStatus({ docs }: { docs: Row['documents'] }) {
+  if (!docs || docs.required === 0) {
+    return (
+      <p className="flex items-center gap-2 rounded-xl border border-border px-4 py-3 text-sm text-slate-600">
+        <FileText className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+        No required documents are configured for this program.
+      </p>
+    );
+  }
+  const ready = docs.missing.length === 0;
+  return (
+    <div className={`rounded-xl border p-4 ${ready ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'}`}>
+      <div className="flex items-start gap-3">
+        {ready
+          ? <CircleCheck className="mt-0.5 h-5 w-5 shrink-0 text-green-700" aria-hidden="true" />
+          : <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />}
+        <div className="min-w-0 flex-1">
+          <p className={`text-sm font-semibold ${ready ? 'text-green-800' : 'text-amber-800'}`}>
+            {ready ? 'All required documents are verified' : 'Document verification is incomplete'}
+          </p>
+          <div className="mt-2 flex items-center gap-3">
+            <div
+              role="progressbar"
+              aria-label="Required documents verified"
+              aria-valuemin={0}
+              aria-valuemax={docs.required}
+              aria-valuenow={docs.verified}
+              aria-valuetext={`${docs.verified} of ${docs.required} verified`}
+              className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200"
+            >
+              <div className={`h-full rounded-full ${ready ? 'bg-green-600' : 'bg-amber-500'}`} style={{ width: `${Math.round((docs.verified / docs.required) * 100)}%` }} />
+            </div>
+            <span className="shrink-0 text-xs font-medium tabular-nums text-slate-600">{docs.verified} of {docs.required} verified</span>
+          </div>
+          {!ready && (
+            <>
+              <p className="mt-3 text-xs font-medium text-slate-600">Not yet verified</p>
+              <ul className="mt-1.5 space-y-1.5">
+                {docs.missing.map((name) => (
+                  <li key={name} className="flex items-start gap-2 text-sm text-navy-900">
+                    <CircleDashed className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
+                    <span className="min-w-0 flex-1 break-words">{name}</span>
+                    <span className="shrink-0 rounded-md bg-white px-1.5 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-200">Not verified</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-sm text-slate-600">Verify them on the student&apos;s record before approving.</p>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
- * Review one pending enrollment and decide it. Approving asks for a second
- * confirmation; rejecting needs a reason. The server re-checks the
- * permission, the current status and the required documents.
+ * The second, separate dialog that actually decides the enrollment. Nothing
+ * is sent until its confirm button is pressed; while the request runs it
+ * cannot be closed or sent again. It closes only on success. Rejecting needs
+ * a reason, as the server requires.
  */
-function Review({ row, onDone }: { row: Row; onDone: (message: string) => void }) {
+function ConfirmDecision({ row, decision, onCancel, onConfirmed, onStale }: {
+  row: Row;
+  decision: Decision;
+  onCancel: () => void;
+  onConfirmed: (message: string) => void;
+  /** The enrollment was decided by someone else meanwhile. */
+  onStale: () => void;
+}) {
   const router = useRouter();
-  const [step, setStep] = useState<'review' | 'approve' | 'reject'>('review');
+  const approve = decision === 'approve';
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
+  // State alone lets a fast double click through before the re-render.
+  const inFlight = useRef(false);
+  const [stale, setStale] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string[]>>({});
-  const docs = row.documents;
-  const ready = !docs || docs.missing.length === 0;
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
+  const reasonHint = useId();
 
-  async function decide(status: 'enrolled' | 'rejected') {
-    if (busy) return;
+  // Start on the safe control: Cancel, or the reason a rejection needs.
+  useEffect(() => { (approve ? cancelRef.current : reasonRef.current)?.focus(); }, [approve]);
+
+  async function confirm() {
+    if (inFlight.current || stale) return;
+    if (!approve && !reason.trim()) {
+      setErrors({ reason: ['Give a reason for rejecting this enrollment.'] });
+      reasonRef.current?.focus();
+      return;
+    }
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     setErrors({});
-    const result = await api.post<{ placement: Placement | null }>(`/api/v1/enrollments/${row.id}/transition`, { status, reason: status === 'rejected' ? reason : '' });
-    setBusy(false);
+    const result = await api.post<{ placement: Placement | null }>(`/api/v1/enrollments/${row.id}/transition`, { status: approve ? 'enrolled' : 'rejected', reason: approve ? '' : reason });
     if (!result.ok) {
+      inFlight.current = false;
+      setBusy(false);
       setErrors(result.errors ?? {});
       setError(result.message);
       // Someone else decided it meanwhile: show the current state.
-      if (result.code === 'ENROLLMENT_ALREADY_DECIDED') router.refresh();
+      if (result.code === 'ENROLLMENT_ALREADY_DECIDED') { setStale(true); router.refresh(); }
       return;
     }
     router.refresh();
-    onDone(status === 'enrolled' ? approvalNotice(row.student.name, result.data.placement) : `${row.student.name}'s enrollment was rejected.`);
+    onConfirmed(approve ? approvalNotice(row.student.name, result.data.placement) : `${row.student.name}'s enrollment was rejected.`);
   }
+
+  const close = () => { if (!inFlight.current) (stale ? onStale : onCancel)(); };
+
+  return (
+    <Modal
+      open
+      onClose={close}
+      title={approve ? 'Confirm Enrollment Approval' : 'Confirm Enrollment Rejection'}
+      maxWidth="sm:max-w-lg"
+      // Fluent: the buttons stay pinned while the body scrolls, so on a phone they are never below the fold.
+      appearance="fluent"
+      animate
+      trapFocus
+      icon={(
+        <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${approve ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+          {approve ? <CircleCheck className="h-5 w-5" aria-hidden="true" /> : <TriangleAlert className="h-5 w-5" aria-hidden="true" />}
+        </span>
+      )}
+      footer={(
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button ref={cancelRef} type="button" className={BUTTON_SECONDARY} disabled={busy} onClick={close}>
+            {stale ? 'Close' : 'Cancel'}
+          </button>
+          {!stale && (
+            <button type="button" className={approve ? BUTTON_SUCCESS : BUTTON_DANGER} disabled={busy} aria-busy={busy} onClick={() => void confirm()}>
+              {busy && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
+              {busy ? (approve ? 'Approving…' : 'Rejecting…') : (approve ? 'Confirm Approval' : 'Confirm Rejection')}
+            </button>
+          )}
+        </div>
+      )}
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-navy-900">
+          {approve
+            ? 'Approving changes this student’s enrollment status. Check the record before you confirm.'
+            : 'This enrollment will be rejected. Check the record before you confirm.'}
+        </p>
+
+        <dl className="divide-y divide-border rounded-xl border border-border">
+          {decisionSummary(row, decision).map(([k, v]) => (
+            <div key={k} className="flex gap-3 px-4 py-2.5 sm:gap-4">
+              <dt className="w-28 shrink-0 text-sm text-slate-500 sm:w-32">{k}</dt>
+              <dd className="min-w-0 break-words text-sm font-medium text-navy-900">{v}</dd>
+            </div>
+          ))}
+        </dl>
+
+        <div>
+          <p className={FACT_LABEL}>What happens</p>
+          <ul className="mt-2 space-y-1.5">
+            {DECISION_CONSEQUENCES[decision].map((line) => (
+              <li key={line} className="flex gap-2 text-sm text-slate-700">
+                <span className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${approve ? 'bg-green-600' : 'bg-red-600'}`} aria-hidden="true" />
+                {line}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {!approve && (
+          <div>
+            <label className={LABEL_CLASS} htmlFor="reject-reason">Reason for rejecting <span className="font-normal text-slate-500">(required)</span></label>
+            <textarea
+              ref={reasonRef}
+              id="reject-reason"
+              rows={3}
+              maxLength={500}
+              className={`${INPUT_CLASS} mt-1.5`}
+              value={reason}
+              disabled={busy || stale}
+              aria-required="true"
+              aria-invalid={errors.reason ? true : undefined}
+              aria-describedby={reasonHint}
+              onChange={(e) => { setReason(e.target.value); if (errors.reason) setErrors({}); }}
+            />
+            <p id={reasonHint} className="mt-1 text-xs text-slate-500">Kept in the enrollment&apos;s history. {reason.length}/500 characters.</p>
+            <FieldError messages={errors.reason} />
+          </div>
+        )}
+
+        {error && !Object.keys(errors).length && <Alert type="danger">{error}</Alert>}
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Review one pending enrollment. Approve and Reject open a separate
+ * confirmation; nothing changes until it is confirmed. The server re-checks
+ * the permission, the current status and the required documents.
+ */
+function Review({ row, onClose, onDone }: { row: Row; onClose: () => void; onDone: (message: string) => void }) {
+  const [confirming, setConfirming] = useState<Decision | null>(null);
+  // Set when both dialogs are to close: with a success notice, or without one.
+  const [leaving, setLeaving] = useState<{ notice: string | null } | null>(null);
+  const hintId = useId();
+  const docs = row.documents;
+  const ready = !docs || docs.missing.length === 0;
+
+  // Close the confirmation first and this dialog after: each restores the
+  // body scroll lock it found, so they must let go in that order.
+  useEffect(() => {
+    if (leaving && confirming === null) {
+      if (leaving.notice !== null) onDone(leaving.notice);
+      else onClose();
+    }
+  }, [leaving, confirming, onDone, onClose]);
 
   const facts: [string, string][] = [
     ['Student', `${row.student.name} · ${row.student.studentNumber}`],
@@ -60,71 +250,65 @@ function Review({ row, onDone }: { row: Row; onDone: (message: string) => void }
   ];
 
   return (
-    <div className="space-y-5">
-      <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-        {facts.map(([k, v]) => (
-          <div key={k}>
-            <dt className="text-xs font-medium uppercase text-slate-500">{k}</dt>
-            <dd className="text-sm text-navy-900">{v}</dd>
-          </div>
-        ))}
-      </dl>
-
-      <div>
-        <p className="text-xs font-medium uppercase text-slate-500">Required documents</p>
-        {!docs || docs.required === 0 ? (
-          <p className="text-sm text-slate-600">No required documents are configured.</p>
-        ) : ready ? (
-          <p className="text-sm text-green-700">All {docs.required} required documents are verified.</p>
-        ) : (
-          <div className="mt-1">
-            <Alert type="warning" title={`${docs.verified} of ${docs.required} verified`}>
-              Not yet verified: {docs.missing.join(', ')}. Verify them on the student&apos;s record before approving.
-            </Alert>
+    <>
+      <Modal
+        open
+        onClose={() => { if (confirming === null && leaving === null) onClose(); }}
+        title="Review enrollment"
+        subtitle={`${row.student.name} · ${row.student.studentNumber}`}
+        appearance="fluent"
+        animate
+        trapFocus
+        maxWidth="sm:max-w-3xl"
+        footer={(
+          <div className="space-y-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <Link href={`/students/${row.student.id}/enrollment`} className={BUTTON_SECONDARY}>
+                <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                Open student record
+              </Link>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                <button type="button" className={BUTTON_DANGER} onClick={() => setConfirming('reject')}>Reject Enrollment</button>
+                <button type="button" className={BUTTON_SUCCESS} disabled={!ready} aria-describedby={ready ? undefined : hintId} onClick={() => setConfirming('approve')}>
+                  Approve Enrollment
+                </button>
+              </div>
+            </div>
+            {!ready && <p id={hintId} className="text-xs text-amber-700 sm:text-right">Approve Enrollment becomes available once every required document is verified.</p>}
           </div>
         )}
-      </div>
+      >
+        <div className="space-y-6">
+          <section aria-labelledby="review-details">
+            <h3 id="review-details" className="sr-only">Enrollment details</h3>
+            <dl className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
+              {facts.map(([k, v]) => (
+                <div key={k} className="min-w-0">
+                  <dt className={FACT_LABEL}>{k}</dt>
+                  <dd className="mt-0.5 break-words text-sm text-navy-900">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
 
-      {error && !Object.keys(errors).length && <Alert type="danger">{error}</Alert>}
-
-      {step === 'review' && (
-        <div className="flex flex-wrap justify-end gap-2">
-          <Link href={`/students/${row.student.id}/enrollment`} className={BUTTON_SECONDARY}>Open student record</Link>
-          <button type="button" className={BUTTON_DANGER} disabled={busy} onClick={() => { setStep('reject'); setError(null); }}>Reject…</button>
-          <button type="button" className={BUTTON_SUCCESS} disabled={busy || !ready} onClick={() => { setStep('approve'); setError(null); }}
-            title={ready ? undefined : 'Every required document must be verified first'}>
-            Approve…
-          </button>
+          <section aria-labelledby="review-documents" className="border-t border-border pt-5">
+            <h3 id="review-documents" className={`${FACT_LABEL} mb-2`}>Required documents</h3>
+            <DocumentStatus docs={docs} />
+          </section>
         </div>
-      )}
+      </Modal>
 
-      {step === 'approve' && (
-        <div className="space-y-3 rounded-xl border border-green-200 bg-green-50 p-4">
-          <p className="text-sm text-navy-900">
-            Approve <b>{row.student.name}</b> for SY {row.schoolYear}, Semester {row.semester}? The student becomes <b>Enrolled</b> and active. This decision cannot be undone; an enrolled student can only be dropped later.
-          </p>
-          <div className="flex justify-end gap-2">
-            <button type="button" className={BUTTON_SECONDARY} disabled={busy} onClick={() => setStep('review')}>Back</button>
-            <button type="button" className={BUTTON_SUCCESS} disabled={busy} onClick={() => decide('enrolled')}>{busy ? 'Approving…' : 'Yes, approve enrollment'}</button>
-          </div>
-        </div>
+      {confirming && (
+        <ConfirmDecision
+          key={confirming}
+          row={row}
+          decision={confirming}
+          onCancel={() => setConfirming(null)}
+          onStale={() => { setLeaving({ notice: null }); setConfirming(null); }}
+          onConfirmed={(message) => { setLeaving({ notice: message }); setConfirming(null); }}
+        />
       )}
-
-      {step === 'reject' && (
-        <form className="space-y-3 rounded-xl border border-red-200 bg-red-50 p-4" onSubmit={(e) => { e.preventDefault(); void decide('rejected'); }}>
-          <div>
-            <label className={LABEL_CLASS} htmlFor="reject-reason">Reason for rejecting</label>
-            <textarea id="reject-reason" rows={3} maxLength={500} className={INPUT_CLASS} value={reason} onChange={(e) => setReason(e.target.value)} required />
-            <FieldError messages={errors.reason} />
-          </div>
-          <p className="text-sm text-navy-900">Rejected enrollments are final and are not counted as enrolled or dropped.</p>
-          <div className="flex justify-end gap-2">
-            <button type="button" className={BUTTON_SECONDARY} disabled={busy} onClick={() => setStep('review')}>Back</button>
-            <button type="submit" className={BUTTON_DANGER} disabled={busy || !reason.trim()}>{busy ? 'Rejecting…' : 'Reject enrollment'}</button>
-          </div>
-        </form>
-      )}
-    </div>
+    </>
   );
 }
 
@@ -311,9 +495,7 @@ function View({ canOpenStudent, canDecide, data, filters, status, programTabs, p
         )}
       </Card>
 
-      <Modal open={reviewing !== null} onClose={() => setReviewing(null)} title="Review enrollment" subtitle={reviewing ? `${reviewing.student.name} · ${reviewing.student.studentNumber}` : undefined}>
-        {reviewing && <Review key={reviewing.id} row={reviewing} onDone={(message) => { setReviewing(null); setNotice(message); }} />}
-      </Modal>
+      {reviewing && <Review key={reviewing.id} row={reviewing} onClose={() => setReviewing(null)} onDone={(message) => { setReviewing(null); setNotice(message); }} />}
     </div>
   );
 }

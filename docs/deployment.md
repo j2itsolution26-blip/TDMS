@@ -110,7 +110,8 @@ stale in the build cache.
 | `SUPER_ADMIN_CODE_MAX_RESENDS` | no   | Default 3 codes per registration                            |
 | `SUPER_ADMIN_CODE_RESEND_COOLDOWN_SECONDS` | no | Default 60                                       |
 | `SUPER_ADMIN_COMPLETION_WINDOW_MINUTES` | no | Default 30 after verification                         |
-| `BLOB_READ_WRITE_TOKEN`    | yes*     | *For every upload: student credentials, application documents, lesson plans / TOS / PT. Set by Vercel when a Blob store is connected. Server-only |
+| `BLOB_STORE_ID`            | yes*     | *For every upload (student credentials, application documents, lesson plans / TOS / PT). Set by Vercel when a Blob store is connected; authenticated with the deployment's OIDC token. This or the next |
+| `BLOB_READ_WRITE_TOKEN`    | yes*     | *Older Blob stores: a server-only secret Vercel sets instead of `BLOB_STORE_ID` |
 | `BLOB_ACCESS`              | no       | `private` (default) or `public`, matching how the Blob store was created |
 | `FILE_STORAGE`             | no       | `local` keeps uploads in `.data/uploads` — **self-hosted servers with a persistent disk only**; ignored on Vercel |
 | `APP_TIMEZONE`             | no       | Default `Asia/Manila`. Class schedules, attendance and quiz windows are read in it |
@@ -145,9 +146,11 @@ To connect one (once per Vercel project):
    **Blob**. Choose **Private** access, and a region next to the server
    (`cle1`, see `vercel.json`).
 2. **Connect** it to the project for the **Production** environment (and
-   Preview, if previews should accept uploads). Vercel adds
-   `BLOB_READ_WRITE_TOKEN` to those environments — never copy it into a file
-   or a `VITE_` variable.
+   Preview, if previews should accept uploads). Vercel adds `BLOB_STORE_ID`
+   (current stores: the SDK authenticates with the deployment's OIDC token, no
+   secret) or `BLOB_READ_WRITE_TOKEN` (older stores) — never copy either into a
+   file or a `VITE_` variable. `/api/health` shows, as true/false, which is set
+   and whether the request carried an OIDC token (`VERCEL_OIDC_TOKEN`).
 3. If the store was created **Public** instead, add `BLOB_ACCESS=public`
    (files are still served only through the authorized routes).
 4. **Redeploy** the latest Production deployment: variables apply only to new

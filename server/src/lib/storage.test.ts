@@ -72,11 +72,37 @@ describe('describeStorage (for /api/health)', () => {
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('BLOB_READ_WRITE_TOKEN', '');
     vi.stubEnv('FILE_STORAGE', '');
-    expect(describeStorage()).toEqual({ driver: 'not configured', access: null });
+    vi.stubEnv('BLOB_STORE_ID', '');
+    expect(describeStorage()).toEqual({ driver: 'not configured', access: null, auth: null });
   });
   it('with a Blob token: Vercel Blob, private by default', () => {
     vi.stubEnv('BLOB_READ_WRITE_TOKEN', 'test-token');
     vi.stubEnv('BLOB_ACCESS', '');
-    expect(describeStorage()).toEqual({ driver: 'vercel-blob', access: 'private' });
+    expect(describeStorage()).toEqual({ driver: 'vercel-blob', access: 'private', auth: 'token' });
+  });
+  it('with only BLOB_STORE_ID (a store connected the current way): Vercel Blob over OIDC', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('BLOB_READ_WRITE_TOKEN', '');
+    vi.stubEnv('BLOB_STORE_ID', 'store_test');
+    expect(describeStorage()).toEqual({ driver: 'vercel-blob', access: 'private', auth: 'oidc' });
+  });
+});
+
+describe('a store named by BLOB_STORE_ID', () => {
+  it('uploads go to Blob, not refused as unconfigured', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('BLOB_READ_WRITE_TOKEN', '');
+    vi.stubEnv('BLOB_STORE_ID', 'store_test');
+    vi.mocked(put).mockImplementation(async (pathname) => ({ pathname }) as Awaited<ReturnType<typeof put>>);
+    const upload = await checkUpload(file('%PDF-1.4\n', 'form-137.pdf'));
+    await expect(storeUpload('students/7/credentials', upload)).resolves.toMatch(/^students\/7\/credentials\//);
+  });
+  it('without an OIDC token for the request: a clear 503, not an opaque 500', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('BLOB_READ_WRITE_TOKEN', '');
+    vi.stubEnv('BLOB_STORE_ID', 'store_test');
+    vi.mocked(put).mockRejectedValue(new Error('Vercel Blob: No blob credentials found. Pass a `token` option, set `BLOB_READ_WRITE_TOKEN`, or use `oidcToken`.'));
+    const upload = await checkUpload(file('%PDF-1.4\n', 'form-137.pdf'));
+    await expect(storeUpload('students/7/credentials', upload)).rejects.toMatchObject({ status: 503, code: 'STORAGE_AUTH_FAILED' });
   });
 });

@@ -8,8 +8,13 @@ import { UPLOAD_MAX_BYTES, UPLOAD_TYPES } from '@shared/lib/teaching';
 /**
  * File storage for academic documents.
  *
- * Production: Vercel Blob, configured by BLOB_READ_WRITE_TOKEN (set by the
- * Vercel dashboard when a Blob store is connected; never sent to a browser).
+ * Production: Vercel Blob. Connecting a Blob store to the Vercel project sets
+ * one of two things, depending on when and how it was connected:
+ *   * BLOB_STORE_ID — current stores: the SDK authenticates with the
+ *     deployment's short-lived OIDC token (Vercel supplies it per request), so
+ *     no long-lived secret exists at all; or
+ *   * BLOB_READ_WRITE_TOKEN — older stores: a server-only secret.
+ * @vercel/blob picks whichever is present; neither is ever sent to a browser.
  * Files are written with `access: 'private'` by default — so a file has no
  * public URL, and the only way to read one is the authorized download route,
  * which checks who is asking first. BLOB_ACCESS=public is honoured for a store
@@ -26,8 +31,14 @@ import { UPLOAD_MAX_BYTES, UPLOAD_TYPES } from '@shared/lib/teaching';
 
 const LOCAL_ROOT = path.join(process.cwd(), '.data', 'uploads');
 
+function blobAuth(): 'token' | 'oidc' | null {
+  if (process.env.BLOB_READ_WRITE_TOKEN) return 'token';
+  if (process.env.BLOB_STORE_ID) return 'oidc';
+  return null;
+}
+
 function driver(): 'blob' | 'local' {
-  if (process.env.BLOB_READ_WRITE_TOKEN) return 'blob';
+  if (blobAuth()) return 'blob';
   if (process.env.NODE_ENV !== 'production') return 'local';
   if (process.env.FILE_STORAGE === 'local' && !process.env.VERCEL) return 'local';
   throw new AppError(
@@ -39,13 +50,37 @@ function driver(): 'blob' | 'local' {
 }
 
 /** For /api/health: where uploads are stored, or that they are refused. Never a token or a path. */
-export function describeStorage(): { driver: 'vercel-blob' | 'local-disk' | 'not configured'; access: 'private' | 'public' | null } {
+export function describeStorage(): {
+  driver: 'vercel-blob' | 'local-disk' | 'not configured';
+  access: 'private' | 'public' | null;
+  auth: 'token' | 'oidc' | null;
+} {
   try {
     const d = driver();
-    return { driver: d === 'blob' ? 'vercel-blob' : 'local-disk', access: d === 'blob' ? access() : null };
+    return { driver: d === 'blob' ? 'vercel-blob' : 'local-disk', access: d === 'blob' ? access() : null, auth: blobAuth() };
   } catch {
-    return { driver: 'not configured', access: null };
+    return { driver: 'not configured', access: null, auth: null };
   }
+}
+
+/**
+ * The store is named (BLOB_STORE_ID) but this request carried no OIDC token —
+ * OIDC is switched off for the project, or the code runs outside a Vercel
+ * request. Said plainly instead of an opaque 500.
+ */
+function blobCall<T>(call: () => Promise<T>): Promise<T> {
+  return call().catch((error: unknown) => {
+    if (error instanceof Error && /No blob credentials found/.test(error.message)) {
+      console.error('[TDMS] Vercel Blob: no credentials for this request.', error.message);
+      throw new AppError(
+        'File storage is connected but could not be reached with this deployment’s credentials. Please contact the administrator.',
+        503,
+        undefined,
+        'STORAGE_AUTH_FAILED',
+      );
+    }
+    throw error;
+  });
 }
 
 function access(): 'private' | 'public' {
@@ -104,7 +139,7 @@ export async function checkUpload(
 export async function storeUpload(folder: string, upload: CheckedUpload): Promise<string> {
   const key = `${folder}/${randomBytes(16).toString('hex')}.${upload.ext}`;
   if (driver() === 'blob') {
-    const result = await put(key, upload.bytes, { access: access(), contentType: upload.type, addRandomSuffix: false });
+    const result = await blobCall(() => put(key, upload.bytes, { access: access(), contentType: upload.type, addRandomSuffix: false }));
     return result.pathname;
   }
   const target = path.join(LOCAL_ROOT, key);
@@ -115,7 +150,7 @@ export async function storeUpload(folder: string, upload: CheckedUpload): Promis
 
 export async function readStored(key: string): Promise<{ body: ReadableStream<Uint8Array> | Buffer; size: number | null } | null> {
   if (driver() === 'blob') {
-    const result = await get(key, { access: access() });
+    const result = await blobCall(() => get(key, { access: access() }));
     if (!result || result.statusCode !== 200) return null;
     return { body: result.stream, size: result.blob.size };
   }

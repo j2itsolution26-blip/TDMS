@@ -50,8 +50,9 @@ import {
 
 /** Names only — see the note above. */
 const REQUIRED_ENV = ['DATABASE_URL'] as const;
-// BLOB_READ_WRITE_TOKEN: whether uploads can be stored (Vercel Blob). Presence only, like the rest.
-const OPTIONAL_ENV = ['SESSION_LIFETIME_MINUTES', 'BCRYPT_ROUNDS', 'BLOB_READ_WRITE_TOKEN'] as const;
+// BLOB_STORE_ID / BLOB_READ_WRITE_TOKEN: whether uploads can be stored (Vercel Blob, either way of
+// connecting it — see server/src/lib/storage.ts). Presence only, like the rest.
+const OPTIONAL_ENV = ['SESSION_LIFETIME_MINUTES', 'BCRYPT_ROUNDS', 'BLOB_STORE_ID', 'BLOB_READ_WRITE_TOKEN'] as const;
 
 function prismaErrorCode(error: unknown): string | null {
   const e = error as { code?: unknown; name?: unknown };
@@ -61,11 +62,17 @@ function prismaErrorCode(error: unknown): string | null {
   return null;
 }
 
-export async function GET() {
+export async function GET(request?: Request) {
   const env: Record<string, boolean> = {};
   for (const key of [...REQUIRED_ENV, ...OPTIONAL_ENV]) {
     env[key] = Boolean(process.env[key]);
   }
+  /*
+   * A store connected by BLOB_STORE_ID is reached with the deployment's OIDC
+   * token, which Vercel attaches to each request (or, outside a request, sets
+   * as VERCEL_OIDC_TOKEN). Whether this request carried one — never the token.
+   */
+  env.VERCEL_OIDC_TOKEN = Boolean(request?.headers.get('x-vercel-oidc-token') || process.env.VERCEL_OIDC_TOKEN);
 
   const source = databaseUrlSource();
 

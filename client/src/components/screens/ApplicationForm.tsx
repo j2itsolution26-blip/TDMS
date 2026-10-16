@@ -382,7 +382,7 @@ export default function ApplicationForm({ open, editingId, programs, schoolYears
         subtitle={subtitle}
         icon={<IconTile icon={FileText} size="lg" />}
         headerExtra={<StepNav steps={STEPS} current={step} onSelect={(n) => goTo(n as 1 | 2 | 3)} />}
-        titleClassName="text-xl font-bold tracking-[-0.01em] text-[#172B3A]"
+        titleClassName="text-xl font-bold tracking-[-0.01em] text-ink"
         maxWidth="sm:max-w-[760px]"
         appearance="fluent"
         animate
@@ -390,7 +390,7 @@ export default function ApplicationForm({ open, editingId, programs, schoolYears
         footer={footer}
       >
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-16 text-sm text-[#647A73]" role="status"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Loading the application…</div>
+          <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted" role="status"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Loading the application…</div>
         ) : loadError ? (
           <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800 ring-1 ring-inset ring-red-200">{loadError}</p>
         ) : (
@@ -453,11 +453,11 @@ export default function ApplicationForm({ open, editingId, programs, schoolYears
                       {programs.map((p) => {
                         const on = f.programId === p.id;
                         return (
-                          <label key={p.id} className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3.5 py-3 transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[#087F5B] has-[:focus-visible]:ring-offset-2 ${on ? 'border-[#087F5B] bg-[#F1FAF6]' : 'border-[#D6E2DD] bg-white hover:border-[#087F5B]/50'}`}>
+                          <label key={p.id} className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3.5 py-3 transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary-600 has-[:focus-visible]:ring-offset-2 ${on ? 'border-primary-600 bg-[#F1FAF6]' : 'border-[#D6E2DD] bg-white hover:border-primary-600/50'}`}>
                             <input type="radio" name="af-program" id={on || (!f.programId && p === programs[0]) ? 'af-programId' : undefined} value={p.id} checked={on}
-                              onChange={() => set('programId', p.id)} className="mt-0.5 h-4 w-4 border-[#B9C9C2] text-[#087F5B] focus:ring-[#087F5B]" />
+                              onChange={() => set('programId', p.id)} className="mt-0.5 h-4 w-4 border-[#B9C9C2] text-primary-600 focus:ring-primary-600" />
                             <span className="min-w-0">
-                              <span className="block text-sm font-semibold text-[#172B3A]">{p.name}</span>
+                              <span className="block text-sm font-semibold text-ink">{p.name}</span>
                               <span className={`block text-xs ${MUTED}`}>{p.code}</span>
                             </span>
                           </label>
@@ -509,8 +509,8 @@ export default function ApplicationForm({ open, editingId, programs, schoolYears
                   </div>
                 </div>
               </div>
-              <p className="flex items-start gap-2 rounded-lg bg-[#E7F7F0] px-3.5 py-2.5 text-xs text-[#08563F]">
-                <Info className="mt-px h-4 w-4 shrink-0 text-[#087F5B]" aria-hidden="true" />
+              <p className="flex items-start gap-2 rounded-lg bg-primary-50 px-3.5 py-2.5 text-xs text-primary-800">
+                <Info className="mt-px h-4 w-4 shrink-0 text-primary-600" aria-hidden="true" />
                 Supporting documents such as Form 137 or the transcript of records are uploaded in the next step, with the other admission requirements.
               </p>
             </div>
@@ -518,7 +518,7 @@ export default function ApplicationForm({ open, editingId, programs, schoolYears
             {/* 3 — Program & requirements */}
             <div data-step="3" hidden={step !== 3} className="space-y-5">
               <section aria-labelledby="af-summary" className="rounded-xl border border-[#E2EAE6] bg-[#F8FBFA] p-4">
-                <h3 id="af-summary" className="text-[13px] font-semibold uppercase tracking-wide text-[#647A73]">Application summary</h3>
+                <h3 id="af-summary" className="text-[13px] font-semibold uppercase tracking-wide text-muted">Application summary</h3>
                 <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
                   <Summary label="Applicant" value={[f.firstName, f.middleName, f.lastName, f.suffix].filter((x) => x.trim()).join(' ') || '—'} />
                   <Summary label="Diploma program" value={program ? `${program.name} (${program.code})` : '—'} />
@@ -545,18 +545,18 @@ export default function ApplicationForm({ open, editingId, programs, schoolYears
                         <li key={d.id} className="grid grid-cols-1 gap-3 px-4 py-3.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-sm font-semibold text-[#172B3A]">{d.name}</span>
+                              <span className="text-sm font-semibold text-ink">{d.name}</span>
                               <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${d.isRequired ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{d.isRequired ? 'Required' : 'Optional'}</span>
                               <Badge status={d.effective} label={DOCUMENT_STATUS_LABELS[d.effective]} />
-                              {d.staged && <span className="text-[11px] font-medium text-[#087F5B]">· saved when you save</span>}
+                              {d.staged && <span className="text-[11px] font-medium text-primary-600">· saved when you save</span>}
                             </div>
                             {showFile && (
                               <p className={`mt-1 flex items-center gap-1.5 text-xs ${MUTED}`}><Paperclip className="h-3.5 w-3.5" aria-hidden="true" /><span className="truncate">{showFile.name}</span>{bytes(showFile.size) && <span>· {bytes(showFile.size)}</span>}</p>
                             )}
                             {!showFile && (d.staged?.received || (!d.staged && isHandedIn(d.stored) && !d.onFile?.file)) && (
-                              <p className={`mt-1 flex items-center gap-1.5 text-xs ${MUTED}`}><CheckCircle2 className="h-3.5 w-3.5 text-[#087F5B]" aria-hidden="true" />Paper copy received</p>
+                              <p className={`mt-1 flex items-center gap-1.5 text-xs ${MUTED}`}><CheckCircle2 className="h-3.5 w-3.5 text-primary-600" aria-hidden="true" />Paper copy received</p>
                             )}
-                            {d.onFile?.remarks && !d.staged && <p className="mt-1 text-xs text-[#172B3A]"><span className={MUTED}>Reviewer remarks:</span> {d.onFile.remarks}</p>}
+                            {d.onFile?.remarks && !d.staged && <p className="mt-1 text-xs text-ink"><span className={MUTED}>Reviewer remarks:</span> {d.onFile.remarks}</p>}
                             {error && <p className="mt-1 text-xs font-medium text-red-700" role="alert">{error}</p>}
                           </div>
                           {canManageDocuments && (
@@ -565,7 +565,7 @@ export default function ApplicationForm({ open, editingId, programs, schoolYears
                                 <span className={`text-xs ${MUTED}`}>Verified — locked</span>
                               ) : (
                                 <>
-                                  <label className={`${BTN_SECONDARY} h-9 cursor-pointer px-3 text-[13px] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[#087F5B]`}>
+                                  <label className={`${BTN_SECONDARY} h-9 cursor-pointer px-3 text-[13px] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary-600`}>
                                     <Upload className="h-4 w-4" aria-hidden="true" />
                                     {showFile ? 'Replace' : 'Upload'}
                                     <input id={`af-doc-${d.id}`} type="file" accept={UPLOAD_ACCEPT} className="sr-only" aria-label={`Upload ${d.name}`}
@@ -575,7 +575,7 @@ export default function ApplicationForm({ open, editingId, programs, schoolYears
                                     <button type="button" className={`${BTN_GHOST} h-9 px-2.5 text-[13px]`} onClick={() => stage(d.id, { received: true })}>Mark received</button>
                                   )}
                                   {d.staged ? (
-                                    <button type="button" className={`rounded-md p-1.5 text-[#647A73] hover:bg-slate-100 hover:text-[#172B3A] ${RING}`} onClick={() => stage(d.id, null)} aria-label={`Undo the change to ${d.name}`}>
+                                    <button type="button" className={`rounded-md p-1.5 text-muted hover:bg-slate-100 hover:text-ink ${RING}`} onClick={() => stage(d.id, null)} aria-label={`Undo the change to ${d.name}`}>
                                       <X className="h-4 w-4" aria-hidden="true" />
                                     </button>
                                   ) : isHandedIn(d.stored) || d.stored === 'rejected' ? (
@@ -593,8 +593,8 @@ export default function ApplicationForm({ open, editingId, programs, schoolYears
                 <p className={`text-xs ${MUTED}`}>PDF, Word, Excel, PowerPoint, JPG or PNG · up to 4 MB each.</p>
               </section>
 
-              <p className="flex items-start gap-2 rounded-lg bg-[#E7F7F0] px-3.5 py-2.5 text-xs text-[#08563F]">
-                <Info className="mt-px h-4 w-4 shrink-0 text-[#087F5B]" aria-hidden="true" />
+              <p className="flex items-start gap-2 rounded-lg bg-primary-50 px-3.5 py-2.5 text-xs text-primary-800">
+                <Info className="mt-px h-4 w-4 shrink-0 text-primary-600" aria-hidden="true" />
                 Recording an application does not enroll the applicant. Once approved, the applicant moves to Enrollments as a pending enrollment for the chosen school year.
               </p>
             </div>
@@ -609,7 +609,7 @@ export default function ApplicationForm({ open, editingId, programs, schoolYears
             <button type="button" className={`${BTN_PRIMARY} bg-red-600 hover:bg-red-700`} onClick={() => { setConfirmDiscard(false); onClose(); }}>Discard</button>
           </div>
         )}>
-        <p className="text-sm text-[#172B3A]">What you entered{Object.keys(staged).length ? ' and the files you chose' : ''} will be lost. Save it as a draft instead to finish later.</p>
+        <p className="text-sm text-ink">What you entered{Object.keys(staged).length ? ' and the files you chose' : ''} will be lost. Save it as a draft instead to finish later.</p>
       </Modal>
     </>
   );
@@ -619,7 +619,7 @@ function Summary({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="min-w-0">
       <dt className={`text-xs ${MUTED}`}>{label}</dt>
-      <dd className="mt-0.5 truncate font-medium text-[#172B3A]">{value}</dd>
+      <dd className="mt-0.5 truncate font-medium text-ink">{value}</dd>
     </div>
   );
 }

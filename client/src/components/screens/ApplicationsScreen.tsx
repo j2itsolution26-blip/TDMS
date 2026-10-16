@@ -53,10 +53,10 @@ interface Props {
 }
 
 const KPIS: { key: ApplicationStatus | 'total'; label: string; icon: typeof ClipboardList; tone: string; hint: string }[] = [
-  { key: 'total', label: 'Total Applications', icon: ClipboardList, tone: 'bg-[#E7F7F0] text-[#087F5B]', hint: 'Including drafts' },
+  { key: 'total', label: 'Total Applications', icon: ClipboardList, tone: 'bg-primary-50 text-primary-600', hint: 'Including drafts' },
   { key: 'submitted', label: 'Submitted', icon: FileClock, tone: 'bg-amber-50 text-amber-700', hint: 'Waiting for review' },
   { key: 'under_review', label: 'Under Review', icon: FileSearch, tone: 'bg-blue-50 text-blue-700', hint: 'Being reviewed' },
-  { key: 'approved', label: 'Approved', icon: CheckCircle2, tone: 'bg-[#E7F7F0] text-[#087F5B]', hint: 'Sent to Enrollments' },
+  { key: 'approved', label: 'Approved', icon: CheckCircle2, tone: 'bg-primary-50 text-primary-600', hint: 'Sent to Enrollments' },
   { key: 'returned', label: 'Returned', icon: RotateCcw, tone: 'bg-red-50 text-red-700', hint: 'Sent back to fix' },
 ];
 
@@ -107,11 +107,11 @@ export default function ApplicationsScreen({
         {KPIS.map(({ key, label, icon: Icon, tone, hint }) => (
           <li key={key}>
             <button type="button" onClick={() => go({ status: key === 'total' ? '' : key })} aria-pressed={(filters.status || 'total') === key}
-              className={`flex h-full w-full items-start gap-3 rounded-xl border bg-white p-4 text-left shadow-sm transition hover:border-[#087F5B]/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#087F5B] ${(filters.status || 'total') === key ? 'border-[#087F5B]/60 ring-1 ring-[#087F5B]/20' : 'border-border'}`}>
+              className={`flex h-full w-full items-start gap-3 rounded-xl border bg-white p-4 text-left shadow-sm transition hover:border-primary-600/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 ${(filters.status || 'total') === key ? 'border-primary-600/60 ring-1 ring-primary-600/20' : 'border-border'}`}>
               <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${tone}`} aria-hidden="true"><Icon className="h-5 w-5" /></span>
               <span className="min-w-0">
                 <span className="block text-xs font-medium text-slate-500">{label}</span>
-                <span className="block text-2xl font-bold tabular-nums text-[#172B3A]">{counts[key] ?? 0}</span>
+                <span className="block text-2xl font-bold tabular-nums text-ink">{counts[key] ?? 0}</span>
                 <span className="block truncate text-[11px] text-slate-500">{hint}</span>
               </span>
             </button>
@@ -126,7 +126,7 @@ export default function ApplicationsScreen({
             const on = filters.status === s;
             return (
               <button key={s || 'all'} type="button" onClick={() => go({ status: s })} aria-pressed={on}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#087F5B] ${on ? 'bg-[#087F5B] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 ${on ? 'bg-primary-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>
                 {s ? APPLICATION_STATUS_LABELS[s] : 'All'}
                 <span className={`rounded-full px-1.5 text-[11px] tabular-nums ${on ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>{s ? counts[s] ?? 0 : counts.total}</span>
               </button>
@@ -192,7 +192,7 @@ export default function ApplicationsScreen({
                 <li key={r.id} className="space-y-2 px-4 py-3.5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate font-semibold text-[#172B3A]">{r.fullName}</p>
+                      <p className="truncate font-semibold text-ink">{r.fullName}</p>
                       <p className="text-xs text-slate-500">{r.applicationNumber} · {r.program.code}{r.schoolYear ? ` · SY ${r.schoolYear.label}` : ''}</p>
                     </div>
                     <Badge status={r.status} label={APPLICATION_STATUS_LABELS[r.status as ApplicationStatus]} />
@@ -223,18 +223,18 @@ export default function ApplicationsScreen({
                 <tbody className="divide-y divide-border">
                   {rows.map((r) => (
                     <tr key={r.id} className="align-top hover:bg-slate-50/60">
-                      <td className="whitespace-nowrap px-2.5 py-3 font-mono text-xs font-semibold text-[#172B3A]">{r.applicationNumber ?? '—'}</td>
+                      <td className="whitespace-nowrap px-2.5 py-3 font-mono text-xs font-semibold text-ink">{r.applicationNumber ?? '—'}</td>
                       <td className="min-w-[9rem] px-2.5 py-3">
-                        <button type="button" onClick={() => setViewing(r.id)} className="text-left font-semibold text-[#172B3A] hover:text-[#087F5B] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#087F5B]">{r.fullName}</button>
+                        <button type="button" onClick={() => setViewing(r.id)} className="text-left font-semibold text-ink hover:text-primary-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600">{r.fullName}</button>
                         <p className="max-w-[16rem] truncate text-xs text-slate-500 2xl:hidden">{[r.email, r.phone].filter(Boolean).join(' · ')}</p>
-                        {r.student && <p className="text-xs text-[#087F5B]">Student No. {r.student.studentNumber}</p>}
+                        {r.student && <p className="text-xs text-primary-600">Student No. {r.student.studentNumber}</p>}
                       </td>
                       <td className="hidden px-2.5 py-3 text-slate-600 2xl:table-cell">
                         <p className="max-w-[14rem] truncate">{r.email ?? '—'}</p>
                         <p className="text-xs text-slate-500">{r.phone ?? ''}</p>
                       </td>
                       <td className="px-2.5 py-3" title={r.program.name}>
-                        <span className="whitespace-nowrap font-semibold text-[#172B3A]">{r.program.code}</span>
+                        <span className="whitespace-nowrap font-semibold text-ink">{r.program.code}</span>
                       </td>
                       <td className="whitespace-nowrap px-2.5 py-3 text-slate-600">{r.schoolYear?.label ?? '—'}</td>
                       <td className="px-2.5 py-3"><Progress docs={r.documents} /></td>
@@ -286,11 +286,11 @@ function Progress({ docs }: { docs: ApplicationRow['documents'] }) {
   return (
     <div className="w-24" title={`${docs.handedIn} of ${docs.total} handed in, ${docs.verified} verified`}>
       <div className="flex items-baseline justify-between text-xs">
-        <span className="font-semibold tabular-nums text-[#172B3A]">{docs.handedIn}/{docs.total}</span>
-        <span className={`tabular-nums ${complete ? 'text-[#087F5B]' : 'text-slate-500'}`}>{docs.verified} verified</span>
+        <span className="font-semibold tabular-nums text-ink">{docs.handedIn}/{docs.total}</span>
+        <span className={`tabular-nums ${complete ? 'text-primary-600' : 'text-slate-500'}`}>{docs.verified} verified</span>
       </div>
       <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-valuemin={0} aria-valuemax={docs.total} aria-valuenow={docs.handedIn} aria-label="Documents handed in">
-        <div className={`h-full rounded-full ${complete ? 'bg-[#087F5B]' : 'bg-[#34A27D]'}`} style={{ width: `${pct}%` }} />
+        <div className={`h-full rounded-full ${complete ? 'bg-primary-600' : 'bg-[#34A27D]'}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
@@ -300,20 +300,20 @@ function RowActions({ row, canUpdate, canReview, onView, onEdit }: {
   row: ApplicationRow; canUpdate: boolean; canReview: boolean; onView: (id: string) => void; onEdit: (id: string) => void;
 }) {
   const reviewable = canReview && (row.status === 'submitted' || row.status === 'under_review');
-  const btn = 'relative inline-flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-[#087F5B]';
+  const btn = 'relative inline-flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600';
   return (
     <div className="flex items-center gap-1 md:justify-end">
       {reviewable ? (
-        <button type="button" onClick={() => onView(row.id)} className={`${btn} bg-[#087F5B] text-white hover:bg-[#076A4C]`} aria-label={`Review ${row.fullName}`}>
+        <button type="button" onClick={() => onView(row.id)} className={`${btn} bg-primary-600 text-white hover:bg-primary-700`} aria-label={`Review ${row.fullName}`}>
           <FileSearch className="h-3.5 w-3.5" aria-hidden="true" /> Review
         </button>
       ) : (
-        <button type="button" onClick={() => onView(row.id)} className={`${btn} text-slate-600 hover:bg-slate-100 hover:text-[#172B3A]`} aria-label={`View ${row.fullName}`}>
+        <button type="button" onClick={() => onView(row.id)} className={`${btn} text-slate-600 hover:bg-slate-100 hover:text-ink`} aria-label={`View ${row.fullName}`}>
           <Eye className="h-3.5 w-3.5" aria-hidden="true" /> View
         </button>
       )}
       {canUpdate && isEditable(row.status) && (
-        <button type="button" onClick={() => onEdit(row.id)} className={`${btn} text-slate-600 hover:bg-slate-100 hover:text-[#172B3A]`} aria-label={`Edit ${row.fullName}`} title="Edit">
+        <button type="button" onClick={() => onEdit(row.id)} className={`${btn} text-slate-600 hover:bg-slate-100 hover:text-ink`} aria-label={`Edit ${row.fullName}`} title="Edit">
           <Pencil className="h-3.5 w-3.5" aria-hidden="true" /><span className="md:sr-only">Edit</span>
         </button>
       )}

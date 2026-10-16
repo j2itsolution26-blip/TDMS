@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import Link from '@/lib/link';
 
 /**
  * Port of resources/views/components/*.blade.php.
@@ -151,7 +152,7 @@ export function EmptyState({
           <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.75h16.5M3.75 9.75a2.25 2.25 0 012.25-2.25h12a2.25 2.25 0 012.25 2.25M3.75 9.75v7.5A2.25 2.25 0 006 19.5h12a2.25 2.25 0 002.25-2.25v-7.5" />
         </svg>
       </div>
-      <p className="text-sm font-medium text-navy-900">{title}</p>
+      <p className="text-sm font-semibold text-ink">{title}</p>
       {description && <p className="mt-1 text-sm text-muted max-w-sm">{description}</p>}
       {actions && <div className="mt-4">{actions}</div>}
     </div>
@@ -170,7 +171,7 @@ const ALERT_ICONS: Record<string, string> = {
 };
 
 const ALERT_STYLES: Record<string, [string, string, string]> = {
-  success: ['bg-green-50 border-green-200', 'text-green-800', 'text-green-500'],
+  success: ['bg-primary-50 border-primary-200', 'text-primary-800', 'text-primary-600'],
   warning: ['bg-amber-50 border-amber-200', 'text-amber-800', 'text-amber-500'],
   danger: ['bg-red-50 border-red-200', 'text-red-800', 'text-red-500'],
   info: ['bg-blue-50 border-blue-200', 'text-blue-800', 'text-blue-500'],
@@ -187,9 +188,10 @@ export function Alert({
 }) {
   const [container, text, iconColor] = ALERT_STYLES[type] ?? ALERT_STYLES.info!;
 
+  // Problems interrupt; confirmations and notes wait their turn.
   return (
-    <div className={cx('flex gap-3 border rounded-xl p-4', container)}>
-      <svg className={cx('w-5 h-5 shrink-0 mt-0.5', iconColor)} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+    <div role={type === 'danger' ? 'alert' : 'status'} className={cx('flex gap-3 border rounded-lg p-4', container)}>
+      <svg className={cx('w-5 h-5 shrink-0 mt-0.5', iconColor)} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
         <path strokeLinecap="round" strokeLinejoin="round" d={ALERT_ICONS[type] ?? ALERT_ICONS.info} />
       </svg>
       <div className={cx('text-sm', text)}>
@@ -203,29 +205,33 @@ export function Alert({
 // --- buttons ---------------------------------------------------------------
 // The Blade versions were one-liners delegating to Tailwind classes.
 
-export const BUTTON_PRIMARY =
-  'inline-flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50';
+// One control geometry for the whole workspace, shared with the Fluent dialogs
+// (components/fluent-form.tsx): 40px tall, 8px corners, a pressed state, and a
+// focus ring for the keyboard only (focus-visible, so a mouse click shows none).
+// Fields take Fluent's bottom stroke: a light outline with a darker underline
+// (#7D8F88, 3.4:1 on white) so the control stays identifiable at WCAG's 3:1.
+const BUTTON_BASE =
+  'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
 
-export const BUTTON_SECONDARY =
-  'inline-flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2 text-sm font-semibold text-ink shadow-sm transition hover:bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50';
+export const BUTTON_PRIMARY = `${BUTTON_BASE} bg-primary-600 text-white shadow-sm hover:bg-primary-700 active:bg-primary-800 focus-visible:ring-primary-600`;
 
-export const BUTTON_DANGER =
-  'inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50';
+export const BUTTON_SECONDARY = `${BUTTON_BASE} border border-[#D6E2DD] bg-white text-ink shadow-sm hover:bg-surface active:bg-primary-50 focus-visible:ring-primary-600`;
 
-export const BUTTON_SUCCESS =
-  'inline-flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50';
+export const BUTTON_DANGER = `${BUTTON_BASE} bg-red-600 text-white shadow-sm hover:bg-red-700 active:bg-red-800 focus-visible:ring-red-600`;
+
+export const BUTTON_SUCCESS = BUTTON_PRIMARY;
 
 export const INPUT_CLASS =
-  'block w-full rounded-xl border-border text-sm text-ink shadow-sm focus:border-primary-600 focus:ring-primary-600';
+  'block w-full rounded-lg border-[#D6E2DD] border-b-[#7D8F88] text-sm text-ink shadow-sm placeholder:text-[#677872] focus:border-primary-600 focus:ring-2 focus:ring-primary-600/20 aria-[invalid=true]:border-red-400 disabled:cursor-not-allowed disabled:bg-surface';
 
-export const LABEL_CLASS = 'block text-sm font-medium text-slate-700';
+export const LABEL_CLASS = 'block text-[13px] font-semibold text-ink';
 
 // --- field errors ----------------------------------------------------------
 
 export function FieldError({ messages }: { messages?: string[] }) {
   if (!messages || messages.length === 0) return null;
   return (
-    <ul className="mt-2 space-y-1 text-sm text-red-600">
+    <ul className="mt-1.5 space-y-1 text-xs font-medium text-red-700">
       {messages.map((m) => (
         <li key={m}>{m}</li>
       ))}
@@ -258,32 +264,24 @@ export function Pagination({
     return `${basePath}?${params.toString()}`;
   };
 
+  const step = 'inline-flex min-h-9 items-center rounded-lg border border-[#D6E2DD] bg-white px-3 text-sm font-medium text-ink';
+  const page_ = (label: string, target: number, enabled: boolean, rel: 'prev' | 'next') =>
+    enabled ? (
+      <Link href={href(target)} rel={rel} className={cx(step, 'transition-colors hover:bg-surface focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2')}>
+        {label}
+      </Link>
+    ) : (
+      <span aria-disabled="true" className={cx(step, 'cursor-not-allowed opacity-50')}>{label}</span>
+    );
+
   return (
-    <nav className="flex items-center justify-between border-t border-border px-6 py-3" aria-label="Pagination">
-      <p className="text-sm text-slate-500">
-        Page {page} of {lastPage} &middot; {total} total
+    <nav className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 sm:px-6" aria-label="Pagination">
+      <p className="text-sm text-muted tabular-nums">
+        Page <span className="font-semibold text-ink">{page}</span> of {lastPage} &middot; {total} total
       </p>
       <div className="flex gap-2">
-        <a
-          href={page > 1 ? href(page - 1) : undefined}
-          aria-disabled={page <= 1}
-          className={cx(
-            'rounded-lg border border-slate-300 px-3 py-1.5 text-sm',
-            page <= 1 ? 'pointer-events-none opacity-40' : 'hover:bg-slate-50',
-          )}
-        >
-          Previous
-        </a>
-        <a
-          href={page < lastPage ? href(page + 1) : undefined}
-          aria-disabled={page >= lastPage}
-          className={cx(
-            'rounded-lg border border-slate-300 px-3 py-1.5 text-sm',
-            page >= lastPage ? 'pointer-events-none opacity-40' : 'hover:bg-slate-50',
-          )}
-        >
-          Next
-        </a>
+        {page_('Previous', page - 1, page > 1, 'prev')}
+        {page_('Next', page + 1, page < lastPage, 'next')}
       </div>
     </nav>
   );

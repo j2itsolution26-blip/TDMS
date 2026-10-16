@@ -858,3 +858,47 @@
         grid-template-columns: 1fr;
     }
 }
+
+/*
+ * The signed-in workspace — browser surfaces themed from the TDMS palette.
+ *
+ * Scoped to a body that holds .tdms-workspace (the app shell's root) — so
+ * dialogs portalled into <body> are covered too — and the sign-in screens
+ * above keep their own blue. Selection, caret, native checkboxes and radios,
+ * scrollbars and keyboard focus would otherwise ship browser defaults that
+ * belong to no design system.
+ *
+ *   selection: ink #152B35 on primary-100 #CDEFDF ...... 11.6:1
+ *   focus outline: primary-600 #087F5B on white ........ 5.0:1 (≥3:1 for UI)
+ */
+body:has(.tdms-workspace) {
+    accent-color: #087F5B;
+    caret-color: #087F5B;
+}
+
+body:has(.tdms-workspace) ::selection {
+    background: #CDEFDF;
+    color: #152B35;
+}
+
+/* Any focusable element without its own ring still shows a branded one — keyboard only. */
+body:has(.tdms-workspace) :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid #087F5B;
+    outline-offset: 2px;
+}
+
+/* Elements that draw their own ring (Tailwind focus-visible:ring-*) keep only that. */
+body:has(.tdms-workspace) :where([class*="focus-visible:ring"], [class*="focus:ring"]):focus-visible {
+    outline: none;
+}
+
+body:has(.tdms-workspace) :where(h1, h2, h3) {
+    text-wrap: balance;
+}
+
+/* Slim scrollbars in the palette (the page, the sidebar, tables, dialogs). */
+html:has(.tdms-workspace),
+body:has(.tdms-workspace) * {
+    scrollbar-width: thin;
+    scrollbar-color: #B9CCC4 transparent;
+}

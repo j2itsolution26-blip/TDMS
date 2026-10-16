@@ -232,15 +232,15 @@ export default function SubjectForm({ open, editing, programs, scope, onClose, o
             <li key={n}>
               <button type="button" onClick={() => goTo(n)} aria-current={on ? 'step' : undefined}
                 className={`flex w-full items-center gap-2.5 rounded-md text-left text-sm ${RING}`}>
-                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold transition ${on || done ? 'bg-[#087F5B] text-white' : 'bg-[#EEF2F1] text-[#647A73]'}`}>{n}</span>
-                <span className={on ? 'font-semibold text-[#172B3A]' : MUTED}>{label}</span>
+                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold transition ${on || done ? 'bg-primary-600 text-white' : 'bg-[#EEF2F1] text-muted'}`}>{n}</span>
+                <span className={on ? 'font-semibold text-ink' : MUTED}>{label}</span>
               </button>
             </li>
           );
         })}
       </ol>
       <div className="mt-3 h-1 overflow-hidden rounded-full bg-[#E8EEEC]" aria-hidden="true">
-        <div className="h-full rounded-full bg-[#087F5B] transition-all duration-300" style={{ width: step === 2 ? '100%' : '50%' }} />
+        <div className="h-full rounded-full bg-primary-600 transition-all duration-300" style={{ width: step === 2 ? '100%' : '50%' }} />
       </div>
     </nav>
   );
@@ -248,19 +248,19 @@ export default function SubjectForm({ open, editing, programs, scope, onClose, o
   const footer = (
     <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
       <button type="button" onClick={onClose} disabled={Boolean(busy)}
-        className={`inline-flex h-10 items-center justify-center rounded-lg border border-[#D6E2DD] bg-white px-4 text-sm font-semibold text-[#172B3A] transition hover:bg-slate-50 disabled:opacity-60 ${RING}`}>
+        className={`inline-flex h-10 items-center justify-center rounded-lg border border-[#D6E2DD] bg-white px-4 text-sm font-semibold text-ink transition hover:bg-slate-50 disabled:opacity-60 ${RING}`}>
         Cancel
       </button>
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:gap-3">
         {!editing && (
           <button type="button" onClick={() => submit('another')} disabled={Boolean(busy)} aria-busy={busy === 'another'}
-            className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold text-[#087F5B] transition hover:bg-[#E7F7F0] disabled:opacity-60 ${RING}`}>
+            className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold text-primary-600 transition hover:bg-primary-50 disabled:opacity-60 ${RING}`}>
             {busy === 'another' && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
             Save &amp; Map Another
           </button>
         )}
         <button type="submit" form="subject-form" disabled={Boolean(busy)} aria-busy={busy === 'close'}
-          className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#087F5B] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#076A4C] disabled:cursor-not-allowed disabled:opacity-70 ${RING}`}>
+          className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-70 ${RING}`}>
           {busy === 'close' ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Save className="h-4 w-4" aria-hidden="true" />}
           {busy === 'close' ? 'Saving…' : 'Save Subject'}
         </button>
@@ -274,9 +274,9 @@ export default function SubjectForm({ open, editing, programs, scope, onClose, o
       onClose={() => !busy && onClose()}
       title={editing ? 'Edit Subject' : 'Create Subject'}
       subtitle={editing ? `${editing.code} · update this subject in the TDMS catalogue.` : 'Add a reusable subject to the TDMS catalogue'}
-      icon={<span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#E7F7F0] text-[#087F5B]" aria-hidden="true"><BookOpen className="h-[22px] w-[22px]" /></span>}
+      icon={<span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600" aria-hidden="true"><BookOpen className="h-[22px] w-[22px]" /></span>}
       headerExtra={header}
-      titleClassName="text-xl font-bold tracking-[-0.01em] text-[#172B3A]"
+      titleClassName="text-xl font-bold tracking-[-0.01em] text-ink"
       maxWidth="sm:max-w-[640px]"
       appearance="fluent"
       animate
@@ -285,7 +285,7 @@ export default function SubjectForm({ open, editing, programs, scope, onClose, o
     >
       <form id="subject-form" ref={formRef} onSubmit={(ev) => { ev.preventDefault(); void submit('close'); }} className="space-y-5" noValidate>
         {problem && <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800 ring-1 ring-inset ring-red-200">{problem}</p>}
-        {saved && <p role="status" className="rounded-lg bg-[#E7F7F0] px-4 py-3 text-sm text-[#08563F] ring-1 ring-inset ring-[#C8EEDD]">{saved}</p>}
+        {saved && <p role="status" className="rounded-lg bg-primary-50 px-4 py-3 text-sm text-primary-800 ring-1 ring-inset ring-[#C8EEDD]">{saved}</p>}
 
         {/* 1 — Subject details */}
         <section aria-labelledby="sf-step1" className="space-y-4">
@@ -332,8 +332,8 @@ export default function SubjectForm({ open, editing, programs, scope, onClose, o
 
           <details open={more} onToggle={(ev) => setMore((ev.target as HTMLDetailsElement).open)} className="rounded-lg border border-[#E2EAE6]">
             <summary className={`flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm ${RING}`}>
-              <span><span className="font-semibold text-[#172B3A]">More details</span> <span className={MUTED}>(optional) — contact hours, class size, remarks</span></span>
-              <ChevronDown className={`h-4 w-4 shrink-0 text-[#647A73] transition ${more ? 'rotate-180' : ''}`} aria-hidden="true" />
+              <span><span className="font-semibold text-ink">More details</span> <span className={MUTED}>(optional) — contact hours, class size, remarks</span></span>
+              <ChevronDown className={`h-4 w-4 shrink-0 text-muted transition ${more ? 'rotate-180' : ''}`} aria-hidden="true" />
             </summary>
             <div className="space-y-4 border-t border-[#E2EAE6] px-3 py-3">
               <div className={`grid grid-cols-1 gap-4 ${hours.lecture && hours.lab ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
@@ -355,7 +355,7 @@ export default function SubjectForm({ open, editing, programs, scope, onClose, o
                 )}
                 <div>
                   <label htmlFor="sf-total" className={LABEL}>Total contact</label>
-                  <input id="sf-total" readOnly tabIndex={-1} className={`${FIELD} cursor-default bg-slate-50 text-[#647A73]`} value={total ? `${total} h/week` : '—'} />
+                  <input id="sf-total" readOnly tabIndex={-1} className={`${FIELD} cursor-default bg-slate-50 text-muted`} value={total ? `${total} h/week` : '—'} />
                 </div>
                 <div>
                   <label htmlFor="sf-recommendedClassSize" className={LABEL}>Class size</label>
@@ -374,11 +374,11 @@ export default function SubjectForm({ open, editing, programs, scope, onClose, o
           <div className="border-t border-[#E8EEEC] pt-4">
             <div className="flex items-start gap-3">
               <button id="sf-active" type="button" role="switch" aria-checked={f.isActive} aria-labelledby="sf-active-label" aria-describedby="sf-active-hint" onClick={() => set('isActive', !f.isActive)}
-                className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${RING} ${f.isActive ? 'bg-[#087F5B]' : 'bg-[#CBD5D1]'}`}>
+                className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${RING} ${f.isActive ? 'bg-primary-600' : 'bg-[#CBD5D1]'}`}>
                 <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition ${f.isActive ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
               </button>
               <div>
-                <p id="sf-active-label" className="text-sm font-semibold text-[#172B3A]">Active subject</p>
+                <p id="sf-active-label" className="text-sm font-semibold text-ink">Active subject</p>
                 <p id="sf-active-hint" className={`text-xs ${MUTED}`}>Inactive subjects will not be available for curriculum mapping and scheduling.</p>
               </div>
             </div>
@@ -414,20 +414,20 @@ export default function SubjectForm({ open, editing, programs, scope, onClose, o
             </div>
             <p id="sf-program-help" className={`text-xs ${MUTED}`} aria-live="polite">
               {placing && program?.curriculum
-                ? <>Goes into {program.code}’s current curriculum, <b className="font-semibold text-[#172B3A]">{program.curriculum.version}</b> (from school year {program.curriculum.effective.replace('-', '–')}).</>
+                ? <>Goes into {program.code}’s current curriculum, <b className="font-semibold text-ink">{program.curriculum.version}</b> (from school year {program.curriculum.effective.replace('-', '–')}).</>
                 : 'Saved to the catalogue only. Map it to a program, year level and semester later from the Curriculum Map.'}
             </p>
 
             {placing && (
               <div className="space-y-3">
-                <label className="flex items-center gap-2.5 text-sm text-[#172B3A]">
-                  <input type="checkbox" className="h-4 w-4 rounded border-[#D6E2DD] text-[#087F5B] focus:ring-[#087F5B]" checked={f.isRequired} onChange={(ev) => set('isRequired', ev.target.checked)} />
+                <label className="flex items-center gap-2.5 text-sm text-ink">
+                  <input type="checkbox" className="h-4 w-4 rounded border-[#D6E2DD] text-primary-600 focus:ring-primary-600" checked={f.isRequired} onChange={(ev) => set('isRequired', ev.target.checked)} />
                   <span className="font-semibold">Required subject</span> <span className={MUTED}>(untick for an elective)</span>
                 </label>
                 <details className="group rounded-lg border border-[#D6E2DD] bg-white">
                   <summary id="sf-prereq" className={`flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm ${RING}`}>
-                    <span><span className="font-semibold text-[#172B3A]">Prerequisite subjects</span> <span className={MUTED}>(optional{chosen.length ? ` · ${chosen.length} selected` : ''})</span></span>
-                    <ChevronDown className="h-4 w-4 text-[#647A73] transition group-open:rotate-180" aria-hidden="true" />
+                    <span><span className="font-semibold text-ink">Prerequisite subjects</span> <span className={MUTED}>(optional{chosen.length ? ` · ${chosen.length} selected` : ''})</span></span>
+                    <ChevronDown className="h-4 w-4 text-muted transition group-open:rotate-180" aria-hidden="true" />
                   </summary>
                   <div className="border-t border-[#D6E2DD] px-3 py-3">
                     {candidates.length === 0 ? (
@@ -437,9 +437,9 @@ export default function SubjectForm({ open, editing, programs, scope, onClose, o
                         {candidates.map((c) => (
                           <li key={c.id}>
                             <label className="flex items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-[#F4FBF8]">
-                              <input type="checkbox" className="h-4 w-4 rounded border-[#D6E2DD] text-[#087F5B] focus:ring-[#087F5B]" checked={f.prerequisites.includes(c.subject.id)}
+                              <input type="checkbox" className="h-4 w-4 rounded border-[#D6E2DD] text-primary-600 focus:ring-primary-600" checked={f.prerequisites.includes(c.subject.id)}
                                 onChange={(ev) => set('prerequisites', ev.target.checked ? [...f.prerequisites, c.subject.id] : f.prerequisites.filter((x) => x !== c.subject.id))} />
-                              <span><b className="text-[#172B3A]">{c.subject.code}</b> <span className={MUTED}>{yearLevelLabel(c.yearLevel)}, {SEMESTER_LABELS[c.semester]}</span></span>
+                              <span><b className="text-ink">{c.subject.code}</b> <span className={MUTED}>{yearLevelLabel(c.yearLevel)}, {SEMESTER_LABELS[c.semester]}</span></span>
                             </label>
                           </li>
                         ))}
@@ -450,9 +450,9 @@ export default function SubjectForm({ open, editing, programs, scope, onClose, o
                 {chosen.length > 0 && (
                   <ul className="flex flex-wrap gap-1.5" aria-label="Selected prerequisites">
                     {chosen.map((c) => (
-                      <li key={c.id} className="inline-flex items-center gap-1 rounded-full bg-[#E7F7F0] py-1 pl-2.5 pr-1 text-xs font-semibold text-[#08563F] ring-1 ring-inset ring-[#C8EEDD]">
+                      <li key={c.id} className="inline-flex items-center gap-1 rounded-full bg-primary-50 py-1 pl-2.5 pr-1 text-xs font-semibold text-primary-800 ring-1 ring-inset ring-[#C8EEDD]">
                         {c.subject.code}
-                        <button type="button" className={`rounded-full p-0.5 text-[#647A73] hover:bg-white hover:text-[#172B3A] ${RING}`} aria-label={`Remove prerequisite ${c.subject.code}`}
+                        <button type="button" className={`rounded-full p-0.5 text-muted hover:bg-white hover:text-ink ${RING}`} aria-label={`Remove prerequisite ${c.subject.code}`}
                           onClick={() => set('prerequisites', f.prerequisites.filter((x) => x !== c.subject.id))}>
                           <X className="h-3.5 w-3.5" aria-hidden="true" />
                         </button>
@@ -464,8 +464,8 @@ export default function SubjectForm({ open, editing, programs, scope, onClose, o
               </div>
             )}
 
-            <p className="flex items-start gap-2 rounded-lg bg-[#E7F7F0] px-3.5 py-2.5 text-xs text-[#08563F]">
-              <Info className="mt-px h-4 w-4 shrink-0 text-[#087F5B]" aria-hidden="true" />
+            <p className="flex items-start gap-2 rounded-lg bg-primary-50 px-3.5 py-2.5 text-xs text-primary-800">
+              <Info className="mt-px h-4 w-4 shrink-0 text-primary-600" aria-hidden="true" />
               You can schedule rooms, instructors and meeting times after mapping this subject to a curriculum and section.
             </p>
           </section>

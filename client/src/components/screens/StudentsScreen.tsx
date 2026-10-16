@@ -151,14 +151,14 @@ export default function StudentsScreen({
                 <tbody className="divide-y divide-border">
                   {rows.map((s) => (
                     <tr key={s.id}>
-                      <td className="px-6 py-3.5 text-sm font-medium text-navy-900">{s.studentNumber}</td>
-                      <td className="px-6 py-3.5 text-sm text-slate-700">
+                      <td className="whitespace-nowrap px-6 py-3.5 text-sm font-medium text-ink">{s.studentNumber}</td>
+                      <td className="whitespace-nowrap px-6 py-3.5 text-sm text-slate-700">
                         {s.fullName}
                         {s.email && <p className="text-xs text-slate-500">{s.email}</p>}
                       </td>
                       <td className="px-6 py-3.5 text-sm">
                         <span className="font-semibold text-navy-900">{s.program.code}</span>
-                        <p className="text-xs text-slate-500">{s.program.name}</p>
+                        <p className="max-w-[14rem] truncate text-xs text-slate-500" title={s.program.name}>{s.program.name}</p>
                       </td>
                       <td className="whitespace-nowrap px-6 py-3.5 text-sm text-slate-500">{yearLevelLabel(s.yearLevel)}</td>
                       <td className="px-6 py-3.5"><Badge status={s.status} /></td>

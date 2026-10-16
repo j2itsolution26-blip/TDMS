@@ -28,7 +28,7 @@ export default function AppLayout() {
 
   const shell = state.data;
   return (
-    <div className="relative min-h-screen bg-tdms-bg font-jakarta text-tdms-ink">
+    <div className="tdms-workspace relative min-h-screen bg-tdms-bg font-jakarta text-tdms-ink">
       {/* The soft mint glow in the top-right corner. */}
       <div
         aria-hidden="true"

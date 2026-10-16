@@ -237,51 +237,51 @@ function View({ canOpenStudent, canDecide, data, filters, status, programTabs, p
               <table className="min-w-full divide-y divide-border">
                 <thead className="bg-slate-50">
                   <tr>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Student</th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Program</th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Term</th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Section</th>
-                    <th scope="col" className="hidden px-6 py-3 text-left text-xs font-medium uppercase text-slate-500 sm:table-cell">Created</th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Status</th>
-                    {canDecide && <th scope="col" className="px-6 py-3 text-right text-xs font-medium uppercase text-slate-500"><span className="sr-only">Actions</span></th>}
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase text-slate-500">Student</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase text-slate-500">Program</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase text-slate-500">Term</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase text-slate-500">Section</th>
+                    <th scope="col" className="hidden px-4 py-3 text-left text-xs font-medium uppercase text-slate-500 sm:table-cell">Created</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase text-slate-500">Status</th>
+                    {canDecide && <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase text-slate-500"><span className="sr-only">Actions</span></th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {data.rows.map((row) => (
                     <tr key={row.id} className={row.status === 'pending' ? 'bg-amber-50/40' : undefined}>
-                      <td className="px-6 py-3.5 text-sm">
+                      <td className="px-4 py-3.5 text-sm">
                         {canOpenStudent ? (
-                          <Link href={`/students/${row.student.id}/enrollment`} className="font-medium text-primary-700 hover:underline">
+                          <Link href={`/students/${row.student.id}/enrollment`} className="whitespace-nowrap font-medium text-primary-700 hover:underline">
                             {row.student.name}
                           </Link>
                         ) : (
-                          <span className="font-medium text-navy-900">{row.student.name}</span>
+                          <span className="whitespace-nowrap font-medium text-ink">{row.student.name}</span>
                         )}
                         <p className="text-xs text-slate-500">{row.student.studentNumber}</p>
                       </td>
-                      <td className="px-6 py-3.5 text-sm">
+                      <td className="px-4 py-3.5 text-sm">
                         <span className="inline-flex rounded-md bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-800 ring-1 ring-inset ring-primary-100">{row.student.programCode}</span>
-                        <p className="mt-0.5 text-xs text-slate-500">{row.student.programName}</p>
+                        <p className="mt-0.5 max-w-[11rem] truncate text-xs text-slate-500" title={row.student.programName}>{row.student.programName}</p>
                       </td>
-                      <td className="px-6 py-3.5 text-sm text-slate-600">
+                      <td className="whitespace-nowrap px-4 py-3.5 text-sm text-slate-600">
                         SY {row.schoolYear} · Semester {row.semester}
                         <p className="text-xs text-slate-500">{yearLevelLabel(row.yearLevel)}</p>
                       </td>
-                      <td className="px-6 py-3.5 text-sm text-slate-600">
+                      <td className="px-4 py-3.5 text-sm text-slate-600">
                         {row.section
                           ? <span className="whitespace-nowrap font-medium text-navy-900">Section {row.section.split('Section ').pop()}</span>
                           : <span className="text-xs text-slate-500">{row.status === 'pending' ? 'On approval' : '—'}</span>}
                       </td>
-                      <td className="hidden px-6 py-3.5 text-sm text-slate-600 sm:table-cell">{formatDate(row.createdAt)}</td>
-                      <td className="px-6 py-3.5">
+                      <td className="hidden whitespace-nowrap px-4 py-3.5 text-sm text-slate-600 sm:table-cell">{formatDate(row.createdAt)}</td>
+                      <td className="px-4 py-3.5">
                         <Badge status={row.status} label={label(row.status)} />
                         <Decision row={row} />
                         {row.status === 'pending' && row.documents && row.documents.missing.length > 0 && (
-                          <p className="text-xs text-amber-700">{row.documents.missing.length} document{row.documents.missing.length === 1 ? '' : 's'} not verified</p>
+                          <p className="mt-1 text-xs text-amber-700">{row.documents.missing.length} document{row.documents.missing.length === 1 ? '' : 's'} not verified</p>
                         )}
                       </td>
                       {canDecide && (
-                        <td className="px-6 py-3.5 text-right">
+                        <td className="px-4 py-3.5 text-right">
                           {row.status === 'pending' && (
                             <button type="button" className={BUTTON_SECONDARY} onClick={() => { setNotice(null); setReviewing(row); }}>
                               Review

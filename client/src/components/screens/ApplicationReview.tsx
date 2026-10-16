@@ -107,14 +107,14 @@ export default function ApplicationReview({ id, canReview, canUpdate, canManageD
 
   return (
     <Drawer open={id !== null} onClose={onClose} title={d ? `Application ${d.applicationNumber ?? ''}`.trim() : 'Application'} width="sm:max-w-2xl" footer={footer}>
-      {!d && !loadError && <div className="flex items-center gap-2 py-12 text-sm text-[#647A73]" role="status"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Loading…</div>}
+      {!d && !loadError && <div className="flex items-center gap-2 py-12 text-sm text-muted" role="status"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Loading…</div>}
       {loadError && <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{loadError}</p>}
       {d && (
         <div className="space-y-6">
           {/* Who and where it stands */}
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-lg font-semibold text-[#172B3A]">{d.fullName}</p>
+              <p className="text-lg font-semibold text-ink">{d.fullName}</p>
               <p className={`text-sm ${MUTED}`}>{d.program.name} ({d.program.code}){d.schoolYear ? ` · SY ${d.schoolYear.label}` : ''}</p>
             </div>
             <Badge status={d.status} label={APPLICATION_STATUS_LABELS[d.status as ApplicationStatus] ?? d.status} />
@@ -123,7 +123,7 @@ export default function ApplicationReview({ id, canReview, canUpdate, canManageD
           {problem && <p role="alert" className="flex items-start gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800 ring-1 ring-inset ring-red-200"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{problem}</p>}
 
           {d.status === 'approved' && d.student && (
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-[#E7F7F0] px-4 py-3 text-sm text-[#08563F]">
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-primary-50 px-4 py-3 text-sm text-primary-800">
               <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Admitted as student <b>{d.student.studentNumber}</b>.
               <Link href={`/students/${d.student.id}/enrollment`} className="font-semibold underline underline-offset-2">Open enrollment</Link>
             </p>
@@ -159,7 +159,7 @@ export default function ApplicationReview({ id, canReview, canUpdate, canManageD
           {/* Documents */}
           <section aria-labelledby="ar-docs">
             <div className="flex items-baseline justify-between gap-2">
-              <h3 id="ar-docs" className="text-[13px] font-semibold uppercase tracking-wide text-[#647A73]">Requirements</h3>
+              <h3 id="ar-docs" className="text-[13px] font-semibold uppercase tracking-wide text-muted">Requirements</h3>
               <p className={`text-xs ${MUTED}`}>{d.progress.handedIn}/{d.progress.total} handed in · {d.progress.verified} verified</p>
             </div>
             <ul className="mt-2 divide-y divide-[#E8EEEC] rounded-xl border border-[#E2EAE6]">
@@ -168,19 +168,19 @@ export default function ApplicationReview({ id, canReview, canUpdate, canManageD
                 return (
                   <li key={r.requirementId} className="space-y-2 px-4 py-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold text-[#172B3A]">{r.name}</span>
+                      <span className="text-sm font-semibold text-ink">{r.name}</span>
                       <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${r.isRequired ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{r.isRequired ? 'Required' : 'Optional'}</span>
                       <Badge status={r.status} label={DOCUMENT_STATUS_LABELS[r.status as DocumentStatus] ?? r.status} />
                     </div>
                     <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 text-xs ${MUTED}`}>
                       {r.file && r.documentId ? (
-                        <a href={`/api/v1/application-documents/${r.documentId}/file?inline=1`} target="_blank" rel="noopener noreferrer" className={`inline-flex items-center gap-1 font-medium text-[#087F5B] hover:underline ${RING}`}>
+                        <a href={`/api/v1/application-documents/${r.documentId}/file?inline=1`} target="_blank" rel="noopener noreferrer" className={`inline-flex items-center gap-1 font-medium text-primary-600 hover:underline ${RING}`}>
                           <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />{r.file.name}<ExternalLink className="h-3 w-3" aria-hidden="true" /><span className="sr-only">(opens in a new tab)</span>
                         </a>
                       ) : handedIn ? <span>Paper copy received</span> : r.status === 'pending' ? <span>Nothing handed in yet</span> : null}
                       {r.verifiedAt && <span>{r.status === 'verified' ? 'Verified' : 'Reviewed'} {formatDate(r.verifiedAt)}{r.verifiedBy ? ` by ${r.verifiedBy}` : ''}</span>}
                     </div>
-                    {r.remarks && <p className="text-xs text-[#172B3A]"><span className={MUTED}>Remarks:</span> {r.remarks}</p>}
+                    {r.remarks && <p className="text-xs text-ink"><span className={MUTED}>Remarks:</span> {r.remarks}</p>}
                     {docsEditable && (
                       rejecting === r.requirementId ? (
                         <form className="flex flex-col gap-2 sm:flex-row" onSubmit={(ev) => { ev.preventDefault(); void act(`doc-${r.requirementId}`, () => api.post(`/api/v1/applications/${d.id}/documents/${r.requirementId}/status`, { status: 'rejected', remarks: docReason }), `${r.name} was rejected.`); }}>
@@ -196,7 +196,7 @@ export default function ApplicationReview({ id, canReview, canUpdate, canManageD
                           {handedIn && r.status !== 'verified' && (
                             <button type="button" className={`${BTN_SECONDARY} h-8 px-3 text-[13px]`} disabled={!!busy}
                               onClick={() => act(`doc-${r.requirementId}`, () => api.post(`/api/v1/applications/${d.id}/documents/${r.requirementId}/status`, { status: 'verified' }), `${r.name} was verified.`)}>
-                              {busy === `doc-${r.requirementId}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-3.5 w-3.5 text-[#087F5B]" aria-hidden="true" />} Verify
+                              {busy === `doc-${r.requirementId}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-3.5 w-3.5 text-primary-600" aria-hidden="true" />} Verify
                             </button>
                           )}
                           {(handedIn) && (
@@ -230,14 +230,14 @@ export default function ApplicationReview({ id, canReview, canUpdate, canManageD
           {/* The decision, opened from the footer */}
           {decision && undecided && (
             <section ref={panelRef} aria-labelledby="ar-decision" className="space-y-4 rounded-xl border border-[#C8EEDD] bg-[#F4FBF8] p-4">
-              <h3 id="ar-decision" className="flex items-center gap-2 text-[15px] font-semibold text-[#172B3A]">
-                <FileText className="h-4 w-4 text-[#087F5B]" aria-hidden="true" />
+              <h3 id="ar-decision" className="flex items-center gap-2 text-[15px] font-semibold text-ink">
+                <FileText className="h-4 w-4 text-primary-600" aria-hidden="true" />
                 {decision === 'approve' ? 'Approve application' : decision === 'return' ? 'Return to applicant' : 'Reject application'}
               </h3>
 
               {decision === 'approve' ? (
                 d.approvalProblems.length > 0 ? (
-                  <div className="space-y-2 text-sm text-[#172B3A]">
+                  <div className="space-y-2 text-sm text-ink">
                     <p>Verify the required documents first:</p>
                     <ul className="list-disc space-y-0.5 pl-5 text-red-800">{d.approvalProblems.map((p) => <li key={p}>{p}</li>)}</ul>
                   </div>
@@ -249,12 +249,12 @@ export default function ApplicationReview({ id, canReview, canUpdate, canManageD
                   }}>
                     {d.possibleStudents.length > 0 ? (
                       <fieldset className="space-y-2">
-                        <legend className="text-sm text-[#172B3A]"><b>A student record may already exist.</b> Link it, or create a new one.<Req /></legend>
+                        <legend className="text-sm text-ink"><b>A student record may already exist.</b> Link it, or create a new one.<Req /></legend>
                         {d.possibleStudents.map((s) => {
                           const sameProgram = s.programId === d.program.id;
                           return (
                             <label key={s.id} className={`flex items-start gap-2.5 rounded-lg border bg-white px-3 py-2.5 text-sm ${sameProgram ? 'cursor-pointer border-[#D6E2DD]' : 'cursor-not-allowed border-dashed border-[#D6E2DD] opacity-70'}`}>
-                              <input type="radio" name="ar-link" value={s.id} checked={link === s.id} disabled={!sameProgram} onChange={() => setLink(s.id)} className="mt-0.5 h-4 w-4 text-[#087F5B] focus:ring-[#087F5B]" />
+                              <input type="radio" name="ar-link" value={s.id} checked={link === s.id} disabled={!sameProgram} onChange={() => setLink(s.id)} className="mt-0.5 h-4 w-4 text-primary-600 focus:ring-primary-600" />
                               <span>
                                 Link to <b>{s.studentNumber}</b> · {s.fullName} · {s.programCode} ({s.status}){s.email ? ` · ${s.email}` : ''}
                                 {!sameProgram && <span className="block text-xs text-amber-800">In another program — cannot be linked to this application.</span>}
@@ -263,12 +263,12 @@ export default function ApplicationReview({ id, canReview, canUpdate, canManageD
                           );
                         })}
                         <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-[#D6E2DD] bg-white px-3 py-2.5 text-sm">
-                          <input type="radio" name="ar-link" value="new" checked={link === 'new'} onChange={() => setLink('new')} className="mt-0.5 h-4 w-4 text-[#087F5B] focus:ring-[#087F5B]" />
+                          <input type="radio" name="ar-link" value="new" checked={link === 'new'} onChange={() => setLink('new')} className="mt-0.5 h-4 w-4 text-primary-600 focus:ring-primary-600" />
                           <span>Create a new student record — this is a different person</span>
                         </label>
                       </fieldset>
                     ) : (
-                      <p className="text-sm text-[#172B3A]">A new student record will be created for {d.fullName}.</p>
+                      <p className="text-sm text-ink">A new student record will be created for {d.fullName}.</p>
                     )}
                     <p className={`text-xs ${MUTED}`}>
                       The documents carry over to the student's checklist, and a <b>pending</b> enrollment is opened for {d.schoolYear ? `SY ${d.schoolYear.label}` : 'the current school year'} (unless one exists). Enrollment still needs its own approval in Enrollments.
@@ -318,7 +318,7 @@ export default function ApplicationReview({ id, canReview, canUpdate, canManageD
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <h3 className="text-[13px] font-semibold uppercase tracking-wide text-[#647A73]">{title}</h3>
+      <h3 className="text-[13px] font-semibold uppercase tracking-wide text-muted">{title}</h3>
       <dl className="mt-2 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">{children}</dl>
     </section>
   );
@@ -328,7 +328,7 @@ function Pair({ label, value, wide }: { label: string; value: React.ReactNode; w
   return (
     <div className={wide ? 'sm:col-span-2' : ''}>
       <dt className={`text-xs ${MUTED}`}>{label}</dt>
-      <dd className="mt-0.5 break-words text-sm text-[#172B3A]">{value}</dd>
+      <dd className="mt-0.5 break-words text-sm text-ink">{value}</dd>
     </div>
   );
 }

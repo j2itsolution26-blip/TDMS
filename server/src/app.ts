@@ -2,7 +2,6 @@ import path from 'node:path';
 import { existsSync } from 'node:fs';
 import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
-import fastifyStatic from '@fastify/static';
 import { guardRequest, API_PREFIX } from '@/server/middleware/request-guard';
 import { registerApiRoutes } from '@/server/routes/api.routes';
 import { registerPageRoutes } from '@/server/routes/pages.routes';
@@ -98,6 +97,10 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   const dist = options.clientDist;
   const serveClient = dist !== undefined && existsSync(path.join(dist, 'index.html'));
   if (serveClient) {
+    // Loaded only here, where it is used. On Vercel the CDN serves the client,
+    // and loading the plugin anyway crashed the function: it require()s
+    // content-disposition 3, an ES module that runtime cannot require.
+    const { default: fastifyStatic } = await import('@fastify/static');
     await app.register(fastifyStatic, { root: dist, wildcard: false, index: false });
   }
 

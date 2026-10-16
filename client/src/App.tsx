@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import GlobalError from '@/pages/system/GlobalError';
 import NotFound from '@/pages/system/NotFound';
 import AppLayout from '@/layouts/AppLayout';
+import { ConfirmProvider } from '@/components/ConfirmDialog';
 import AssessmentListPage from '@/components/teaching/AssessmentListPage';
 import DocumentsPage from '@/components/teaching/DocumentsPage';
 
@@ -83,6 +84,7 @@ export default function App() {
   return (
     <GlobalError>
       <BrowserRouter>
+        <ConfirmProvider>
         <Suspense fallback={null}>
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -168,6 +170,7 @@ export default function App() {
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
+        </ConfirmProvider>
       </BrowserRouter>
     </GlobalError>
   );

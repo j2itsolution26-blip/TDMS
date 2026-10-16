@@ -3,6 +3,7 @@ import Link from '@/lib/link';
 import { useRouter } from '@/lib/navigation';
 import { api } from '@/lib/api-client';
 import Modal from '@/components/Modal';
+import { useConfirm } from '@/components/ConfirmDialog';
 import AdminCredentialsModal from '@/components/AdminCredentialsModal';
 import {
   Card, PageHeader, EmptyState, Badge, Pagination, Alert,
@@ -121,6 +122,7 @@ export default function AdminAccessCodesScreen({
   preselectAdminId,
 }: Props) {
   const router = useRouter();
+  const confirm = useConfirm();
 
   const [message, setMessage] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -210,19 +212,30 @@ export default function AdminAccessCodesScreen({
   }
 
   async function revoke(codeId: string, who: string) {
-    setBusy(true);
-    clearFeedback();
-    const result = await api.post<AccessCodeRow>(`/api/v1/admin-access-codes/${codeId}/revoke`);
-    setBusy(false);
+    await confirm({
+      tone: 'danger',
+      title: 'Revoke Access Code?',
+      description: 'The code can no longer be used to sign in.',
+      details: [{ label: 'Admin', value: who }],
+      confirmLabel: 'Revoke code',
+      pendingLabel: 'Revoking…',
+      action: async () => {
+        setBusy(true);
+        clearFeedback();
+        const result = await api.post<AccessCodeRow>(`/api/v1/admin-access-codes/${codeId}/revoke`);
+        setBusy(false);
 
-    if (!result.ok) {
-      setMessage(result.message);
-      return;
-    }
+        if (!result.ok) {
+          setMessage(result.message);
+          return false;
+        }
 
-    setIssued((current) => (current?.codeId === codeId ? null : current));
-    setNotice(succeeded(`${who}’s access code has been revoked. It can no longer be used to sign in.`));
-    router.refresh();
+        setIssued((current) => (current?.codeId === codeId ? null : current));
+        setNotice(succeeded(`${who}’s access code has been revoked. It can no longer be used to sign in.`));
+        router.refresh();
+        return true;
+      },
+    });
   }
 
   async function copyCode(code: string) {

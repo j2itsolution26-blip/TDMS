@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { BookOpen, Eye, Layers, Pencil, Plus, Power, Search, Trash2 } from 'lucide-react';
 import Link from '@/lib/link';
 import Modal from '@/components/Modal';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import Drawer from '@/components/Drawer';
 import { api } from '@/lib/api-client';
 import { useRouter } from '@/lib/navigation';
@@ -478,20 +479,24 @@ export default function CurriculumMap({ programs, subjects, canMap, onEdit, noti
         </form>
       </Modal>
 
-      <Modal open={removing !== null} onClose={() => !busy && setRemoving(null)} title="Remove from this term?" maxWidth="sm:max-w-md">
-        {removing && (
-          <div className="space-y-4">
-            <p className="text-sm text-ink">Remove <b>{removing.subject.code}</b> from {program?.code} · {yearLevelLabel(level)} · {SEMESTER_LABELS[sem]}? The subject stays in the catalogue.</p>
-            {problem && <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800 ring-1 ring-inset ring-red-200">{problem}</p>}
-            <div className="flex justify-end gap-2">
-              <button type="button" className={BTN_SECONDARY} onClick={() => setRemoving(null)} disabled={busy}>Cancel</button>
-              <button type="button" className={`inline-flex h-10 items-center gap-2 rounded-lg bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60 ${FOCUS}`} onClick={remove} disabled={busy} autoFocus>
-                <Trash2 className="h-4 w-4" aria-hidden="true" /> {busy ? 'Removing…' : 'Remove'}
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
+      <ConfirmDialog
+        open={removing !== null}
+        onCancel={() => setRemoving(null)}
+        onConfirm={() => void remove()}
+        pending={busy}
+        error={removing ? problem : null}
+        tone="danger"
+        icon={<Trash2 className="h-5 w-5" />}
+        title="Remove from This Term?"
+        description="The subject stays in the catalogue."
+        details={removing ? [
+          { label: 'Subject', value: `${removing.subject.code} · ${removing.subject.title}` },
+          { label: 'Program', value: program?.code },
+          { label: 'Term', value: `${yearLevelLabel(level)} · ${SEMESTER_LABELS[sem]}` },
+        ] : []}
+        confirmLabel="Remove"
+        pendingLabel="Removing…"
+      />
 
       <Modal open={toggling !== null} onClose={() => !busy && setToggling(null)} title={toggling?.subject.isActive ? 'Deactivate subject?' : 'Activate subject?'} maxWidth="sm:max-w-md">
         {toggling && (

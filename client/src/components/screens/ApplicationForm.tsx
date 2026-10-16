@@ -3,6 +3,7 @@ import {
   AlertTriangle, CheckCircle2, FileText, GraduationCap, Info, Loader2, Paperclip, Save, Send, User, Phone, BookMarked, ListChecks, Upload, X,
 } from 'lucide-react';
 import Modal from '@/components/Modal';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Badge } from '@/components/ui';
 import {
   BTN_GHOST, BTN_PRIMARY, BTN_SECONDARY, Err, FIELD, IconTile, LABEL, MUTED, Opt, Req, RING, SectionHead, Select, StepNav,
@@ -602,15 +603,16 @@ export default function ApplicationForm({ open, editingId, programs, schoolYears
         )}
       </Modal>
 
-      <Modal open={confirmDiscard} onClose={() => setConfirmDiscard(false)} title="Discard changes?" maxWidth="sm:max-w-md" appearance="fluent" trapFocus
-        footer={(
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <button type="button" className={BTN_SECONDARY} onClick={() => setConfirmDiscard(false)} autoFocus>Keep editing</button>
-            <button type="button" className={`${BTN_PRIMARY} bg-red-600 hover:bg-red-700`} onClick={() => { setConfirmDiscard(false); onClose(); }}>Discard</button>
-          </div>
-        )}>
-        <p className="text-sm text-ink">What you entered{Object.keys(staged).length ? ' and the files you chose' : ''} will be lost. Save it as a draft instead to finish later.</p>
-      </Modal>
+      <ConfirmDialog
+        open={confirmDiscard}
+        onCancel={() => setConfirmDiscard(false)}
+        onConfirm={() => { setConfirmDiscard(false); onClose(); }}
+        tone="danger"
+        title="Discard Changes?"
+        description={`What you entered${Object.keys(staged).length ? ' and the files you chose' : ''} will be lost. Save it as a draft instead to finish later.`}
+        cancelLabel="Keep editing"
+        confirmLabel="Discard"
+      />
     </>
   );
 }

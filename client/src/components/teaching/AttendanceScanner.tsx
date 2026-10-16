@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from '@/lib/navigation';
 import { CheckCircle2, CircleAlert, LogIn, LogOut } from 'lucide-react';
 import { api } from '@/lib/api-client';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { ATTENDANCE_STATUSES, ATTENDANCE_STATUS_LABELS, type AttendanceStatus } from '@shared/lib/teaching';
 import QrScanner from './QrScanner';
 import { BTN, BTN_DANGER, Card, Chip, INPUT, TD, TH, Table } from './kit';
@@ -53,6 +54,7 @@ type Last = { kind: 'ok'; data: ScanResponse } | { kind: 'error'; message: strin
 
 export default function AttendanceScanner({ initial }: { initial: SessionData }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [data, setData] = useState(initial);
   const [last, setLast] = useState<Last | null>(null);
   const [code, setCode] = useState('');
@@ -102,13 +104,26 @@ export default function AttendanceScanner({ initial }: { initial: SessionData })
   }
 
   async function close() {
-    if (!window.confirm(`Close attendance? The ${data.counts.notYet} student(s) not yet scanned will be marked absent and notified.`)) return;
-    setBusy(true);
-    const r = await api.post(`/api/v1/attendance/sessions/${initial.session.id}/close`);
-    setBusy(false);
-    if (!r.ok) return setLast({ kind: 'error', message: r.message });
-    await refresh();
-    router.refresh();
+    const n = data.counts.notYet;
+    await confirm({
+      tone: 'warning',
+      title: 'Close Attendance?',
+      description: n > 0
+        ? `The ${n} student${n === 1 ? '' : 's'} not yet scanned will be marked absent and notified.`
+        : 'Every student has been scanned, so no one is marked absent.',
+      details: [{ label: 'Class', value: `${data.cls.subject} · ${data.cls.detail}` }, { label: 'Session', value: `${data.session.dateLabel} · ${data.session.time}` }],
+      confirmLabel: 'Close attendance',
+      pendingLabel: 'Closing…',
+      action: async () => {
+        setBusy(true);
+        const r = await api.post(`/api/v1/attendance/sessions/${initial.session.id}/close`);
+        setBusy(false);
+        if (!r.ok) { setLast({ kind: 'error', message: r.message }); return false; }
+        await refresh();
+        router.refresh();
+        return true;
+      },
+    });
   }
 
   async function reopen() {

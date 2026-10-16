@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { FileUp, Plus } from 'lucide-react';
 import Modal from '@/components/Modal';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { api } from '@/lib/api-client';
 import { DOCUMENT_KIND_LABELS, UPLOAD_ACCEPT, UPLOAD_MAX_BYTES, documentEditable, type DocumentKind } from '@shared/lib/teaching';
 import type { DocumentView } from '@/server/services/teaching/documents';
@@ -23,15 +24,35 @@ export function formatSize(bytes: number) {
 export default function DocumentsScreen({ kind, rows, classes, archived }: { kind: DocumentKind; rows: DocumentView[]; classes: { id: string; label: string }[]; archived: boolean }) {
   const [editing, setEditing] = useState<DocumentView | 'new' | null>(null);
   const act = useAction();
+  const confirm = useConfirm();
   const label = DOCUMENT_KIND_LABELS[kind];
+  const facts = (d: DocumentView) => [
+    { label: TITLE_LABEL[kind], value: d.title },
+    { label: 'Class', value: `${d.subject} · ${d.classDetail}` },
+    { label: 'Term', value: `${d.schoolYear} · ${d.semester}` },
+  ];
 
   async function submit(d: DocumentView) {
-    if (!window.confirm(`Submit “${d.title}” for review? The TVET Director and Coordinator will be notified, and you cannot edit it unless it is returned.`)) return;
-    await act.run(() => api.post(`/api/v1/documents/${d.id}/submit`), { success: 'Submitted for review.' });
+    await confirm({
+      tone: 'warning',
+      title: `Submit ${label} for Review?`,
+      description: 'The TVET Director and Coordinator will be notified, and you cannot edit it unless it is returned.',
+      details: facts(d),
+      confirmLabel: 'Submit for review',
+      pendingLabel: 'Submitting…',
+      action: async () => (await act.run(() => api.post(`/api/v1/documents/${d.id}/submit`), { success: 'Submitted for review.' })) !== null,
+    });
   }
   async function remove(d: DocumentView) {
-    if (!window.confirm(`Delete the draft “${d.title}”?`)) return;
-    await act.run(() => api.del(`/api/v1/documents/${d.id}`), { success: 'Draft deleted.' });
+    await confirm({
+      tone: 'danger',
+      title: 'Delete Draft?',
+      description: 'This draft is deleted.',
+      details: facts(d),
+      confirmLabel: 'Delete draft',
+      pendingLabel: 'Deleting…',
+      action: async () => (await act.run(() => api.del(`/api/v1/documents/${d.id}`), { success: 'Draft deleted.' })) !== null,
+    });
   }
 
   return (

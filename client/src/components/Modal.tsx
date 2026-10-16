@@ -1,6 +1,9 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
+/** Open dialogs, oldest first; the last one owns Escape. */
+const openStack: symbol[] = [];
+
 /**
  * Port of resources/views/components/modal.blade.php: escape to close, body
  * scroll lock, backdrop click to close.
@@ -16,6 +19,9 @@ import { createPortal } from 'react-dom';
  * Combobox): the panel clips its own overflow.
  *
  * Focus returns to whatever opened the dialog when it closes.
+ *
+ * Dialogs can stack (a confirmation over an edit form). Escape closes only
+ * the top one; before, one press closed the confirmation and the form under it.
  *
  * Rendered into document.body. A `position: fixed` overlay is only fixed to
  * the viewport while no ancestor has a transform or filter; inside the app
@@ -37,6 +43,9 @@ export default function Modal({
   headerExtra,
   trapFocus = false,
   titleClassName,
+  role = 'dialog',
+  describedBy,
+  dismissible = true,
 }: {
   open: boolean;
   onClose: () => void;
@@ -58,6 +67,12 @@ export default function Modal({
   trapFocus?: boolean;
   /** Replaces the title's default classes. */
   titleClassName?: string;
+  /** 'alertdialog' for a question that interrupts, e.g. a confirmation. */
+  role?: 'dialog' | 'alertdialog';
+  /** The id of the element that describes the dialog; defaults to the subtitle. */
+  describedBy?: string;
+  /** False while a request is in flight: Escape, the backdrop and × do nothing, and × shows disabled. */
+  dismissible?: boolean;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
@@ -66,21 +81,22 @@ export default function Modal({
   // Latest onClose without re-running the effect: callers pass a new function
   // each render, and re-running would restore focus mid-typing.
   const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  closeRef.current = dismissible ? onClose : () => {};
   const trapRef = useRef(trapFocus);
   trapRef.current = trapFocus;
 
   useEffect(() => {
     if (!open) return;
     opener.current = document.activeElement;
+    const self = Symbol('modal');
+    openStack.push(self);
 
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') closeRef.current();
+      if (e.key === 'Escape' && openStack[openStack.length - 1] === self) closeRef.current();
       // Focus stays inside: Tab from the last control wraps to the first, and back.
       if (e.key === 'Tab' && trapRef.current && panelRef.current) {
         // A dialog stacked on top (e.g. "Discard changes?") keeps its own focus.
-        const owner = document.activeElement?.closest('[role="dialog"]');
-        if (owner && owner !== panelRef.current.closest('[role="dialog"]')) return;
+        if (openStack[openStack.length - 1] !== self) return;
         const items = [...panelRef.current.querySelectorAll<HTMLElement>(
           'a[href], button:not([disabled]), input:not([disabled]):not([tabindex="-1"]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])',
         )].filter((el) => el.offsetParent !== null);
@@ -100,6 +116,7 @@ export default function Modal({
 
     return () => {
       window.removeEventListener('keydown', onKey);
+      openStack.splice(openStack.indexOf(self), 1);
       document.body.style.overflow = previous;
       if (opener.current instanceof HTMLElement && opener.current.isConnected) opener.current.focus();
     };
@@ -110,17 +127,17 @@ export default function Modal({
   const fluent = appearance === 'fluent';
   const panel = fluent
     ? `relative flex w-full ${maxWidth} flex-col overflow-hidden bg-white max-sm:h-[100dvh] ${maxHeight ?? 'sm:max-h-[calc(100dvh-3rem)]'} ${animate ? 'animate-modal-in motion-reduce:animate-none' : ''} sm:rounded-[14px] sm:border sm:border-slate-200 sm:shadow-[0_12px_40px_rgba(16,42,67,0.16)]`
-    : `relative w-full ${maxWidth} transform overflow-hidden rounded-xl bg-white shadow-xl transition-all`;
+    : `relative w-full ${maxWidth} transform overflow-hidden rounded-xl bg-white shadow-xl transition-all ${animate ? 'animate-modal-in motion-reduce:animate-none' : ''}`;
 
   return createPortal(
     <div
       className="fixed inset-0 z-50 overflow-y-auto"
-      role="dialog"
+      role={role}
       aria-modal="true"
       aria-labelledby={titleId}
-      aria-describedby={subtitle ? subtitleId : undefined}
+      aria-describedby={describedBy ?? (subtitle ? subtitleId : undefined)}
     >
-      <div className={`fixed inset-0 transition-opacity ${animate ? 'animate-overlay-in bg-[rgba(15,35,40,0.55)] motion-reduce:animate-none' : 'bg-navy-900/60'}`} onClick={onClose} />
+      <div className={`fixed inset-0 transition-opacity ${animate ? 'animate-overlay-in bg-[rgba(15,35,40,0.55)] motion-reduce:animate-none' : 'bg-navy-900/60'}`} onClick={() => closeRef.current()} />
 
       <div className={fluent ? 'flex min-h-full items-stretch justify-center sm:items-center sm:p-6' : 'flex min-h-full items-center justify-center p-4'}>
         <div className={panel} ref={panelRef}>
@@ -137,8 +154,9 @@ export default function Modal({
             </div>
             <button
               type="button"
-              onClick={onClose}
-              className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600/40"
+              onClick={() => closeRef.current()}
+              disabled={!dismissible}
+              className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600/40 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="Close"
             >
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

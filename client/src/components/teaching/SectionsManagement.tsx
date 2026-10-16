@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { BookOpen, GraduationCap, Layers, Pencil, Plus, Search, Trash2, UsersRound, X } from 'lucide-react';
 import Modal from '@/components/Modal';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { api } from '@/lib/api-client';
 import { sectionCapacity, SECTION_CAPACITY, SECTION_YEAR_LEVELS, yearLevelLabel } from '@shared/lib/teaching';
 import { FOCUS } from './kit';
@@ -362,20 +363,25 @@ export default function SectionsManagement({
         </>
       )}
 
-      <Modal open={deleting !== null} onClose={() => !busy && setDeleting(null)} title="Delete section?" maxWidth="sm:max-w-md">
-        {deleting && (
-          <div className="space-y-4">
-            <p className="text-sm text-ink">Delete <b>{deleting.label}</b> from {yearLabel}? It has no students and no classes, so nothing else is affected. This cannot be undone.</p>
-            {problem && <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800 ring-1 ring-inset ring-red-200">{problem}</p>}
-            <div className="flex justify-end gap-2">
-              <button type="button" className={BTN_SECONDARY} onClick={() => setDeleting(null)} disabled={busy}>Cancel</button>
-              <button type="button" className={`inline-flex h-10 items-center gap-2 rounded-lg bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60 ${FOCUS}`} onClick={confirmDelete} disabled={busy} autoFocus>
-                <Trash2 className="h-4 w-4" aria-hidden="true" /> {busy ? 'Deleting…' : 'Delete section'}
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
+      <ConfirmDialog
+        open={deleting !== null}
+        onCancel={() => setDeleting(null)}
+        onConfirm={() => void confirmDelete()}
+        pending={busy}
+        error={deleting ? problem : null}
+        tone="danger"
+        icon={<Trash2 className="h-5 w-5" />}
+        title="Delete Section?"
+        description="It has no students and no classes, so nothing else is affected. This cannot be undone."
+        details={deleting ? [
+          { label: 'Section', value: deleting.label },
+          { label: 'Program', value: deleting.program.code },
+          { label: 'Year level', value: yearLevelLabel(deleting.yearLevel) },
+          { label: 'School year', value: yearLabel },
+        ] : []}
+        confirmLabel="Delete section"
+        pendingLabel="Deleting…"
+      />
 
       <Modal open={renaming !== null} onClose={() => !busy && setRenaming(null)} title="Rename section" maxWidth="sm:max-w-md">
         {renaming && (

@@ -3,6 +3,7 @@ import Link from '@/lib/link';
 import { useRouter } from '@/lib/navigation';
 import { api } from '@/lib/api-client';
 import Modal from '@/components/Modal';
+import { useConfirm } from '@/components/ConfirmDialog';
 import {
   Card, PageHeader, EmptyState, Badge, Alert, FieldError,
   BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_SUCCESS, BUTTON_DANGER, INPUT_CLASS, LABEL_CLASS,
@@ -73,6 +74,7 @@ export default function EnrollmentScreen({
   student, credentials, enrollments, allVerified, termOptions, canVerify, canUpload, canEnroll,
 }: Props) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [flash, setFlash] = useState<string | null>(null);
   const [flashError, setFlashError] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string[]>>({});
@@ -114,19 +116,35 @@ export default function EnrollmentScreen({
 
   async function confirmEnrollment(enrollment: EnrollmentRow) {
     if (busy) return;
-    if (!window.confirm(`Approve this enrollment for SY ${enrollment.schoolYear}, semester ${enrollment.semester}? The student becomes Enrolled. This cannot be undone.`)) return;
-    setBusy(true); reset();
-    const result = await api.post<{ placement: Placement | null }>(`/api/v1/enrollments/${enrollment.id}/transition`, {
-      status: 'enrolled', reason: '',
+    await confirm({
+      tone: 'success',
+      title: 'Confirm Enrollment Approval',
+      description: 'The student becomes Enrolled for this term. This cannot be undone.',
+      details: [
+        { label: 'Student', value: `${student.fullName} (${student.studentNumber})` },
+        { label: 'Program', value: `${student.program.code} · ${student.program.name}` },
+        { label: 'School year', value: enrollment.schoolYear },
+        { label: 'Semester', value: SEMESTER_LABELS[enrollment.semester] ?? `Semester ${enrollment.semester}` },
+        { label: 'Year level', value: yearLevelLabel(enrollment.yearLevel) },
+      ],
+      confirmLabel: 'Approve enrollment',
+      pendingLabel: 'Approving…',
+      action: async () => {
+        setBusy(true); reset();
+        const result = await api.post<{ placement: Placement | null }>(`/api/v1/enrollments/${enrollment.id}/transition`, {
+          status: 'enrolled', reason: '',
+        });
+        setBusy(false);
+        if (!result.ok) {
+          // e.g. "This student still has unverified or missing required credentials."
+          setFlashError(result.message);
+          return false;
+        }
+        setFlash(approvalNotice(student.fullName, result.data.placement));
+        router.refresh();
+        return true;
+      },
     });
-    setBusy(false);
-    if (!result.ok) {
-      // e.g. "This student still has unverified or missing required credentials."
-      setFlashError(result.message);
-      return;
-    }
-    setFlash(approvalNotice(student.fullName, result.data.placement));
-    router.refresh();
   }
 
   async function confirmDrop(event: React.FormEvent) {

@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import Link from '@/lib/link';
 import { CheckCircle2, Pencil, Search, UserPlus, XCircle } from 'lucide-react';
 import Modal from '@/components/Modal';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { Page } from '@/lib/page-data';
 import { api } from '@/lib/api-client';
 import { useAction } from '@/components/teaching/client-kit';
@@ -161,7 +162,8 @@ type Dialog =
 function View(d: Data) {
   const { batch } = d;
   const [dialog, setDialog] = useState<Dialog | null>(null);
-  const { busy, error, notice, run } = useAction();
+  const { busy, error, notice, run, setError } = useAction();
+  const confirm = useConfirm();
   const open = batch.status === 'OPEN';
   const manage = d.canManage && open;
   const close = () => setDialog(null);
@@ -169,13 +171,34 @@ function View(d: Data) {
 
   async function finalizeBatch() {
     const pending = live.filter((r) => r.status === 'PENDING').length;
-    if (pending > 0) { window.alert(`${pending} candidate${pending === 1 ? ' has' : 's have'} no recorded result yet.`); return; }
-    if (!window.confirm(`Finalize batch ${batch.batchNumber}? Every recorded result becomes official and can no longer be changed — only a reassessment can follow a Not Yet Competent result.`)) return;
-    await run(() => api.post(`/api/v1/assessment/batches/${batch.id}/finalize`), { success: 'Batch finalized.' });
+    if (pending > 0) {
+      setError(`Batch ${batch.batchNumber} cannot be finalized yet: ${pending} candidate${pending === 1 ? ' has' : 's have'} no recorded result.`);
+      return;
+    }
+    await confirm({
+      tone: 'warning',
+      title: `Finalize Batch ${batch.batchNumber}?`,
+      description: 'Every recorded result becomes official and can no longer be changed — only a reassessment can follow a Not Yet Competent result.',
+      details: [
+        { label: 'Program', value: `${batch.program.code} · ${batch.program.name}` },
+        { label: 'Assessed on', value: batch.assessmentDate },
+        { label: 'Candidates', value: live.length },
+      ],
+      confirmLabel: 'Finalize batch',
+      pendingLabel: 'Finalizing…',
+      action: async () => (await run(() => api.post(`/api/v1/assessment/batches/${batch.id}/finalize`), { success: 'Batch finalized.' })) !== null,
+    });
   }
   async function finalizeOne(row: Row) {
-    if (!window.confirm(`Finalize ${row.name}'s result? It can no longer be changed.`)) return;
-    await run(() => api.post(`/api/v1/assessment/results/${row.id}/finalize`), { success: 'Result finalized.' });
+    await confirm({
+      tone: 'warning',
+      title: 'Finalize This Result?',
+      description: 'It becomes official and can no longer be changed.',
+      details: [{ label: 'Candidate', value: row.name }, { label: 'Batch', value: batch.batchNumber }],
+      confirmLabel: 'Finalize result',
+      pendingLabel: 'Finalizing…',
+      action: async () => (await run(() => api.post(`/api/v1/assessment/results/${row.id}/finalize`), { success: 'Result finalized.' })) !== null,
+    });
   }
 
   return (

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
 import { api } from '@/lib/api-client';
 import Modal from '@/components/Modal';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import Combobox, { type ComboboxOption } from '@/components/Combobox';
 import { STUDENT_STATUSES, STUDENT_STATUS_LABELS, type StudentStatus } from '@shared/types/domain';
 import { toDateInput } from '@shared/lib/dates';
@@ -183,7 +184,7 @@ export default function StudentFormModal({
 
   function requestClose() {
     if (busy) return;
-    if (dirty && !confirmDiscard) { setConfirmDiscard(true); return; }
+    if (dirty) { setConfirmDiscard(true); return; }
     onClose();
   }
 
@@ -224,19 +225,7 @@ export default function StudentFormModal({
   const today = localDayKey(new Date());
   const e = errors;
 
-  const footer = confirmDiscard ? (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" role="alertdialog" aria-labelledby="discard-text">
-      <p id="discard-text" className="text-sm font-medium text-ink">Discard the changes you made?</p>
-      <div className="flex gap-2 sm:justify-end">
-        <button type="button" className="h-9 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-ink hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600/40" onClick={() => setConfirmDiscard(false)} autoFocus>
-          Keep editing
-        </button>
-        <button type="button" className="h-9 rounded-lg bg-red-600 px-4 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40 focus-visible:ring-offset-2" onClick={onClose}>
-          Discard
-        </button>
-      </div>
-    </div>
-  ) : (
+  const footer = (
     <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-xs text-muted"><span className="text-red-600" aria-hidden="true">*</span> Required field</p>
       <div className="flex gap-2 sm:justify-end">
@@ -408,6 +397,16 @@ export default function StudentFormModal({
           )}
         </form>
       )}
+      <ConfirmDialog
+        open={open && confirmDiscard}
+        onCancel={() => setConfirmDiscard(false)}
+        onConfirm={onClose}
+        tone="danger"
+        title="Discard Changes?"
+        description={editing ? 'Your changes to this student record will be lost.' : 'The details you entered for this new student will be lost.'}
+        cancelLabel="Keep editing"
+        confirmLabel="Discard"
+      />
     </Modal>
   );
 }

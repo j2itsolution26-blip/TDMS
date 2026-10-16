@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import Modal from '@/components/Modal';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { Page } from '@/lib/page-data';
 import { api } from '@/lib/api-client';
 import { useRouter } from '@/lib/navigation';
@@ -15,6 +16,7 @@ type Item = Data['items'][number];
 
 function ItemForm({ item, category, onDone }: { item: Item | null; category: SupplyCategory | null; onDone: () => void }) {
   const { busy, error, errors, run } = useAction();
+  const confirm = useConfirm();
   const [f, setF] = useState({
     category: item?.category ?? category ?? '',
     name: item?.name ?? '',
@@ -30,8 +32,25 @@ function ItemForm({ item, category, onDone }: { item: Item | null; category: Sup
     if (await run(() => (item ? api.put(`/api/v1/assessment/inventory/${item.id}`, body) : api.post('/api/v1/assessment/inventory', body)))) onDone();
   }
   async function remove() {
-    if (!item || !window.confirm(`Remove "${item.name}" from the inventory? The removal is recorded in the audit log.`)) return;
-    if (await run(() => api.del(`/api/v1/assessment/inventory/${item.id}`))) onDone();
+    if (!item) return;
+    await confirm({
+      tone: 'danger',
+      title: 'Remove Inventory Item?',
+      description: 'The removal is recorded in the audit log.',
+      details: [
+        { label: 'Item', value: item.name },
+        { label: 'Category', value: SUPPLY_CATEGORY_LABELS[item.category as SupplyCategory] ?? item.category },
+        { label: 'Quantity', value: `${item.quantityGood} good · ${item.quantityDefective} defective${item.unit ? ` (${item.unit})` : ''}` },
+      ],
+      confirmLabel: 'Remove item',
+      pendingLabel: 'Removing…',
+      success: `${item.name} was removed from the inventory.`,
+      action: async () => {
+        if ((await run(() => api.del(`/api/v1/assessment/inventory/${item.id}`))) === null) return false;
+        onDone();
+        return true;
+      },
+    });
   }
   return (
     <form className="space-y-4" onSubmit={save} noValidate>

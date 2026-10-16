@@ -3,6 +3,7 @@ import { Megaphone } from 'lucide-react';
 import { Page } from '@/lib/page-data';
 import { api } from '@/lib/api-client';
 import { useAction } from '@/components/teaching/client-kit';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { BTN, BTN_SMALL, Card, Empty, Field, Flash, INPUT, PageShell, StatusPill } from '@/components/teaching/kit';
 import { ANNOUNCEMENT_AUDIENCES, ANNOUNCEMENT_AUDIENCE_LABELS, type AnnouncementAudience } from '@shared/lib/supplies';
 import type { loadAnnouncements } from '@/server/controllers/pages/app/supplies';
@@ -11,13 +12,29 @@ type Data = Awaited<ReturnType<typeof loadAnnouncements>>;
 
 function Compose({ programs }: { programs: Data['programs'] }) {
   const { busy, error, errors, notice, run } = useAction();
+  const confirm = useConfirm();
   const [f, setF] = useState({ title: '', body: '', audience: 'BOTH' as AnnouncementAudience, programId: '' });
   async function publish(e: React.FormEvent) {
     e.preventDefault();
-    const scope = f.programId ? programs.find((p) => p.id === f.programId)?.code : 'all courses';
-    if (!window.confirm(`Send this to ${ANNOUNCEMENT_AUDIENCE_LABELS[f.audience].toLowerCase()} (${scope})? Each recipient is notified.`)) return;
-    const sent = await run(() => api.post<{ recipientCount: number }>('/api/v1/announcements', f), { success: 'Published. Every recipient has been notified.' });
-    if (sent) setF({ ...f, title: '', body: '' });
+    const program = f.programId ? programs.find((p) => p.id === f.programId) : null;
+    await confirm({
+      tone: 'success',
+      title: 'Publish Announcement?',
+      description: 'Each recipient is notified as soon as it is published.',
+      details: [
+        { label: 'Title', value: f.title },
+        { label: 'Send to', value: ANNOUNCEMENT_AUDIENCE_LABELS[f.audience] },
+        { label: 'Course', value: program ? `${program.code} — ${program.name}` : 'All courses' },
+      ],
+      confirmLabel: 'Publish',
+      pendingLabel: 'Publishing…',
+      action: async () => {
+        const sent = await run(() => api.post<{ recipientCount: number }>('/api/v1/announcements', f), { success: 'Published. Every recipient has been notified.' });
+        if (sent === null) return false;
+        setF({ ...f, title: '', body: '' });
+        return true;
+      },
+    });
   }
   return (
     <Card title="New announcement">
@@ -47,6 +64,19 @@ function Compose({ programs }: { programs: Data['programs'] }) {
 
 function View({ announcements, canManage, programs }: Data) {
   const { busy, error, run } = useAction();
+  const confirm = useConfirm();
+  function withdraw(a: Data['announcements'][number]) {
+    void confirm({
+      tone: 'warning',
+      title: 'Withdraw Announcement?',
+      description: 'It disappears for readers; the record is kept.',
+      details: [{ label: 'Title', value: a.title }, { label: 'Audience', value: a.audienceLabel }, { label: 'Recipients', value: a.recipientCount }],
+      confirmLabel: 'Withdraw',
+      pendingLabel: 'Withdrawing…',
+      success: 'Announcement withdrawn.',
+      action: async () => (await run(() => api.post(`/api/v1/announcements/${a.id}/withdraw`))) !== null,
+    });
+  }
   return (
     <PageShell eyebrow="Calendar" title="Announcements" description={canManage ? 'Announcements to instructors, students, or both — for every course or one. Recipients are notified when you publish.' : 'Announcements from the TVET Director addressed to you.'}>
       {canManage && <Compose programs={programs} />}
@@ -65,7 +95,7 @@ function View({ announcements, canManage, programs }: Data) {
                   </div>
                   {canManage && (a.withdrawn
                     ? <StatusPill label="Withdrawn" tone="neutral" />
-                    : <button type="button" className={BTN_SMALL} disabled={busy} onClick={() => { if (window.confirm('Withdraw this announcement? It disappears for readers; the record is kept.')) void run(() => api.post(`/api/v1/announcements/${a.id}/withdraw`)); }}>Withdraw</button>)}
+                    : <button type="button" className={BTN_SMALL} disabled={busy} onClick={() => withdraw(a)}>Withdraw</button>)}
                 </div>
                 <p className="mt-2 whitespace-pre-line text-sm text-tdms-ink">{a.body}</p>
               </li>

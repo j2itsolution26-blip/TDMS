@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Download } from 'lucide-react';
 import Modal from '@/components/Modal';
+import { useConfirm, type ConfirmContent } from '@/components/ConfirmDialog';
 import { api } from '@/lib/api-client';
 import { ASSESSMENT_KINDS, ASSESSMENT_KIND_LABELS, type AssessmentKind, type GradeWeights } from '@shared/lib/teaching';
 import { useAction } from './client-kit';
@@ -54,6 +55,7 @@ const GRADE_LABEL: Record<string, string> = { DRAFT: 'Draft', FINALIZED: 'Finali
 export default function GradebookScreen({ data }: { data: GradebookData }) {
   const { cls, columns, rows } = data;
   const act = useAction();
+  const confirm = useConfirm();
   const [query, setQuery] = useState('');
   const [remarkFilter, setRemarkFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -94,10 +96,15 @@ export default function GradebookScreen({ data }: { data: GradebookData }) {
     setNotes({});
   }
 
-  async function status(action: 'finalize' | 'release' | 'reopen', confirm?: string) {
-    if (confirm && !window.confirm(confirm)) return;
-    await act.run(() => api.post(`/api/v1/classes/${cls.id}/grades/status`, { action }), {
+  async function status(action: 'finalize' | 'release' | 'reopen', ask?: ConfirmContent) {
+    const send = async () => (await act.run(() => api.post(`/api/v1/classes/${cls.id}/grades/status`, { action }), {
       success: { finalize: 'Grades finalized.', release: 'Grades released — students can now see their final grade.', reopen: 'Grades reopened.' }[action],
+    })) !== null;
+    if (!ask) { await send(); return; }
+    await confirm({
+      ...ask,
+      details: [{ label: 'Class', value: `${cls.subject} · ${cls.detail}` }, { label: 'Term', value: `${cls.schoolYear} · ${cls.semester}` }, { label: 'Students', value: rows.length }],
+      action: send,
     });
   }
 
@@ -122,9 +129,9 @@ export default function GradebookScreen({ data }: { data: GradebookData }) {
             {gradesOpen && <button type="button" className={BTN_SECONDARY} onClick={() => setWeightsOpen(true)}>Weights</button>}
             <a href={`/api/v1/classes/${cls.id}/grades/export`} className={BTN_SECONDARY}><Download className="h-4 w-4" aria-hidden="true" /> Export</a>
             {gradesOpen && <button type="button" className={BTN} disabled={act.busy || (dirtyCells + dirtyNotes === 0) || invalid} onClick={save}>{act.busy ? 'Saving…' : `Save grades${dirtyCells + dirtyNotes ? ` (${dirtyCells + dirtyNotes})` : ''}`}</button>}
-            {gradesOpen && <button type="button" className={BTN} disabled={act.busy || dirtyCells + dirtyNotes > 0} onClick={() => status('finalize', 'Finalize grades? Final grades are stored and locked until you reopen them.')}>Finalize grades</button>}
+            {gradesOpen && <button type="button" className={BTN} disabled={act.busy || dirtyCells + dirtyNotes > 0} onClick={() => status('finalize', { tone: 'warning', title: 'Finalize Grades?', description: 'Final grades are stored and locked until you reopen them.', confirmLabel: 'Finalize grades', pendingLabel: 'Finalizing…' })}>Finalize grades</button>}
             {cls.gradeStatus === 'FINALIZED' && !cls.archived && <button type="button" className={BTN_SECONDARY} disabled={act.busy} onClick={() => status('reopen')}>Reopen</button>}
-            {cls.gradeStatus === 'FINALIZED' && !cls.archived && <button type="button" className={BTN} disabled={act.busy} onClick={() => status('release', 'Release final grades to students? Each student will be notified.')}>Release grades</button>}
+            {cls.gradeStatus === 'FINALIZED' && !cls.archived && <button type="button" className={BTN} disabled={act.busy} onClick={() => status('release', { tone: 'success', title: 'Release Final Grades?', description: 'Each student will be notified and can see their final grade.', confirmLabel: 'Release grades', pendingLabel: 'Releasing…' })}>Release grades</button>}
           </div>
         </div>
         <p className="mt-3 text-xs text-tdms-muted">

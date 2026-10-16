@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Link from '@/lib/link';
 import { AlertTriangle, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import Modal from '@/components/Modal';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { Page } from '@/lib/page-data';
 import { api } from '@/lib/api-client';
 import { useRouter } from '@/lib/navigation';
@@ -141,6 +142,7 @@ function Details({ a }: { a: Activity }) {
 
 function ActivityForm({ a, options, defaultDay, onDone }: { a: Activity | null; options: NonNullable<Data['options']>; defaultDay: string; onDone: () => void }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string[]>>({});
@@ -191,11 +193,30 @@ function ActivityForm({ a, options, defaultDay, onDone }: { a: Activity | null; 
     setError(result.message);
   }
   async function remove() {
-    if (!a || !window.confirm(`Delete "${a.title}" from the calendar? Everyone it concerns is notified.`)) return;
-    setBusy(true);
-    const result = await api.del(`/api/v1/assessment/activities/${a.id}`);
-    setBusy(false);
-    if (result.ok) { onDone(); router.refresh(); } else setError(result.message);
+    if (!a) return;
+    await confirm({
+      tone: 'danger',
+      title: 'Delete Calendar Activity?',
+      description: 'Everyone it concerns is notified.',
+      details: [
+        { label: 'Activity', value: a.title },
+        { label: 'Type', value: ACTIVITY_TYPE_LABELS[a.activityType as keyof typeof ACTIVITY_TYPE_LABELS] ?? a.activityType },
+        { label: 'Starts', value: new Date(a.startsAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) },
+        { label: 'Venue', value: a.venue },
+      ],
+      confirmLabel: 'Delete activity',
+      pendingLabel: 'Deleting…',
+      success: 'Activity deleted.',
+      action: async () => {
+        setBusy(true);
+        const result = await api.del(`/api/v1/assessment/activities/${a.id}`);
+        setBusy(false);
+        if (!result.ok) { setError(result.message); return false; }
+        onDone();
+        router.refresh();
+        return true;
+      },
+    });
   }
 
   return (

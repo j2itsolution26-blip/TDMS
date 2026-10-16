@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from '@/lib/navigation';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { api } from '@/lib/api-client';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { BTN, Card, Chip, Flash, INPUT } from './kit';
 
 interface Item {
@@ -55,6 +56,7 @@ export default function TakeAssessment({ initial }: { initial: StudentAssessment
   const [left, setLeft] = useState<number | null>(null);
   const saveTimer = useRef<number | null>(null);
   const submitted = useRef(false);
+  const [asking, setAsking] = useState(false);
 
   const submit = useCallback(
     async (final: boolean, current: Record<string, string>) => {
@@ -200,9 +202,24 @@ export default function TakeAssessment({ initial }: { initial: StudentAssessment
               </li>
             ))}
           </ol>
-          <button type="button" className={BTN} disabled={busy} onClick={() => { if (window.confirm(`Submit your answers? (${answered} of ${a.items.length} answered)`)) void submit(true, answers); }}>
+          <button type="button" className={BTN} disabled={busy} onClick={() => setAsking(true)}>
             {busy ? 'Submitting…' : 'Submit answers'}
           </button>
+          {/* Closes by itself if time runs out meanwhile: the timer hands the answers in. */}
+          <ConfirmDialog
+            open={asking && a.taking}
+            onCancel={() => setAsking(false)}
+            onConfirm={() => { void submit(true, answers).then(() => setAsking(false)); }}
+            pending={busy}
+            tone="success"
+            title="Submit Your Answers?"
+            description={answered < a.items.length
+              ? `${a.items.length - answered} item${a.items.length - answered === 1 ? ' is' : 's are'} still unanswered. Once submitted, your answers cannot be changed.`
+              : 'Once submitted, your answers cannot be changed.'}
+            details={[{ label: 'Assessment', value: a.title }, { label: 'Answered', value: `${answered} of ${a.items.length}` }]}
+            confirmLabel="Submit answers"
+            pendingLabel="Submitting…"
+          />
         </>
       )}
     </div>

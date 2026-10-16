@@ -3,11 +3,12 @@ import Link from '@/lib/link';
 import { useRouter } from '@/lib/navigation';
 import { api } from '@/lib/api-client';
 import Modal from '@/components/Modal';
+import { useConfirm } from '@/components/ConfirmDialog';
 import {
   Card, PageHeader, EmptyState, FieldError,
   BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT_CLASS, LABEL_CLASS,
 } from '@/components/ui';
-import { MAX_YEAR_LEVEL } from '@shared/lib/teaching';
+import { MAX_YEAR_LEVEL, SEMESTER_LABELS, yearLevelLabel } from '@shared/lib/teaching';
 
 /** Port of livewire/curricula/show.blade.php. */
 
@@ -41,6 +42,7 @@ export default function CurriculumDetailScreen({
   curriculum, entries, subjects, canCreate, canDelete,
 }: Props) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [errors, setErrors] = useState<Record<string, string[]>>({});
@@ -71,11 +73,28 @@ export default function CurriculumDetailScreen({
   }
 
   async function remove(entry: EntryRow) {
-    setBusy(true); setMessage(null);
-    const result = await api.del(`/api/v1/curricula/${curriculum.id}/subjects/${entry.id}`);
-    setBusy(false);
-    if (!result.ok) { setMessage(result.message); return; }
-    router.refresh();
+    await confirm({
+      tone: 'danger',
+      title: 'Remove Subject from Curriculum?',
+      description: 'The subject leaves this curriculum; it stays in the subject catalogue.',
+      details: [
+        { label: 'Subject', value: `${entry.subject.code} · ${entry.subject.title}` },
+        { label: 'Curriculum', value: `${curriculum.program.code} · ${curriculum.versionLabel}` },
+        { label: 'Term', value: `${yearLevelLabel(entry.yearLevel)} · ${SEMESTER_LABELS[entry.semester] ?? `Semester ${entry.semester}`}` },
+        { label: 'Units', value: entry.units.toFixed(1) },
+      ],
+      confirmLabel: 'Remove subject',
+      pendingLabel: 'Removing…',
+      success: `${entry.subject.code} was removed from the curriculum.`,
+      action: async () => {
+        setBusy(true); setMessage(null);
+        const result = await api.del(`/api/v1/curricula/${curriculum.id}/subjects/${entry.id}`);
+        setBusy(false);
+        if (!result.ok) { setMessage(result.message); return false; }
+        router.refresh();
+        return true;
+      },
+    });
   }
 
   return (

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Link from '@/lib/link';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import Modal from '@/components/Modal';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { api } from '@/lib/api-client';
 import { CALENDAR_TYPES, CALENDAR_TYPE_LABELS, DAY_SHORT } from '@shared/lib/teaching';
 import type { CalendarEntry } from '@/server/services/teaching/calendar';
@@ -113,6 +114,23 @@ export default function CalendarScreen({ month, entries, canManage, today }: { m
 
 function EventForm({ event, defaultDate, onDone }: { event: CalendarEntry | null; defaultDate: string; onDone: () => void }) {
   const { busy, error, errors, run } = useAction();
+  const confirm = useConfirm();
+  async function remove(e: CalendarEntry) {
+    await confirm({
+      tone: 'danger',
+      title: 'Delete Calendar Event?',
+      description: 'The event is removed from the calendar.',
+      details: [{ label: 'Event', value: e.title }, { label: 'Dates', value: e.startsOn === e.endsOn ? e.startsOn : `${e.startsOn} – ${e.endsOn}` }],
+      confirmLabel: 'Delete event',
+      pendingLabel: 'Deleting…',
+      success: 'Event deleted.',
+      action: async () => {
+        if ((await run(() => api.del(`/api/v1/calendar/${e.id}`))) === null) return false;
+        onDone();
+        return true;
+      },
+    });
+  }
   const [f, setF] = useState({
     title: event?.title ?? '',
     description: event?.description ?? '',
@@ -147,7 +165,7 @@ function EventForm({ event, defaultDate, onDone }: { event: CalendarEntry | null
       )}
       {error && !Object.keys(errors).length && <Flash kind="error">{error}</Flash>}
       <div className="flex justify-between gap-2">
-        <div>{event && <button type="button" className={BTN_DANGER} disabled={busy} onClick={async () => { if (window.confirm('Delete this event?') && (await run(() => api.del(`/api/v1/calendar/${event.id}`)))) onDone(); }}>Delete</button>}</div>
+        <div>{event && <button type="button" className={BTN_DANGER} disabled={busy} onClick={() => void remove(event)}>Delete</button>}</div>
         <div className="flex gap-2"><button type="button" className={BTN_SECONDARY} onClick={onDone}>Cancel</button><button type="submit" className={BTN} disabled={busy}>Save</button></div>
       </div>
     </form>

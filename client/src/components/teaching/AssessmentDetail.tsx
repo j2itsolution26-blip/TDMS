@@ -3,6 +3,7 @@ import Link from '@/lib/link';
 import { useRouter } from '@/lib/navigation';
 import { ScanLine } from 'lucide-react';
 import Modal from '@/components/Modal';
+import { useConfirm, type ConfirmContent } from '@/components/ConfirmDialog';
 import { api } from '@/lib/api-client';
 import {
   ASSESSMENT_PHASE_LABELS,
@@ -69,19 +70,33 @@ export default function AssessmentDetail({ data, classes }: { data: AssessmentDe
   const a = data.assessment;
   const draft = a.scoreStatus === 'DRAFT' && !data.cls.archived;
   const status = useAction();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
+  const facts = [{ label: 'Assessment', value: a.title }, { label: 'Class', value: `${data.cls.subject} · ${data.cls.detail}` }];
 
-  async function act(action: 'publish' | 'unpublish' | 'finalize' | 'release' | 'reopen', confirmText?: string) {
-    if (confirmText && !window.confirm(confirmText)) return;
-    await status.run(() => api.post(`/api/v1/assessments/${a.id}/status`, { action }), {
+  async function act(action: 'publish' | 'unpublish' | 'finalize' | 'release' | 'reopen', ask?: ConfirmContent) {
+    const send = async () => (await status.run(() => api.post(`/api/v1/assessments/${a.id}/status`, { action }), {
       success: { publish: 'Published — students have been notified.', unpublish: 'Unpublished.', finalize: 'Results finalized.', release: 'Results released — students can now see their scores.', reopen: 'Results reopened for changes.' }[action],
-    });
+    })) !== null;
+    if (ask) await confirm({ ...ask, details: facts, action: send });
+    else await send();
   }
 
   async function remove() {
-    if (!window.confirm('Delete this assessment? This cannot be undone.')) return;
-    const ok = await status.run(() => api.del(`/api/v1/assessments/${a.id}`), { refresh: false });
-    if (ok) router.push(`/teaching/${{ QUIZ: 'quizzes', EXAM: 'exams', ACTIVITY: 'activities', PT: 'performance-tasks' }[a.kind]}`);
+    await confirm({
+      tone: 'danger',
+      title: 'Delete Assessment?',
+      description: 'This cannot be undone.',
+      details: facts,
+      confirmLabel: 'Delete assessment',
+      pendingLabel: 'Deleting…',
+      action: async () => {
+        const ok = await status.run(() => api.del(`/api/v1/assessments/${a.id}`), { refresh: false });
+        if (ok === null) return false;
+        router.push(`/teaching/${{ QUIZ: 'quizzes', EXAM: 'exams', ACTIVITY: 'activities', PT: 'performance-tasks' }[a.kind]}`);
+        return true;
+      },
+    });
   }
 
   const scored = data.rows.filter((r) => r.points !== null).length;
@@ -110,9 +125,9 @@ export default function AssessmentDetail({ data, classes }: { data: AssessmentDe
               )}
               {a.scoreStatus === 'DRAFT' && !a.published && <button type="button" className={BTN} disabled={status.busy} onClick={() => act('publish')}>Publish to students</button>}
               {a.scoreStatus === 'DRAFT' && a.published && scored === 0 && <button type="button" className={BTN_SECONDARY} disabled={status.busy} onClick={() => act('unpublish')}>Unpublish</button>}
-              {a.scoreStatus === 'DRAFT' && <button type="button" className={BTN} disabled={status.busy} onClick={() => act('finalize', 'Finalize the results? Scores are locked until you reopen them. Unfinished online attempts are handed in as they are.')}>Finalize results</button>}
+              {a.scoreStatus === 'DRAFT' && <button type="button" className={BTN} disabled={status.busy} onClick={() => act('finalize', { tone: 'warning', title: 'Finalize Results?', description: 'Scores are locked until you reopen them. Unfinished online attempts are handed in as they are.', confirmLabel: 'Finalize results', pendingLabel: 'Finalizing…' })}>Finalize results</button>}
               {a.scoreStatus === 'FINALIZED' && <button type="button" className={BTN_SECONDARY} disabled={status.busy} onClick={() => act('reopen')}>Reopen</button>}
-              {a.scoreStatus === 'FINALIZED' && <button type="button" className={BTN} disabled={status.busy} onClick={() => act('release', 'Release the results? Each student will see their own score and be notified.')}>Release to students</button>}
+              {a.scoreStatus === 'FINALIZED' && <button type="button" className={BTN} disabled={status.busy} onClick={() => act('release', { tone: 'success', title: 'Release Results to Students?', description: 'Each student will see their own score and be notified.', confirmLabel: 'Release results', pendingLabel: 'Releasing…' })}>Release to students</button>}
               {a.scoreStatus === 'DRAFT' && !a.published && scored === 0 && <button type="button" className={BTN_DANGER} disabled={status.busy} onClick={remove}>Delete</button>}
             </div>
           )}

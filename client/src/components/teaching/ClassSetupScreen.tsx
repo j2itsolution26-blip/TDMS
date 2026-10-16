@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 import Modal from '@/components/Modal';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { api } from '@/lib/api-client';
 import { SECTION_YEAR_LEVELS, SEMESTER_LABELS, yearLevelLabel } from '@shared/lib/teaching';
 import { ClassForm, RoomsPanel, Timetable, type ClassRow, type ScheduleSetup } from './ClassSchedule';
@@ -44,6 +45,7 @@ export default function ClassSetupScreen({ setup, schoolYearId, yearLabel, archi
   newSection: number;
 }) {
   const act = useAction();
+  const confirm = useConfirm();
   const router = useRouter();
   // Read-only: an archived year, or a viewer who may not manage classes.
   const archived = yearArchived || !canManage;
@@ -107,7 +109,15 @@ export default function ClassSetupScreen({ setup, schoolYearId, yearLabel, archi
                     {!archived && (
                       <div className="flex justify-end gap-1.5">
                         <button type="button" className={BTN_SMALL} onClick={() => setClassForm(c)}>Edit</button>
-                        <button type="button" className={BTN_SMALL} disabled={act.busy} onClick={() => window.confirm(`Delete ${c.subject.title} for ${c.section.label}? Only a class with no records can be deleted.`) && act.run(() => api.del(`/api/v1/classes/${c.id}`), { success: 'Class deleted.' })}>Delete</button>
+                        <button type="button" className={BTN_SMALL} disabled={act.busy} onClick={() => void confirm({
+                          tone: 'danger',
+                          title: 'Delete Class?',
+                          description: 'Only a class with no records can be deleted.',
+                          details: [{ label: 'Subject', value: `${c.subject.code} · ${c.subject.title}` }, { label: 'Section', value: c.section.label }, { label: 'Semester', value: SEMESTER_LABELS[c.semester] }, { label: 'Instructor', value: c.instructorName }],
+                          confirmLabel: 'Delete class',
+                          pendingLabel: 'Deleting…',
+                          action: async () => (await act.run(() => api.del(`/api/v1/classes/${c.id}`), { success: 'Class deleted.' })) !== null,
+                        })}>Delete</button>
                       </div>
                     )}
                   </td>

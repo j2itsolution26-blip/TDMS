@@ -169,7 +169,7 @@ export default function SubjectsScreen({ rows, page, lastPage, total, search, ma
         programs={map}
         scope={readMapScope(map)}
         onClose={() => setForm(null)}
-        onSaved={(message, placed) => { setForm(null); setNotice(message); if (placed) setFocus({ ...placed, at: Date.now() }); router.refresh(); }}
+        onSaved={(message, placed, keepOpen) => { if (!keepOpen) setForm(null); setNotice(message); if (placed) setFocus({ ...placed, at: Date.now() }); router.refresh(); }}
       />
 
       <Modal open={toggling !== null} onClose={() => !busy && setToggling(null)} title={toggling?.isActive ? 'Deactivate subject?' : 'Activate subject?'} maxWidth="sm:max-w-md">

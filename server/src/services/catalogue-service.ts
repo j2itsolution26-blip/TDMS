@@ -436,12 +436,18 @@ async function assertNoCycle(db: Prisma.TransactionClient | typeof prisma, curri
 }
 
 /**
- * Create a subject and place it in its program's current curriculum, in one
- * transaction: the catalogue entry and its mapping, or neither. The subject
- * itself stays one catalogue record however many curricula later use it.
+ * Create a subject and — when a placement is given — place it in its
+ * program's current curriculum, in one transaction: the catalogue entry and
+ * its mapping, or neither. Without a placement the subject is a catalogue
+ * entry only, to be mapped later. The subject stays one record however many
+ * curricula use it.
  */
-export async function createSubject(input: z.infer<typeof subjectSchema>, placement: z.infer<typeof subjectPlacementSchema>) {
+export async function createSubject(input: z.infer<typeof subjectSchema>, placement: z.infer<typeof subjectPlacementSchema> | null) {
   await assertSubjectCodeFree(input.code, null);
+  if (!placement) {
+    const subject = await prisma.subject.create({ data: { ...subjectData(input), createdAt: new Date(), updatedAt: new Date() } });
+    return { id: subject.id.toString(), code: subject.code, curriculum: null, program: null };
+  }
   const curriculum = await currentCurriculum(placement.programId);
   return prisma.$transaction(async (tx) => {
     const subject = await tx.subject.create({ data: { ...subjectData(input), createdAt: new Date(), updatedAt: new Date() } });

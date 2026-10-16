@@ -33,6 +33,10 @@ export default function Modal({
   appearance = 'default',
   maxHeight,
   animate = false,
+  icon,
+  headerExtra,
+  trapFocus = false,
+  titleClassName,
 }: {
   open: boolean;
   onClose: () => void;
@@ -46,7 +50,16 @@ export default function Modal({
   maxHeight?: string;
   /** A short fade-and-rise on opening (off under reduced motion). Opt-in. */
   animate?: boolean;
+  /** Shown before the title, e.g. an icon in a tinted tile. */
+  icon?: ReactNode;
+  /** Rendered in the header under the title, e.g. a step indicator. */
+  headerExtra?: ReactNode;
+  /** Keep Tab and Shift+Tab inside the dialog while it is open. Opt-in. */
+  trapFocus?: boolean;
+  /** Replaces the title's default classes. */
+  titleClassName?: string;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const subtitleId = useId();
   const opener = useRef<Element | null>(null);
@@ -54,6 +67,8 @@ export default function Modal({
   // each render, and re-running would restore focus mid-typing.
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const trapRef = useRef(trapFocus);
+  trapRef.current = trapFocus;
 
   useEffect(() => {
     if (!open) return;
@@ -61,6 +76,18 @@ export default function Modal({
 
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') closeRef.current();
+      // Focus stays inside: Tab from the last control wraps to the first, and back.
+      if (e.key === 'Tab' && trapRef.current && panelRef.current) {
+        const items = [...panelRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]):not([tabindex="-1"]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])',
+        )].filter((el) => el.offsetParent !== null);
+        if (items.length === 0) return;
+        const first = items[0]!;
+        const last = items[items.length - 1]!;
+        const inside = panelRef.current.contains(document.activeElement);
+        if (e.shiftKey && (document.activeElement === first || !inside)) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && (document.activeElement === last || !inside)) { e.preventDefault(); first.focus(); }
+      }
     }
     window.addEventListener('keydown', onKey);
 
@@ -93,13 +120,17 @@ export default function Modal({
       <div className={`fixed inset-0 transition-opacity ${animate ? 'animate-overlay-in bg-[rgba(15,35,40,0.55)] motion-reduce:animate-none' : 'bg-navy-900/60'}`} onClick={onClose} />
 
       <div className={fluent ? 'flex min-h-full items-stretch justify-center sm:items-center sm:p-6' : 'flex min-h-full items-center justify-center p-4'}>
-        <div className={panel}>
-          <div className={`flex items-start justify-between gap-4 border-b border-border ${fluent ? 'px-5 py-4 sm:px-6' : 'px-6 py-4'}`}>
-            <div className="min-w-0">
-              <h2 id={titleId} className={fluent ? 'text-lg font-semibold text-ink' : 'text-base font-semibold text-navy-900'}>
-                {title}
-              </h2>
-              {subtitle && <p id={subtitleId} className="mt-0.5 text-sm text-muted">{subtitle}</p>}
+        <div className={panel} ref={panelRef}>
+          <div className={`border-b border-border ${fluent ? 'px-5 py-4 sm:px-6' : 'px-6 py-4'}`}>
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3.5">
+              {icon}
+              <div className="min-w-0">
+                <h2 id={titleId} className={titleClassName ?? (fluent ? 'text-lg font-semibold text-ink' : 'text-base font-semibold text-navy-900')}>
+                  {title}
+                </h2>
+                {subtitle && <p id={subtitleId} className="mt-0.5 text-sm text-muted">{subtitle}</p>}
+              </div>
             </div>
             <button
               type="button"
@@ -111,6 +142,8 @@ export default function Modal({
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
+          </div>
+          {headerExtra}
           </div>
 
           <div className={fluent ? 'min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6' : 'px-6 py-5'}>{children}</div>

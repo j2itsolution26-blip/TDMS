@@ -81,9 +81,13 @@ try {
   check('a DHT subject is created by the Director (who manages subjects) in DHT 1st Year', hrm.status === 201 && (await prisma.curriculumSubject.count({ where: { curriculumId: curDht.id } })) === 1, hrm.json);
 
   console.log('\nRefusals leave nothing half-saved');
+  // Placement is optional: without one, the subject is a catalogue entry only.
+  const noPlace = await api('coord', 'POST', '/subjects', subjectBody(`${M}-CAT1`));
+  const cat1 = await prisma.subject.findUnique({ where: { code: `${M}-CAT1` }, include: { _count: { select: { curriculumSubjects: true } } } });
+  check('a subject can be saved without a curriculum placement (catalogue only, no mapping)', noPlace.status === 201 && cat1?._count.curriculumSubjects === 0, noPlace.json);
   const before = await prisma.subject.count();
-  const noPlace = await api('coord', 'POST', '/subjects', subjectBody(`${M}-X1`));
-  check('a new subject needs its program, year level and semester', noPlace.status === 422);
+  const zeroUnits = await api('coord', 'POST', '/subjects', subjectBody(`${M}-X1`, { defaultUnits: 0 }));
+  check('units must be more than 0', zeroUnits.status === 422 && /more than 0/.test(JSON.stringify(zeroUnits.json)), zeroUnits.json);
   const noCur = await api('coord', 'POST', '/subjects', { ...subjectBody(`${M}-X2`), ...place(bare.id, 1, 1) });
   check('a program with no curriculum is refused with what to do', noCur.status === 422 && /no active curriculum/.test(noCur.json?.message ?? ''), noCur.json);
   const badPrereq = await api('coord', 'POST', '/subjects', { ...subjectBody(`${M}-X3`), ...place(dht.id, 1, 2, { prerequisiteSubjectIds: [String(prog1.id)] }) });

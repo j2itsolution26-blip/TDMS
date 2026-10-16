@@ -14,10 +14,12 @@ export const GET = withErrorHandling(async (request: Request) => {
 
 export const POST = withErrorHandling(async (request: Request) => {
   const user = await requireApiUser();
-  // A new subject is created in its place in a curriculum (program, year level, semester).
-  authorize(subjectPolicy.create(user) && curriculumSubjectPolicy.create(user));
+  authorize(subjectPolicy.create(user));
   const body = (await request.json().catch(() => null)) as { placement?: unknown } | null;
   const input = subjectSchema.parse(body);
-  const placement = subjectPlacementSchema.parse(body?.placement ?? {});
+  // Placing it in a curriculum term is optional: a subject can be mapped later.
+  const wantsPlacement = body?.placement != null;
+  if (wantsPlacement) authorize(curriculumSubjectPolicy.create(user));
+  const placement = wantsPlacement ? subjectPlacementSchema.parse(body!.placement) : null;
   return ok(await createSubject(input, placement), 201);
 });

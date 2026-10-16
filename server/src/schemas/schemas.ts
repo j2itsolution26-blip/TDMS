@@ -240,7 +240,7 @@ export const subjectSchema = z.object({
   title: z.string().trim().min(1, 'The title is required.').max(255),
   description: nullableString(2000),
   subjectType: subjectTypeSchema,
-  defaultUnits: z.coerce.number().min(0, 'Units cannot be negative.').max(99, 'Units is too large.'),
+  defaultUnits: z.coerce.number().gt(0, 'Units must be more than 0.').max(99, 'Units is too large.'),
   /** Weekly contact hours; which apply depends on the type (shared/lib/subjects). */
   lectureHours: z.coerce.number().min(0, 'Hours cannot be negative.').max(60, 'At most 60 hours a week.').nullable().optional(),
   labHours: z.coerce.number().min(0, 'Hours cannot be negative.').max(60, 'At most 60 hours a week.').nullable().optional(),

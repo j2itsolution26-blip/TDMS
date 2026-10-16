@@ -534,6 +534,10 @@ export async function approveApplication(
         data: {
           status: d.status,
           filePath: d.fileKey,
+          // The file's own name, type and size come with it.
+          fileName: d.fileKey ? d.fileName : null,
+          fileType: d.fileKey ? d.fileType : null,
+          fileSize: d.fileKey ? d.fileSize : null,
           submittedBy: d.submittedBy,
           submittedAt: d.submittedAt,
           verifiedBy: d.status === 'verified' ? d.verifiedBy : null,

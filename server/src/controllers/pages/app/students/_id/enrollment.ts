@@ -48,6 +48,8 @@ export async function loadStudentsIdEnrollment({ params }: PageRequest) {
       yearLevels: validYearLevels(finalYear),
     },
     canVerify: studentCredentialPolicy.verify(user),
+    // Uploading a credential's soft copy (Secretary, Processing Officer, Admin).
+    canUpload: studentCredentialPolicy.upload(user),
     canEnroll: enrollmentPolicy.create(user),
   };
 }

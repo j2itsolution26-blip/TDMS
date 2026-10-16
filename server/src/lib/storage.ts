@@ -70,11 +70,15 @@ export interface CheckedUpload {
  * within the limit, and content whose signature matches the extension — a
  * renamed executable is refused however it is labelled.
  */
-export async function checkUpload(file: File): Promise<CheckedUpload> {
+export async function checkUpload(
+  file: File,
+  // A narrower allowlist for a particular kind of document (student credentials: PDF, JPG, PNG).
+  allowed: { types: Record<string, string>; label: string } = { types: UPLOAD_TYPES, label: 'PDF, Word, Excel, PowerPoint, JPG or PNG' },
+): Promise<CheckedUpload> {
   const name = file.name.replace(/[\\/]/g, '_').slice(-200) || 'file';
   const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : '';
-  const type = UPLOAD_TYPES[ext];
-  if (!type) throw new AppError('That file type is not allowed. Upload a PDF, Word, Excel, PowerPoint, JPG or PNG file.', 422, { file: ['File type not allowed.'] });
+  const type = allowed.types[ext];
+  if (!type) throw new AppError(`That file type is not allowed. Upload a ${allowed.label} file.`, 422, { file: [`Upload a ${allowed.label} file.`] });
   if (file.size === 0) throw new AppError('The file is empty.', 422, { file: ['The file is empty.'] });
   if (file.size > UPLOAD_MAX_BYTES) throw new AppError('The file is larger than 4 MB.', 422, { file: ['The file is larger than 4 MB.'] });
 

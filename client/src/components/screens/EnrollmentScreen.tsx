@@ -11,6 +11,10 @@ import { formatDate } from '@shared/lib/dates';
 import { SEMESTER_LABELS, yearLevelLabel } from '@shared/lib/teaching';
 import { approvalNotice, type Placement } from '@/lib/enrollment-notice';
 import NewEnrollmentTermDialog, { type TermOptions } from './NewEnrollmentTermDialog';
+import CredentialUploadDialog, { type UploadTarget } from './CredentialUploadDialog';
+import { CredentialActions, CredentialSummary } from './CredentialParts';
+import { CREDENTIAL_UPLOAD_LABEL } from '@shared/lib/credential-files';
+import { CREDENTIAL_STATUS_LABELS } from '@shared/types/domain';
 
 /** Port of livewire/enrollment/show.blade.php. */
 
@@ -20,8 +24,13 @@ export interface CredentialRow {
   version: number;
   remarks: string | null;
   rejectionReason: string | null;
-  filePath: string | null;
+  /** A soft copy is on record (the storage key itself never reaches the browser). */
+  hasFile: boolean;
+  fileName: string | null;
+  fileType: string | null;
+  fileSize: number | null;
   submittedAt: string | null;
+  submitter: { name: string } | null;
   verifiedAt: string | null;
   requirement: { id: string; name: string; isRequired: boolean };
   verifier: { name: string } | null;
@@ -55,11 +64,13 @@ interface Props {
   /** The New Enrollment Term choices (school years, year levels). */
   termOptions: TermOptions;
   canVerify: boolean;
+  /** May upload or replace a credential's soft copy. */
+  canUpload: boolean;
   canEnroll: boolean;
 }
 
 export default function EnrollmentScreen({
-  student, credentials, enrollments, allVerified, termOptions, canVerify, canEnroll,
+  student, credentials, enrollments, allVerified, termOptions, canVerify, canUpload, canEnroll,
 }: Props) {
   const router = useRouter();
   const [flash, setFlash] = useState<string | null>(null);
@@ -71,6 +82,7 @@ export default function EnrollmentScreen({
   const [rejectionReason, setRejectionReason] = useState('');
 
   const [showEnrollForm, setShowEnrollForm] = useState(false);
+  const [uploading, setUploading] = useState<UploadTarget | null>(null);
 
   const [dropping, setDropping] = useState<string | null>(null);
   const [dropReason, setDropReason] = useState('');
@@ -170,60 +182,81 @@ export default function EnrollmentScreen({
         </Card>
       </div>
 
-      {/* Credentials */}
+      {/* Credentials: each requirement's soft copy, its review, and what can be done with it. */}
       <Card padding="p-0">
-        <div className="border-b border-border px-6 py-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-5 py-4 sm:px-6">
           <h2 className="text-base font-semibold text-navy-900">Credentials</h2>
+          <p className="text-xs text-slate-500">{CREDENTIAL_UPLOAD_LABEL} up to 4 MB · an upload awaits review until it is verified</p>
         </div>
 
         {credentials.length === 0 ? (
           <EmptyState title="No credential records" description="Requirements are created when an application is approved." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Requirement</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Version</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-500">Verified</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium uppercase text-slate-500">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {credentials.map((c) => (
-                  <tr key={c.id}>
-                    <td className="px-6 py-3.5 text-sm">
-                      <p className="font-medium text-navy-900">{c.requirement.name}</p>
-                      {c.requirement.isRequired && <p className="text-xs text-slate-500">Required</p>}
-                      {c.rejectionReason && <p className="text-xs text-red-600">{c.rejectionReason}</p>}
-                    </td>
-                    <td className="px-6 py-3.5"><Badge status={c.status} /></td>
-                    <td className="px-6 py-3.5 text-sm text-slate-500">v{c.version}</td>
-                    <td className="px-6 py-3.5 text-sm text-slate-500">
-                      {c.verifiedAt ? formatDate(c.verifiedAt) : '—'}
-                      {c.verifier && <p className="text-xs text-slate-400">{c.verifier.name}</p>}
-                    </td>
-                    <td className="px-6 py-3.5 text-right text-sm">
-                      {canVerify && c.status !== 'verified' && (
-                        <div className="flex items-center justify-end gap-2">
-                          <button type="button" onClick={() => verify(c)} disabled={busy} className={BUTTON_SUCCESS}>
-                            Verify
-                          </button>
-                          <button type="button" disabled={busy} className={BUTTON_SECONDARY}
-                            onClick={() => { reset(); setRejecting(c.id); setRejectionReason(''); }}>
-                            Reject
-                          </button>
-                        </div>
-                      )}
-                    </td>
+          <>
+            {/* Laptop and up: the table. */}
+            <div className="hidden overflow-x-auto md:block">
+              <table className="min-w-full divide-y divide-border">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th scope="col" className="px-5 py-3 text-left text-xs font-semibold text-slate-500 lg:px-6">Requirement</th>
+                    <th scope="col" className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Status</th>
+                    <th scope="col" className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Version</th>
+                    <th scope="col" className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Verified</th>
+                    <th scope="col" className="px-5 py-3 text-right text-xs font-semibold text-slate-500 lg:px-6">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {credentials.map((c) => (
+                    <tr key={c.id} className="align-top">
+                      <td className="max-w-[26rem] px-5 py-4 text-sm lg:px-6">
+                        <CredentialSummary c={c} />
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4"><Badge status={c.status} label={CREDENTIAL_STATUS_LABELS[c.status as keyof typeof CREDENTIAL_STATUS_LABELS]} /></td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm tabular-nums text-slate-600">v{c.version}</td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-slate-600">
+                        {c.verifiedAt ? formatDate(c.verifiedAt) : '—'}
+                        {c.verifier && <p className="text-xs text-slate-500">{c.verifier.name}</p>}
+                      </td>
+                      <td className="px-5 py-4 lg:px-6">
+                        <CredentialActions c={c} busy={busy} canUpload={canUpload} canVerify={canVerify}
+                          onUpload={() => { reset(); setUploading({ credentialId: c.id, requirement: c.requirement.name, current: c.hasFile ? c.fileName : null }); }}
+                          onVerify={() => verify(c)}
+                          onReject={() => { reset(); setRejecting(c.id); setRejectionReason(''); }} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Phones and small tablets: one card per requirement, nothing hidden. */}
+            <ul className="divide-y divide-border md:hidden">
+              {credentials.map((c) => (
+                <li key={c.id} className="space-y-3 px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 text-sm"><CredentialSummary c={c} /></div>
+                    <Badge status={c.status} label={CREDENTIAL_STATUS_LABELS[c.status as keyof typeof CREDENTIAL_STATUS_LABELS]} />
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Version {c.version} · {c.verifiedAt ? `Verified ${formatDate(c.verifiedAt)}${c.verifier ? ` by ${c.verifier.name}` : ''}` : 'Not verified'}
+                  </p>
+                  <CredentialActions c={c} busy={busy} canUpload={canUpload} canVerify={canVerify} align="start"
+                    onUpload={() => { reset(); setUploading({ credentialId: c.id, requirement: c.requirement.name, current: c.hasFile ? c.fileName : null }); }}
+                    onVerify={() => verify(c)}
+                    onReject={() => { reset(); setRejecting(c.id); setRejectionReason(''); }} />
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </Card>
+
+      <CredentialUploadDialog
+        target={uploading}
+        student={{ fullName: student.fullName, studentNumber: student.studentNumber }}
+        onClose={() => setUploading(null)}
+        onUploaded={(message) => { setUploading(null); setFlash(message); router.refresh(); }}
+      />
 
       {/* Enrollment terms */}
       <Card padding="p-0">

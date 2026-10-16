@@ -158,7 +158,13 @@ try {
   const list = await api('secretary', 'GET', `/students/${direct.id}/credentials`);
   check('opening the documents creates the checklist', list.status === 200 && list.data?.length >= required.length, list.data?.length);
   check('opening it again adds nothing more', (await api('secretary', 'GET', `/students/${direct.id}/credentials`)).data?.length === list.data?.length);
+  // A credential is verified from its uploaded soft copy: upload a scan, then verify it.
+  const scan = Buffer.from('%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n');
   for (const c of list.data ?? []) {
+    const form = new FormData();
+    form.append('file', new Blob([scan], { type: 'application/pdf' }), `${c.requirement.name}.pdf`);
+    const up = await fetch(`${BASE}/api/v1/credentials/${c.id}/file`, { method: 'POST', headers: { cookie: cookies.secretary }, body: form });
+    if (up.status !== 201) check(`uploading ${c.requirement.name}`, false, await up.text());
     const v = await api('secretary', 'POST', `/credentials/${c.id}/verify`, { remarks: null });
     if (v.status !== 200) check(`verifying ${c.requirement.name}`, false, v.json);
   }

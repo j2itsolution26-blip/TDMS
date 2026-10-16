@@ -674,6 +674,10 @@ model StudentCredential {
   studentId               BigInt    @map("student_id")
   credentialRequirementId BigInt    @map("credential_requirement_id")
   filePath                String?   @map("file_path") @db.VarChar(255)
+  /// The uploaded file's own name, type and size (null for files from before they were kept).
+  fileName                String?   @map("file_name") @db.VarChar(255)
+  fileType                String?   @map("file_type") @db.VarChar(120)
+  fileSize                Int?      @map("file_size")
   submittedBy             BigInt?   @map("submitted_by")
   submittedAt             DateTime? @map("submitted_at") @db.Timestamp(0)
   status                  String    @default("missing") @db.VarChar(255)

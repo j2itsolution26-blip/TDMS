@@ -171,6 +171,8 @@ export const studentCredentialPolicy = {
   viewAny: (u: AuthUser) => inRoles(u, OFFICE_VIEWERS) || can(u, 'credentials.verify'),
   view: (u: AuthUser) => inRoles(u, OFFICE_VIEWERS) || can(u, 'credentials.verify'),
   verify: (u: AuthUser) => can(u, 'credentials.verify'),
+  // A soft copy is handed in by whoever verifies credentials or manages student records.
+  upload: (u: AuthUser) => can(u, 'credentials.verify') || can(u, 'students.manage'),
   delete: (u: AuthUser) => isSuperAdmin(u),
 };
 

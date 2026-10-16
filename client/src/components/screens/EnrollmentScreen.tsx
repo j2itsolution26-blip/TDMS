@@ -94,12 +94,28 @@ export default function EnrollmentScreen({
   function reset() { setFlash(null); setFlashError(null); setErrors({}); }
 
   async function verify(credential: CredentialRow) {
-    setBusy(true); reset();
-    const result = await api.post(`/api/v1/credentials/${credential.id}/verify`, { remarks: '' });
-    setBusy(false);
-    if (!result.ok) { setFlashError(result.message); return; }
-    setFlash('Credential verified.');
-    router.refresh();
+    if (busy) return;
+    await confirm({
+      tone: 'success',
+      title: 'Verify Credential',
+      description: 'Confirm that you have reviewed this document. A verified credential can no longer be replaced.',
+      details: [
+        { label: 'Student', value: `${student.fullName} (${student.studentNumber})` },
+        { label: 'Requirement', value: credential.requirement.name },
+        { label: 'Document', value: credential.fileName ? `${credential.fileName} (v${credential.version})` : '—' },
+      ],
+      confirmLabel: 'Verify credential',
+      pendingLabel: 'Verifying…',
+      action: async () => {
+        setBusy(true); reset();
+        const result = await api.post(`/api/v1/credentials/${credential.id}/verify`, { remarks: '' });
+        setBusy(false);
+        if (!result.ok) { setFlashError(result.message); return false; }
+        setFlash('Credential verified.');
+        router.refresh();
+        return true;
+      },
+    });
   }
 
   async function confirmReject(event: React.FormEvent) {

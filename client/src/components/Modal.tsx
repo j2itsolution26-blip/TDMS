@@ -78,6 +78,9 @@ export default function Modal({
       if (e.key === 'Escape') closeRef.current();
       // Focus stays inside: Tab from the last control wraps to the first, and back.
       if (e.key === 'Tab' && trapRef.current && panelRef.current) {
+        // A dialog stacked on top (e.g. "Discard changes?") keeps its own focus.
+        const owner = document.activeElement?.closest('[role="dialog"]');
+        if (owner && owner !== panelRef.current.closest('[role="dialog"]')) return;
         const items = [...panelRef.current.querySelectorAll<HTMLElement>(
           'a[href], button:not([disabled]), input:not([disabled]):not([tabindex="-1"]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])',
         )].filter((el) => el.offsetParent !== null);

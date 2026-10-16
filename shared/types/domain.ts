@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 export const SUBJECT_TYPES = ['lecture', 'laboratory', 'lecture_laboratory', 'practical', 'capstone', 'ojt'] as const;
 export const STUDENT_STATUSES = ['applicant', 'active', 'transferred', 'archived', 'graduated', 'dropped', 'inactive'] as const;
-export const APPLICATION_STATUSES = ['submitted', 'under_review', 'approved', 'returned'] as const;
+export const APPLICATION_STATUSES = ['draft', 'submitted', 'under_review', 'approved', 'returned', 'rejected'] as const;
 export const CREDENTIAL_STATUSES = ['missing', 'submitted', 'under_review', 'verified', 'rejected', 'expired'] as const;
 /**
  * Account lifecycle. Only ACTIVE may enter the application.
@@ -204,10 +204,12 @@ export const STUDENT_STATUS_LABELS: Record<StudentStatus, string> = {
 };
 
 export const APPLICATION_STATUS_LABELS: Record<ApplicationStatus, string> = {
+  draft: 'Draft',
   submitted: 'Submitted',
   under_review: 'Under Review',
   approved: 'Approved',
   returned: 'Returned',
+  rejected: 'Rejected',
 };
 
 export const CREDENTIAL_STATUS_LABELS: Record<CredentialStatus, string> = {

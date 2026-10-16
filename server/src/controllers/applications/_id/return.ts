@@ -10,8 +10,7 @@ type Params = { params: Promise<{ id: string }> };
 export const POST = withErrorHandling(async (request: Request, { params }: Params) => {
   const user = await requireApiUser();
   authorize(applicationPolicy.review(user));
-  const { id } = await params;
+  const id = idSchema.parse((await params).id);
   const input = await parseJson(request, returnApplicationSchema);
-  await returnApplication(idSchema.parse(id), input.reason, BigInt(user.id));
-  return ok({ status: 'returned' });
+  return ok(await returnApplication(user, id, input.reason, requestContext(request)));
 });

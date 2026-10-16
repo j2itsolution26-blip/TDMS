@@ -172,6 +172,9 @@ try {
   console.log('\nApplications reach Enrollments too');
   const app = await prisma.application.create({ data: { firstName: 'Ana', lastName: `L${M}app`, programId: dht.id, status: 'submitted', createdAt: new Date() } });
   created.applications.push(app.id);
+  // Approval needs the required documents verified on the application first.
+  const appReqs = await prisma.credentialRequirement.findMany({ where: { isActive: true, OR: [{ programId: null }, { programId: dht.id }] }, select: { id: true } });
+  await prisma.applicationDocument.createMany({ data: appReqs.map((r) => ({ applicationId: app.id, credentialRequirementId: r.id, status: 'verified', verifiedAt: new Date() })) });
   const approved = await api('secretary', 'POST', `/applications/${app.id}/approve`);
   const fromApp = await prisma.application.findUnique({ where: { id: app.id }, select: { studentId: true } });
   const appEnrollment = fromApp?.studentId ? await prisma.enrollment.findFirst({ where: { studentId: fromApp.studentId } }) : null;

@@ -485,23 +485,23 @@ model Curriculum {
 }
 
 model Subject {
-  id           BigInt    @id @default(autoincrement())
-  code         String    @unique(map: "subjects_code_unique") @db.VarChar(255)
-  title        String    @db.VarChar(255)
-  description  String?
-  subjectType  String    @map("subject_type") @db.VarChar(255)
-  defaultUnits Decimal   @map("default_units") @db.Decimal(4, 1)
+  id                   BigInt    @id @default(autoincrement())
+  code                 String    @unique(map: "subjects_code_unique") @db.VarChar(255)
+  title                String    @db.VarChar(255)
+  description          String?
+  subjectType          String    @map("subject_type") @db.VarChar(255)
+  defaultUnits         Decimal   @map("default_units") @db.Decimal(4, 1)
   /// Weekly contact hours; total contact hours is their sum (not stored).
-  lectureHours Decimal?  @map("lecture_hours") @db.Decimal(4, 1)
-  labHours     Decimal?  @map("lab_hours") @db.Decimal(4, 1)
-  recommendedClassSize Int? @map("recommended_class_size") @db.SmallInt
-  remarks      String?
-  isActive     Boolean   @default(true) @map("is_active")
-  createdAt    DateTime? @map("created_at") @db.Timestamp(0)
-  updatedAt    DateTime? @map("updated_at") @db.Timestamp(0)
+  lectureHours         Decimal?  @map("lecture_hours") @db.Decimal(4, 1)
+  labHours             Decimal?  @map("lab_hours") @db.Decimal(4, 1)
+  recommendedClassSize Int?      @map("recommended_class_size") @db.SmallInt
+  remarks              String?
+  isActive             Boolean   @default(true) @map("is_active")
+  createdAt            DateTime? @map("created_at") @db.Timestamp(0)
+  updatedAt            DateTime? @map("updated_at") @db.Timestamp(0)
 
-  curriculumSubjects CurriculumSubject[] @relation("CurriculumSubjectSubject")
-  prerequisiteFor    CurriculumSubject[] @relation("CurriculumSubjectPrerequisite")
+  curriculumSubjects CurriculumSubject[]             @relation("CurriculumSubjectSubject")
+  prerequisiteFor    CurriculumSubject[]             @relation("CurriculumSubjectPrerequisite")
   requiredBy         CurriculumSubjectPrerequisite[]
   classes            ClassOffering[]
 
@@ -525,7 +525,7 @@ model CurriculumSubject {
   subject      Subject    @relation("CurriculumSubjectSubject", fields: [subjectId], references: [id], onDelete: Restrict, map: "curriculum_subjects_subject_id_foreign", onUpdate: NoAction)
   prerequisite Subject?   @relation("CurriculumSubjectPrerequisite", fields: [prerequisiteSubjectId], references: [id], onDelete: SetNull, map: "curriculum_subjects_prerequisite_subject_id_foreign", onUpdate: NoAction)
 
-  classes      ClassOffering[]
+  classes       ClassOffering[]
   /// All prerequisites. prerequisiteSubjectId above is kept for history and mirrors the first.
   prerequisites CurriculumSubjectPrerequisite[]
 
@@ -575,28 +575,78 @@ model Student {
   @@map("students")
 }
 
+/// An admission application: draft → submitted → under_review → approved |
+/// returned | rejected (shared/lib/applications.ts holds the transitions).
+/// Approving one creates or links a Student and opens a pending enrollment;
+/// it never enrolls anyone by itself.
 model Application {
-  id          BigInt    @id @default(autoincrement())
-  firstName   String    @map("first_name") @db.VarChar(255)
-  middleName  String?   @map("middle_name") @db.VarChar(255)
-  lastName    String    @map("last_name") @db.VarChar(255)
-  email       String?   @db.VarChar(255)
-  phone       String?   @db.VarChar(255)
-  dateOfBirth DateTime? @map("date_of_birth") @db.Date
-  programId   BigInt    @map("program_id")
-  status      String    @default("submitted") @db.VarChar(255)
-  notes       String?
-  reviewedBy  BigInt?   @map("reviewed_by")
-  reviewedAt  DateTime? @map("reviewed_at") @db.Timestamp(0)
-  studentId   BigInt?   @map("student_id")
-  createdAt   DateTime? @map("created_at") @db.Timestamp(0)
-  updatedAt   DateTime? @map("updated_at") @db.Timestamp(0)
+  id                    BigInt    @id @default(autoincrement())
+  /// APP-<year>-<id>, set in the same transaction that creates the row.
+  applicationNumber     String?   @unique(map: "applications_application_number_unique") @map("application_number") @db.VarChar(32)
+  firstName             String    @map("first_name") @db.VarChar(255)
+  middleName            String?   @map("middle_name") @db.VarChar(255)
+  lastName              String    @map("last_name") @db.VarChar(255)
+  suffix                String?   @db.VarChar(20)
+  email                 String?   @db.VarChar(255)
+  phone                 String?   @db.VarChar(255)
+  dateOfBirth           DateTime? @map("date_of_birth") @db.Date
+  address               String?
+  emergencyContactName  String?   @map("emergency_contact_name") @db.VarChar(255)
+  emergencyContactPhone String?   @map("emergency_contact_phone") @db.VarChar(30)
+  programId             BigInt    @map("program_id")
+  schoolYearId          BigInt?   @map("school_year_id")
+  highestEducation      String?   @map("highest_education") @db.VarChar(40)
+  previousSchool        String?   @map("previous_school") @db.VarChar(255)
+  yearGraduated         Int?      @map("year_graduated") @db.SmallInt
+  educationNotes        String?   @map("education_notes")
+  status                String    @default("submitted") @db.VarChar(255)
+  /// The latest decision's remarks (return or rejection reason, approval note).
+  notes                 String?
+  reviewedBy            BigInt?   @map("reviewed_by")
+  reviewedAt            DateTime? @map("reviewed_at") @db.Timestamp(0)
+  submittedAt           DateTime? @map("submitted_at") @db.Timestamp(0)
+  /// Who recorded it. A plain id, like the other "who did it" columns.
+  createdBy             BigInt?   @map("created_by")
+  studentId             BigInt?   @map("student_id")
+  createdAt             DateTime? @map("created_at") @db.Timestamp(0)
+  updatedAt             DateTime? @map("updated_at") @db.Timestamp(0)
 
-  program  Program  @relation(fields: [programId], references: [id], onDelete: Restrict, map: "applications_program_id_foreign", onUpdate: NoAction)
-  reviewer User?    @relation("ApplicationReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull, map: "applications_reviewed_by_foreign", onUpdate: NoAction)
-  student  Student? @relation(fields: [studentId], references: [id], onDelete: SetNull, map: "applications_student_id_foreign", onUpdate: NoAction)
+  program    Program               @relation(fields: [programId], references: [id], onDelete: Restrict, map: "applications_program_id_foreign", onUpdate: NoAction)
+  schoolYear SchoolYear?           @relation(fields: [schoolYearId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  reviewer   User?                 @relation("ApplicationReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull, map: "applications_reviewed_by_foreign", onUpdate: NoAction)
+  student    Student?              @relation(fields: [studentId], references: [id], onDelete: SetNull, map: "applications_student_id_foreign", onUpdate: NoAction)
+  documents  ApplicationDocument[]
 
+  @@index([status])
   @@map("applications")
+}
+
+/// One requirement on one application: pending (nothing yet) → submitted
+/// (a file uploaded, or the paper copy received) → verified | rejected.
+/// Verifying is always a reviewer's explicit act — an upload never does it.
+model ApplicationDocument {
+  id                      BigInt    @id @default(autoincrement())
+  applicationId           BigInt    @map("application_id")
+  credentialRequirementId BigInt    @map("credential_requirement_id")
+  status                  String    @default("pending") @db.VarChar(16)
+  fileKey                 String?   @map("file_key") @db.VarChar(255)
+  fileName                String?   @map("file_name") @db.VarChar(255)
+  fileType                String?   @map("file_type") @db.VarChar(120)
+  fileSize                Int?      @map("file_size")
+  remarks                 String?
+  submittedBy             BigInt?   @map("submitted_by")
+  submittedAt             DateTime? @map("submitted_at") @db.Timestamp(0)
+  verifiedBy              BigInt?   @map("verified_by")
+  verifiedAt              DateTime? @map("verified_at") @db.Timestamp(0)
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+
+  application Application           @relation(fields: [applicationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  requirement CredentialRequirement @relation(fields: [credentialRequirementId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([applicationId, credentialRequirementId], map: "application_documents_unique")
+  @@index([credentialRequirementId])
+  @@map("application_documents")
 }
 
 model CredentialRequirement {
@@ -608,8 +658,9 @@ model CredentialRequirement {
   createdAt  DateTime? @map("created_at") @db.Timestamp(0)
   updatedAt  DateTime? @map("updated_at") @db.Timestamp(0)
 
-  program            Program?            @relation(fields: [programId], references: [id], onDelete: Restrict, map: "credential_requirements_program_id_foreign", onUpdate: NoAction)
-  studentCredentials StudentCredential[]
+  program              Program?              @relation(fields: [programId], references: [id], onDelete: Restrict, map: "credential_requirements_program_id_foreign", onUpdate: NoAction)
+  studentCredentials   StudentCredential[]
+  applicationDocuments ApplicationDocument[]
 
   @@map("credential_requirements")
 }
@@ -712,6 +763,7 @@ model SchoolYear {
   sections       Section[]
   classes        ClassOffering[]
   calendarEvents CalendarEvent[]
+  applications   Application[]
 
   @@index([status])
   @@map("school_years")
@@ -789,30 +841,30 @@ model Room {
 /// A subject taught to a section in one semester, by one Diploma Instructor.
 /// The instructor assignment is what every Instructor permission hangs off.
 model ClassOffering {
-  id                BigInt    @id @default(autoincrement())
-  schoolYearId      BigInt    @map("school_year_id")
-  semester          Int       @db.SmallInt
-  sectionId         BigInt    @map("section_id")
-  subjectId         BigInt    @map("subject_id")
-  instructorId      BigInt?   @map("instructor_id")
+  id                  BigInt    @id @default(autoincrement())
+  schoolYearId        BigInt    @map("school_year_id")
+  semester            Int       @db.SmallInt
+  sectionId           BigInt    @map("section_id")
+  subjectId           BigInt    @map("subject_id")
+  instructorId        BigInt?   @map("instructor_id")
   /// Legacy free-text room, kept for history; scheduling uses roomId.
-  room              String?   @db.VarChar(50)
+  room                String?   @db.VarChar(50)
   /// The class's room; a meeting may name its own (ClassSchedule.roomId).
-  roomId            BigInt?   @map("room_id")
+  roomId              BigInt?   @map("room_id")
   /// The curriculum entry the class teaches (program, year level, semester).
   /// Required for new classes; null only for classes created before mapping checks.
-  curriculumSubjectId BigInt? @map("curriculum_subject_id")
+  curriculumSubjectId BigInt?   @map("curriculum_subject_id")
   /// ACTIVE | CANCELLED — a cancelled class holds no room, instructor or section time.
-  status            String    @default("ACTIVE") @db.VarChar(16)
-  passingGrade      Decimal   @default(75) @map("passing_grade") @db.Decimal(5, 2)
+  status              String    @default("ACTIVE") @db.VarChar(16)
+  passingGrade        Decimal   @default(75) @map("passing_grade") @db.Decimal(5, 2)
   /// Category weights for the final grade, in percent: QUIZ, EXAM, ACTIVITY, PT.
-  weights           Json      @default("{\"QUIZ\":20,\"EXAM\":40,\"ACTIVITY\":20,\"PT\":20}")
+  weights             Json      @default("{\"QUIZ\":20,\"EXAM\":40,\"ACTIVITY\":20,\"PT\":20}")
   /// DRAFT | FINALIZED | RELEASED — students see grades only once RELEASED.
-  gradeStatus       String    @default("DRAFT") @map("grade_status") @db.VarChar(16)
-  gradesFinalizedAt DateTime? @map("grades_finalized_at")
-  gradesReleasedAt  DateTime? @map("grades_released_at")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at")
+  gradeStatus         String    @default("DRAFT") @map("grade_status") @db.VarChar(16)
+  gradesFinalizedAt   DateTime? @map("grades_finalized_at")
+  gradesReleasedAt    DateTime? @map("grades_released_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at")
 
   schoolYear         SchoolYear             @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
   section            Section                @relation(fields: [sectionId], references: [id], onDelete: Restrict)

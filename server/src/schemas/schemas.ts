@@ -2,7 +2,6 @@ import { z } from 'zod';
 import {
   subjectTypeSchema,
   studentStatusSchema,
-  applicationStatusSchema,
   enrollmentStatusSchema,
   accountStatusSchema,
   ROLES,
@@ -11,6 +10,7 @@ import { checkInstitutionalEmail, allowedDomain } from '@/server/lib/institution
 import { passwordProblems } from '@shared/lib/password-policy';
 import { dateOfBirthProblem, phoneProblem } from '@shared/lib/student-rules';
 import { MAX_YEAR_LEVEL } from '@shared/lib/teaching';
+import { DOCUMENT_STATUSES, EDUCATION_LEVELS } from '@shared/lib/applications';
 
 /** A diploma runs three years (shared/lib/teaching.ts YEAR_LEVELS). */
 const YEAR_LEVEL_MESSAGE = 'Choose Year 1, 2 or 3.';
@@ -333,20 +333,62 @@ export const registrationTermSchema = z.object({
 
 // --- Applications ----------------------------------------------------------
 
+/** '' from a cleared select or input becomes null before the real check. */
+const blankToNull = (v: unknown) => (v === '' || v === undefined ? null : v);
+/** An optional field may also be left out of the request altogether. */
+const orNull = <T extends z.ZodTypeAny>(schema: T) => z.preprocess((v) => (v === undefined ? null : v), schema);
+
+/**
+ * Recording or editing an application. Only the names and the program are
+ * needed to keep a draft; what a submission needs on top is checked by
+ * shared/lib/applications.submissionProblems, against the stored record.
+ */
 export const applicationSchema = z.object({
   firstName: z.string().trim().min(1, 'The first name is required.').max(100),
-  middleName: nullableString(100),
+  middleName: orNull(nullableString(100)),
   lastName: z.string().trim().min(1, 'The last name is required.').max(100),
-  email: nullableEmail,
-  phone: nullableString(30),
-  dateOfBirth: nullableDate,
+  suffix: orNull(nullableString(20)),
+  email: orNull(nullableEmail),
+  phone: orNull(studentPhone),
+  dateOfBirth: orNull(studentDateOfBirth),
+  address: orNull(nullableString(500)),
+  emergencyContactName: orNull(nullableString(255)),
+  emergencyContactPhone: orNull(studentPhone),
   programId: idSchema,
-  status: applicationStatusSchema.default('submitted'),
-  notes: nullableString(2000),
+  schoolYearId: z.preprocess(blankToNull, idSchema.nullable()),
+  highestEducation: z.preprocess(blankToNull, z.enum(EDUCATION_LEVELS, { errorMap: () => ({ message: 'Choose the highest educational attainment.' }) }).nullable()),
+  previousSchool: orNull(nullableString(255)),
+  yearGraduated: z.preprocess(
+    blankToNull,
+    z.coerce.number({ invalid_type_error: 'Enter a year such as 2024.' }).int('Enter a year such as 2024.')
+      .min(1950, 'Enter a year from 1950 onwards.').max(new Date().getFullYear() + 1, 'The year cannot be in the future.').nullable(),
+  ),
+  educationNotes: orNull(nullableString(1000)),
 });
+
+export const approveApplicationSchema = z.object({
+  /** Link this existing student instead of creating one. */
+  studentId: z.preprocess(blankToNull, idSchema.nullable()).optional(),
+  /** Create a new student even though a possible match was found. */
+  createNew: z.boolean().optional(),
+  remarks: nullableString(500).optional(),
+});
+
+export const applicationDocumentStatusSchema = z
+  .object({
+    status: z.enum(DOCUMENT_STATUSES),
+    remarks: nullableString(500).optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.status === 'rejected' && !v.remarks) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['remarks'], message: 'Say why the document is rejected.' });
+  });
 
 export const returnApplicationSchema = z.object({
   reason: z.string().trim().min(1, 'A reason is required when returning an application.').max(500),
+});
+
+export const rejectApplicationSchema = z.object({
+  reason: z.string().trim().min(1, 'A reason is required when rejecting an application.').max(500),
 });
 
 // --- Credentials -----------------------------------------------------------

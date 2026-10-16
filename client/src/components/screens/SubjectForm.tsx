@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, ChevronDown, Info, Layers, Loader2, Save, X } from 'lucide-react';
 import Modal from '@/components/Modal';
+import { Err, FIELD, LABEL, MUTED, Req, RING, SectionHead, Segmented, Select } from '@/components/fluent-form';
 import { api } from '@/lib/api-client';
 import { SUBJECT_TYPES, SUBJECT_TYPE_LABELS, type SubjectType } from '@shared/types/domain';
 import { hourFields } from '@shared/lib/subjects';
@@ -41,68 +42,9 @@ export interface SubjectDetails {
   isActive: boolean;
 }
 
-// The reference's palette: primary #087F5B, text #172B3A, secondary #647A73, pale green #E7F7F0.
-const FIELD = 'mt-1.5 block h-10 w-full rounded-lg border border-[#D6E2DD] bg-white px-3 text-sm text-[#172B3A] placeholder:text-[#9AABA5] transition focus:border-[#087F5B] focus:outline-none focus:ring-2 focus:ring-[#087F5B]/20 aria-[invalid=true]:border-red-400';
-// bg-none: the forms plugin draws its own arrow; these selects use the chevron icon.
-const SELECT = `${FIELD} appearance-none bg-none pr-9`;
-const LABEL = 'text-[13px] font-semibold text-[#172B3A]';
-const RING = 'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#087F5B] focus-visible:ring-offset-2';
-const MUTED = 'text-[#647A73]';
 const DESCRIPTION_MAX = 500;
 const TYPE_ORDER: SubjectType[] = ['lecture', 'laboratory', 'lecture_laboratory', ...SUBJECT_TYPES.filter((t) => !['lecture', 'laboratory', 'lecture_laboratory'].includes(t))];
 const MAP_LATER = '';
-
-function Req() {
-  return <span className="ml-0.5 text-red-600" aria-hidden="true">*</span>;
-}
-function Err({ id, messages }: { id: string; messages?: string[] }) {
-  return messages?.length ? <p id={id} className="mt-1 text-xs font-medium text-red-700">{messages[0]}</p> : null;
-}
-function Select({ id, value, onChange, children, invalid, describedBy }: { id: string; value: string | number; onChange: (v: string) => void; children: ReactNode; invalid?: boolean; describedBy?: string }) {
-  return (
-    <div className="relative">
-      <select id={id} className={SELECT} value={value} onChange={(e) => onChange(e.target.value)} aria-invalid={invalid || undefined} aria-describedby={describedBy}>{children}</select>
-      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 mt-[3px] h-4 w-4 -translate-y-1/2 text-[#647A73]" aria-hidden="true" />
-    </div>
-  );
-}
-function SectionHead({ icon: Icon, title, hint }: { icon: typeof BookOpen; title: string; hint: string }) {
-  return (
-    <div className="flex items-start gap-3">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#E7F7F0] text-[#087F5B]" aria-hidden="true"><Icon className="h-[18px] w-[18px]" /></span>
-      <div>
-        <h3 className="text-[15px] font-semibold text-[#172B3A]">{title}</h3>
-        <p className={`text-xs ${MUTED}`}>{hint}</p>
-      </div>
-    </div>
-  );
-}
-
-/** A row of mutually exclusive buttons, as a radio group (arrow keys move and choose). */
-function Segmented<T extends number>({ label, value, options, onChange, disabled }: { label: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; disabled?: boolean }) {
-  function keys(e: KeyboardEvent<HTMLDivElement>) {
-    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
-    e.preventDefault();
-    const at = options.findIndex((o) => o.value === value);
-    const next = options[(at + (e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 1) + options.length) % options.length]!;
-    onChange(next.value);
-    const group = e.currentTarget;
-    requestAnimationFrame(() => group.querySelector<HTMLButtonElement>(`[data-value="${next.value}"]`)?.focus());
-  }
-  return (
-    <div role="radiogroup" aria-label={label} onKeyDown={keys} className="mt-1.5 grid gap-2" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
-      {options.map((o) => {
-        const on = o.value === value;
-        return (
-          <button key={o.value} type="button" role="radio" aria-checked={on} data-value={o.value} tabIndex={on ? 0 : -1} disabled={disabled} onClick={() => onChange(o.value)}
-            className={`h-10 rounded-lg border px-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${RING} ${on ? 'border-[#087F5B] bg-[#087F5B] text-white shadow-sm' : 'border-[#D6E2DD] bg-white text-[#172B3A] hover:border-[#087F5B]/50 hover:bg-[#F4FBF8]'}`}>
-            {o.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 type Form = {
   code: string; title: string; subjectType: string; defaultUnits: string; isActive: boolean;

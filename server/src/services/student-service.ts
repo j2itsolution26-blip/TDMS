@@ -104,7 +104,7 @@ export async function getStudent(id: bigint) {
  * collision is resolved rather than merely made less likely — the unique
  * index on student_number is what makes the retry correct.
  */
-async function nextStudentNumber(tx: Prisma.TransactionClient): Promise<string> {
+export async function nextStudentNumber(tx: Prisma.TransactionClient): Promise<string> {
   const year = new Date().getFullYear().toString();
   const count = await tx.student.count({ where: { studentNumber: { startsWith: `${year}-` } } });
   return `${year}-${String(count + 1).padStart(4, '0')}`;
@@ -308,7 +308,7 @@ export async function hasAllRequiredCredentialsVerified(studentId: bigint): Prom
   return verified === requiredIds.length;
 }
 
-function isUniqueViolation(error: unknown, contains: string): boolean {
+export function isUniqueViolation(error: unknown, contains: string): boolean {
   const e = error as { code?: string; meta?: { target?: string[] | string } };
   if (e?.code !== 'P2002') return false;
   const target = Array.isArray(e.meta?.target) ? e.meta.target.join(',') : String(e.meta?.target ?? '');

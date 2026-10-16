@@ -148,7 +148,10 @@ export const applicationPolicy = {
   viewAny: (u: AuthUser) => inRoles(u, OFFICE_VIEWERS),
   view: (u: AuthUser) => inRoles(u, OFFICE_VIEWERS),
   create: (u: AuthUser) => can(u, 'applications.review'),
+  update: (u: AuthUser) => can(u, 'applications.review'),
   review: (u: AuthUser) => can(u, 'applications.review'),
+  /** Upload, receive, verify or reject an applicant's documents. */
+  manageDocuments: (u: AuthUser) => can(u, 'applications.review'),
   delete: (u: AuthUser) => isSuperAdmin(u),
 };
 

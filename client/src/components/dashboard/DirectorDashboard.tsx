@@ -2,7 +2,6 @@ import Link from '@/lib/link';
 import type { DirectorWorkspace } from '@shared/types/dashboard';
 import {
   ActivityList,
-  DashboardHeader,
   EmptyState,
   FOCUS,
   MetricGrid,
@@ -15,6 +14,7 @@ import {
   WorkList,
   toneOf,
 } from './RoleDashboardParts';
+import WelcomeBanner from './WelcomeBanner';
 
 /**
  * The TVET Director — leadership and oversight.
@@ -54,7 +54,7 @@ export default function DirectorDashboard({
 
   return (
     <div className="space-y-6">
-      <DashboardHeader firstName={firstName} greeting={greeting} date={date} roleLabel="TVET Director" description={description} />
+      <WelcomeBanner firstName={firstName} greeting={greeting} date={date} roleLabel="TVET Director" description={description} />
 
       <MetricGrid metrics={w.metrics} />
       <NotTrackedNote items={w.notTracked} />

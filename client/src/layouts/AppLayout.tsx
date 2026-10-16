@@ -4,6 +4,7 @@ import { usePageData } from '@/lib/page-data';
 import type { AppShellData } from '@/server/controllers/pages/app-shell';
 import Forbidden from '@/pages/system/Forbidden';
 import LoadError from '@/pages/system/LoadError';
+import { useWorkspaceShell } from '@/lib/theme';
 
 /**
  * The signed-in shell: sidebar, header, notifications, around every page.
@@ -15,6 +16,8 @@ import LoadError from '@/pages/system/LoadError';
  */
 export default function AppLayout() {
   const { state, reload } = usePageData<AppShellData>('/app-shell');
+  // Inside the workspace the chosen theme applies (src/lib/theme.ts).
+  useWorkspaceShell();
 
   if (state.status === 'loading') return null;
   if (state.status === 'forbidden') return <Forbidden onRetry={reload} />;

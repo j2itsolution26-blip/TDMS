@@ -90,7 +90,7 @@ export function StatusMixChart({ mixes, narrow = false }: { mixes: StatusMix[]; 
           <div key={m.key} className="flex items-center gap-4">
             <div className="relative h-24 w-24 shrink-0 sm:h-28 sm:w-28" aria-hidden="true">
               <svg viewBox="0 0 96 96" className="h-full w-full -rotate-90">
-                <circle cx="48" cy="48" r={r} fill="none" stroke="#EEF3F0" strokeWidth="12" />
+                <circle cx="48" cy="48" r={r} fill="none" strokeWidth="12" className="stroke-[#EEF3F0] dark:stroke-tdms-hairline" />
                 {total > 0 && m.segments.filter((s) => s.value > 0).map((s) => {
                   const len = (s.value / total) * c;
                   const arc = <circle key={s.key} cx="48" cy="48" r={r} fill="none" stroke={TONE_FILL[s.tone]} strokeWidth="12" strokeDasharray={`${len} ${c - len}`} strokeDashoffset={-offset} />;

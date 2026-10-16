@@ -1,11 +1,9 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import Link from '@/lib/link';
-import { AlertTriangle, CheckCircle2, ChevronRight, Plus } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronRight } from 'lucide-react';
 import { diffForHumans } from '@shared/lib/dates';
-import { formatLongDate } from '@shared/lib/greeting';
 import { OVERDUE_DAYS, daysWaiting, queueTabs, waitingLabel, type QueueGroup } from '@shared/lib/work-queue';
 import type { EnrollmentByProgramRow, ListItem, UpcomingEvent, WorkIcon, WorkItem, WorkMetric, WorkSegment } from '@shared/types/dashboard';
-import GreetingHeading from './GreetingHeading';
 import { ACCENT, EmptyState, FOCUS, Glyph, TONE, WORK_ICONS, accentOf } from './RoleDashboardParts';
 
 /**
@@ -17,91 +15,11 @@ import { ACCENT, EmptyState, FOCUS, Glyph, TONE, WORK_ICONS, accentOf } from './
  * only where it means something — work waiting (amber), something overdue or
  * refused (red), done (green) — and always next to a word, never alone.
  *
- * The one image on the page is the campus, in the header.
+ * The banner above them is the shared WelcomeBanner.
  */
 
 const STROKE = 1.9;
 const nf = (n: number) => n.toLocaleString('en-US');
-
-// --- Header ---------------------------------------------------------------------------------
-
-export function SecretaryHeader({
-  firstName,
-  greeting,
-  date,
-  roleLabel,
-  description,
-  programs,
-  canAddStudent,
-}: {
-  firstName: string;
-  greeting: string;
-  date: string;
-  roleLabel: string;
-  description: string;
-  programs: { id: string; code: string; name: string }[];
-  canAddStudent: boolean;
-}) {
-  // The server sends the institution's date; the viewer's own replaces it.
-  const [today, setToday] = useState(date);
-  useEffect(() => setToday(formatLongDate(new Date())), []);
-
-  return (
-    <header className="relative overflow-hidden rounded-2xl border border-tdms-hairline bg-white shadow-card">
-      <img
-        src="/images/dashboard-campus.jpg"
-        alt=""
-        aria-hidden="true"
-        width={960}
-        height={441}
-        decoding="async"
-        className="pointer-events-none absolute inset-y-0 right-0 hidden h-full w-[46%] object-cover md:block"
-        style={{ maskImage: 'linear-gradient(to right, transparent, #000 45%)', WebkitMaskImage: 'linear-gradient(to right, transparent, #000 45%)' }}
-      />
-      <div className="relative flex flex-col gap-5 px-5 py-6 sm:px-7 sm:py-7 md:flex-row md:items-end md:justify-between">
-        {/* The text stays on white, clear of the photo. */}
-        <div className="min-w-0 md:max-w-[50%]">
-          <p className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-tdms-muted">
-            <span className="rounded-full bg-tdms-wash px-2.5 py-0.5 font-semibold text-primary-800">{roleLabel}</span>
-            <span>{today}</span>
-          </p>
-          <div className="mt-2">
-            <GreetingHeading firstName={firstName} initialGreeting={greeting} />
-          </div>
-          <p className="mt-1.5 text-[15px] text-tdms-muted">{description}</p>
-          {canAddStudent && (
-            <Link
-              href="/students?new=1"
-              className={`mt-5 inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 ${FOCUS}`}
-            >
-              <Plus className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-              Add Student
-            </Link>
-          )}
-        </div>
-
-        {programs.length > 0 && (
-          <section aria-labelledby="header-programs" className="w-full shrink-0 rounded-xl border border-tdms-hairline bg-white p-4 shadow-card md:w-72">
-            <h2 id="header-programs" className="text-[13px] font-semibold text-tdms-ink">
-              Programs offered
-            </h2>
-            <ul className="mt-2 space-y-1.5">
-              {programs.map((p) => (
-                <li key={p.id} className="flex items-start gap-2 text-[13px] text-tdms-ink">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary-600" strokeWidth={STROKE} aria-hidden="true" />
-                  <span className="min-w-0">
-                    <span className="block leading-snug">{p.name}</span>
-                    <span className="block text-xs text-tdms-muted">{p.code}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-      </div>
-    </header>
-  );
-}
 
 // --- Key figures ----------------------------------------------------------------------------
 
@@ -289,7 +207,7 @@ export function WorkQueue({ items }: { items: WorkItem[] }) {
                 }`}
               >
                 {t.label}
-                <span className={`rounded-full px-1.5 text-[11px] tabular-nums ${selected ? 'bg-white/20 text-white' : 'bg-tdms-bg text-tdms-muted'}`}>{nf(t.count)}</span>
+                <span className={`rounded-full px-1.5 text-[11px] tabular-nums ${selected ? 'bg-[#fff]/20 text-white' : 'bg-tdms-bg text-tdms-muted'}`}>{nf(t.count)}</span>
               </button>
             );
           })}

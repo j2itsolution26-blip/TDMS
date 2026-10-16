@@ -253,7 +253,7 @@ export default function CurriculumMap({ programs, subjects, canMap, onEdit, noti
                 <span className="block text-sm font-semibold">{p.code}</span>
                 <span className={`block max-w-[16rem] truncate text-xs ${on ? 'text-emerald-50' : 'text-muted'}`}>{p.name}</span>
               </span>
-              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${on ? 'bg-white/20 text-white' : 'bg-slate-100 text-ink'}`} aria-label={`${p.curriculum?.entries.length ?? 0} subjects mapped`}>{p.curriculum?.entries.length ?? 0}</span>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${on ? 'bg-[#fff]/20 text-white' : 'bg-slate-100 text-ink'}`} aria-label={`${p.curriculum?.entries.length ?? 0} subjects mapped`}>{p.curriculum?.entries.length ?? 0}</span>
             </button>
           );
         })}

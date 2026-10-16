@@ -3,7 +3,6 @@ import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import type { CoordinatorWorkspace, ProgramReadiness } from '@shared/types/dashboard';
 import {
   ActivityList,
-  DashboardHeader,
   EmptyState,
   FOCUS,
   MetricGrid,
@@ -15,6 +14,7 @@ import {
   WorkList,
   toneOf,
 } from './RoleDashboardParts';
+import WelcomeBanner from './WelcomeBanner';
 import SubjectsPerProgramTable from './SubjectsPerProgramTable';
 import { EnrollmentTrendChart, SectionLoadChart, StatusMixChart } from './CoordinatorCharts';
 
@@ -109,7 +109,7 @@ export default function CoordinatorDashboard({
 
   return (
     <div className="space-y-6">
-      <DashboardHeader firstName={firstName} greeting={greeting} date={date} roleLabel="TVET Coordinator" description={description} />
+      <WelcomeBanner firstName={firstName} greeting={greeting} date={date} roleLabel="TVET Coordinator" description={description} />
 
       <MetricGrid metrics={w.metrics} />
 

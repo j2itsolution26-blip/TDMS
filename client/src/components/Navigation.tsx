@@ -28,6 +28,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Moon,
   PanelLeftClose,
   PanelLeftOpen,
   Presentation,
@@ -37,6 +38,7 @@ import {
   Search,
   Sheet,
   ShieldCheck,
+  Sun,
   Table2,
   TrendingUp,
   UserCog,
@@ -46,6 +48,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { PendingItem } from '@shared/types/dashboard';
+import { useTheme } from '@/lib/theme';
 
 /**
  * The application shell: the floating sidebar, the top bar, and the content
@@ -198,7 +201,7 @@ function ProgressRing({ percent, size = 48 }: { percent: number; size?: number }
 function SetupCard({ setup, onNavigate }: { setup: SetupSummary; onNavigate?: () => void }) {
   const percent = Math.round((setup.completed / setup.total) * 100);
   return (
-    <div className="rounded-[18px] bg-white/[0.08] p-4 ring-1 ring-inset ring-white/10 backdrop-blur-sm">
+    <div className="rounded-[18px] bg-[#fff]/[0.08] p-4 ring-1 ring-inset ring-white/10 backdrop-blur-sm">
       <div className="flex items-center gap-3">
         <ProgressRing percent={percent} />
         <div className="min-w-0">
@@ -211,7 +214,7 @@ function SetupCard({ setup, onNavigate }: { setup: SetupSummary; onNavigate?: ()
       <Link
         href={setup.href}
         onClick={onNavigate}
-        className={`mt-3.5 block w-full rounded-xl bg-primary-50 py-2.5 text-center text-sm font-bold text-forest transition hover:bg-white ${FOCUS_DARK}`}
+        className={`mt-3.5 block w-full rounded-xl bg-[#E7F7EF] py-2.5 text-center text-sm font-bold text-forest transition hover:bg-[#fff] ${FOCUS_DARK}`}
       >
         Continue setup
       </Link>
@@ -242,11 +245,11 @@ function SidebarLink({
         compact ? 'h-12 w-12 justify-center' : 'px-3.5 py-2.5'
       } ${
         active
-          ? 'bg-white text-forest shadow-[0_8px_20px_-8px_rgba(0,0,0,0.45)]'
-          : 'text-primary-100/90 hover:bg-white/[0.08] hover:text-white'
+          ? 'bg-white text-forest shadow-[0_8px_20px_-8px_rgba(0,0,0,0.45)] dark:bg-primary-600 dark:text-white dark:shadow-[0_8px_20px_-8px_rgba(0,0,0,0.6)]'
+          : 'text-primary-100/90 hover:bg-[#fff]/[0.08] hover:text-white'
       }`}
     >
-      <Icon className={`h-5 w-5 shrink-0 ${active ? 'text-primary-600' : 'text-primary-200 group-hover:text-white'}`} strokeWidth={STROKE} aria-hidden="true" />
+      <Icon className={`h-5 w-5 shrink-0 ${active ? 'text-primary-600 dark:text-white' : 'text-primary-200 group-hover:text-white'}`} strokeWidth={STROKE} aria-hidden="true" />
       {/* A long label wraps to a second line rather than losing its end. */}
       {!compact && <span className="line-clamp-2 min-w-0 break-words">{item.label}</span>}
     </Link>
@@ -540,6 +543,19 @@ function usePopover() {
 
 const ICON_BUTTON = `relative flex h-12 w-12 items-center justify-center rounded-[14px] bg-white text-tdms-ink shadow-soft transition hover:text-tdms-text ${FOCUS_LIGHT}`;
 const POPOVER = 'absolute right-0 z-50 mt-2 w-[300px] max-w-[calc(100vw-2rem)] rounded-2xl bg-white p-2 shadow-soft-lg';
+
+/** Light or dark for the whole workspace; remembered in this browser (src/lib/theme.ts). */
+function ThemeToggle() {
+  const { theme, toggle } = useTheme();
+  const label = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+  return (
+    <button type="button" onClick={toggle} aria-label={label} title={label} className={ICON_BUTTON}>
+      {theme === 'dark'
+        ? <Sun className="h-5 w-5" strokeWidth={STROKE} aria-hidden="true" />
+        : <Moon className="h-5 w-5" strokeWidth={STROKE} aria-hidden="true" />}
+    </button>
+  );
+}
 
 function HelpButton({ setup }: { setup: SetupSummary | null }) {
   const { open, setOpen, wrap, trigger } = usePopover();
@@ -904,7 +920,7 @@ export default function Navigation({
               ref={closeButton}
               type="button"
               onClick={() => setDrawerOpen(false)}
-              className={`absolute right-3 top-6 z-10 rounded-xl p-2 text-primary-100 hover:bg-white/10 hover:text-white ${FOCUS_DARK}`}
+              className={`absolute right-3 top-6 z-10 rounded-xl p-2 text-primary-100 hover:bg-[#fff]/10 hover:text-white ${FOCUS_DARK}`}
               aria-label="Close navigation"
             >
               <X className="h-5 w-5" strokeWidth={STROKE} aria-hidden="true" />
@@ -949,6 +965,7 @@ export default function Navigation({
             <div className="hidden sm:block">
               <HelpButton setup={setup} />
             </div>
+            <ThemeToggle />
             <PendingBell pending={pending} notifications={notifications} />
             <UserMenu user={user} />
           </div>

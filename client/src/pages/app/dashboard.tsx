@@ -7,6 +7,7 @@ import SecretaryDashboard from '@/components/dashboard/SecretaryDashboard';
 import AssessmentDashboard from '@/components/dashboard/AssessmentDashboard';
 import MonitoringPanel, { AnnouncementsCard } from '@/components/dashboard/MonitoringPanel';
 import AdminDashboard from '@/components/dashboard/AdminDashboard';
+import WelcomeBanner from '@/components/dashboard/WelcomeBanner';
 import { Page } from '@/lib/page-data';
 import type { loadDashboard } from '@/server/controllers/pages/app/dashboard';
 import DashboardLoading from './dashboard/DashboardLoading';
@@ -51,17 +52,8 @@ function View(d: Data) {
       const { view, firstName, hasMain } = d;
       return (
         <div className="space-y-6">
-          {/* The same light welcome banner as the role dashboards. */}
-          <header className="relative overflow-hidden rounded-[18px] border border-primary-100 bg-gradient-to-br from-primary-50 via-white to-accent-blue-50 px-5 py-6 shadow-card sm:px-7 sm:py-7">
-            <div aria-hidden="true" className="pointer-events-none absolute -right-10 -top-16 h-56 w-56 rounded-full bg-primary-200/40 blur-2xl" />
-            <div className="relative flex flex-col gap-1.5">
-              <p className="text-[13px] font-medium text-tdms-muted">
-                {d.greeting}, {firstName} · {d.today}
-              </p>
-              <h1 className="text-[26px] font-bold leading-tight tracking-[-0.02em] text-tdms-ink sm:text-[30px]">{view.title}</h1>
-              <p className="max-w-3xl text-[15px] text-tdms-muted">{view.description}</p>
-            </div>
-          </header>
+          {/* The same welcome banner as every role dashboard. */}
+          <WelcomeBanner firstName={firstName} greeting={d.greeting} date={d.today} roleLabel={view.roleLabel} description={view.description} />
 
           <AnnouncementsCard items={d.announcements} />
 

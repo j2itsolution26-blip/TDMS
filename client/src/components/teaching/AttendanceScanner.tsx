@@ -276,11 +276,11 @@ function ScanCard({ last }: { last: Last }) {
       <p className="mt-3 text-xl font-bold text-tdms-ink">{d.student.name}</p>
       <p className="text-sm text-tdms-muted">Student ID: <span className="tabular-nums">{d.student.studentNumber}</span></p>
       <div className="mt-4 grid grid-cols-2 gap-3">
-        <div className={`rounded-xl p-3 ${!isOut ? 'bg-white ring-2 ring-emerald-500' : 'bg-white/60'}`}>
+        <div className={`rounded-xl p-3 ${!isOut ? 'bg-white ring-2 ring-emerald-500' : 'bg-[#fff]/60'}`}>
           <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-[0.08em] text-tdms-muted"><LogIn className="h-3.5 w-3.5" aria-hidden="true" /> Time In</p>
           <p className="mt-1 text-2xl font-bold tabular-nums text-tdms-ink">{d.timeIn ?? '—'}</p>
         </div>
-        <div className={`rounded-xl p-3 ${isOut ? 'bg-white ring-2 ring-emerald-500' : 'bg-white/60'}`}>
+        <div className={`rounded-xl p-3 ${isOut ? 'bg-white ring-2 ring-emerald-500' : 'bg-[#fff]/60'}`}>
           <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-[0.08em] text-tdms-muted"><LogOut className="h-3.5 w-3.5" aria-hidden="true" /> Time Out</p>
           <p className="mt-1 text-2xl font-bold tabular-nums text-tdms-ink">{d.timeOut ?? '—'}</p>
         </div>

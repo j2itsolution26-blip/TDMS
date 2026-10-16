@@ -1,6 +1,7 @@
 import type { Config } from 'tailwindcss';
 import defaultTheme from 'tailwindcss/defaultTheme';
 import forms from '@tailwindcss/forms';
+import { fillColors, textColors, themeVariables, whiteSurface } from './theme.palette';
 import { fileURLToPath } from 'node:url';
 
 const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
@@ -51,24 +52,12 @@ const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
  * Tailwind's `emerald-*` is aliased to the same scale, so every green in the
  * application is one green.
  */
-const primary = {
-  DEFAULT: '#087F5B',
-  50: '#E7F7EF',
-  100: '#CDEFDF',
-  200: '#9EDDC2',
-  300: '#62C49E',
-  400: '#2BA77C',
-  500: '#11916A',
-  600: '#087F5B',
-  700: '#076A4C',
-  800: '#08563F',
-  900: '#0B3D2E',
-  950: '#062A1F',
-};
 
 export default {
   // Anchored to this file, so the build works from any working directory.
   content: [here('./index.html'), here('./src/**/*.{ts,tsx}'), here('../shared/**/*.ts')],
+  // dark: applies only to the workspace with the dark theme on (src/lib/theme.ts).
+  darkMode: ['variant', '&:is(html[data-theme="dark"][data-shell="app"] *)'],
   theme: {
     extend: {
       fontFamily: {
@@ -83,52 +72,19 @@ export default {
         /** The sign-in page's "Skills for a Better Tomorrow" tagline only. */
         script: ['"Great Vibes"', '"Segoe Script"', 'cursive'],
       },
+      /*
+       * The workspace palette is CSS variables (theme.palette.ts), so the same
+       * classes draw the light and the dark theme. Fills and text are separate.
+       */
       colors: {
-        primary,
-        /** The navigation surface. */
+        ...fillColors,
+        /** The navigation surface: the same deep emerald in both themes. */
         forest: {
           DEFAULT: '#104C3A',
           light: '#14594A',
           dark: '#0B3A2C',
           line: 'rgba(255,255,255,0.10)',
         },
-        ink: '#152B35',
-        muted: '#5E716A',
-
-        // Compatibility aliases — see the note above.
-        indigo: primary,
-        emerald: primary,
-        /** KPI and chart accents, by meaning (see the dashboard parts). */
-        accent: {
-          emerald: '#087F5B',
-          blue: '#2563EB',
-          'blue-700': '#1D4ED8',
-          'blue-50': '#EFF4FF',
-          violet: '#7C3AED',
-          'violet-700': '#6D28D9',
-          'violet-50': '#F4EFFE',
-          amber: '#D97706',
-          'amber-700': '#B45309',
-          'amber-50': '#FEF6E7',
-          coral: '#E05B67',
-          'coral-700': '#B4323F',
-          'coral-50': '#FDEFF0',
-        },
-        navy: {
-          DEFAULT: '#102A43',
-          50: '#F5F8F7',
-          100: '#E6EEEA',
-          200: '#CBD5E1',
-          300: '#94A3B8',
-          400: '#64748B',
-          500: '#334E68',
-          600: '#243B53',
-          700: '#1B3246',
-          800: '#152C40',
-          900: '#152B35',
-          950: '#0E1F27',
-        },
-
         brand: { blue: '#2563EB' },
 
         /**
@@ -152,36 +108,11 @@ export default {
           gold: '#D4A72C',
           brown: '#5A3A12',
         },
-
-        /**
-         * The workspace palette (shell and Admin dashboard). Contrast, measured:
-         *   ink   #0F2A2E on bg #F3F6F5 ....... 13.9:1
-         *   muted #5C6E71 on bg / white ........ 4.9 / 5.3:1 — the brief's
-         *         #6A7C7F measured 4.0:1 on the page background, short of AA
-         *   text  #0E7A50 on white ............. 5.4:1 — green TEXT; the brand
-         *         green #16A06A is 3.4:1, so it is a fill and icon colour only
-         *   deep  #0E4D37 on mint #3DDC97 ...... 5.6:1 (the sidebar's mint button)
-         */
-        tdms: {
-          deep: '#104C3A',
-          deeper: '#0B3A2C',
-          green: '#087F5B',
-          mint: '#34C38F',
-          ink: '#152B35',
-          muted: '#5E716A',
-          text: '#087F5B',
-          bg: '#F4F7F5',
-          wash: '#E7F7EF',
-          hairline: '#E1EAE5',
-        },
-        surface: '#F4F7F5',
-        card: '#FFFFFF',
-        border: '#E1EAE5',
-        success: '#16803C',
-        warning: '#D97706',
-        danger: '#DC2626',
-        info: '#2563EB',
       },
+      textColor: textColors,
+      placeholderColor: textColors,
+      backgroundColor: { white: whiteSurface },
+      gradientColorStops: { white: whiteSurface },
       keyframes: {
         'modal-in': { from: { opacity: '0', transform: 'translateY(8px) scale(0.985)' }, to: { opacity: '1', transform: 'none' } },
         'overlay-in': { from: { opacity: '0' }, to: { opacity: '1' } },
@@ -195,10 +126,10 @@ export default {
         card: '0 1px 2px rgba(21, 43, 53, 0.04), 0 2px 8px -2px rgba(21, 43, 53, 0.06)',
         'card-hover': '0 2px 4px rgba(21, 43, 53, 0.05), 0 12px 28px -12px rgba(21, 43, 53, 0.18)',
         // The workspace card: a 1px hairline ring and a large diffuse shadow, no border.
-        soft: '0 0 0 1px #E1EAE5, 0 1px 2px rgba(15, 42, 46, 0.04), 0 14px 36px -14px rgba(15, 42, 46, 0.14)',
-        'soft-lg': '0 0 0 1px #E1E9E5, 0 2px 4px rgba(15, 42, 46, 0.05), 0 22px 48px -16px rgba(15, 42, 46, 0.24)',
+        soft: '0 0 0 1px rgb(var(--c-tdms-hairline)), 0 1px 2px rgba(15, 42, 46, 0.04), 0 14px 36px -14px rgba(15, 42, 46, 0.14)',
+        'soft-lg': '0 0 0 1px rgb(var(--c-tdms-hairline)), 0 2px 4px rgba(15, 42, 46, 0.05), 0 22px 48px -16px rgba(15, 42, 46, 0.24)',
       },
     },
   },
-  plugins: [forms],
+  plugins: [forms, themeVariables],
 } satisfies Config;

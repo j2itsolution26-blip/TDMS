@@ -3,7 +3,8 @@ import { CalendarCheck, CheckCircle2, Clock3, MapPin, UsersRound } from 'lucide-
 import type { InstructorDashboardData, TodayClass } from '@/server/services/teaching/instructor-dashboard';
 import { SUPPORT_STATUS_LABELS, type SupportStatus } from '@shared/lib/teaching';
 import { ActivityList, EmptyState, FOCUS, MetricGrid, SectionCard, StatusPill, WorkList } from './RoleDashboardParts';
-import GreetingHeading from './GreetingHeading';
+import WelcomeBanner from './WelcomeBanner';
+import { ROLE_LABELS } from '@shared/types/domain';
 
 /**
  * The Diploma Instructor's dashboard: "Here's your teaching overview for
@@ -106,32 +107,33 @@ export default function InstructorDashboard({
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-col gap-1.5">
-        <p className="text-[13px] font-semibold text-tdms-text">
-          Diploma Instructor <span aria-hidden="true" className="text-tdms-muted">·</span>{' '}
-          <span className="font-medium text-tdms-muted">{context.date}</span>
-        </p>
-        <GreetingHeading firstName={firstName} initialGreeting={greeting} />
-        <p className="text-[15px] text-tdms-muted">Here&apos;s your teaching overview for today.</p>
-        <dl className="mt-2 flex flex-wrap gap-2 text-[13px]">
-          <div className="rounded-full border border-tdms-hairline bg-white px-3 py-1">
-            <dt className="inline text-tdms-muted">School Year </dt>
-            <dd className="inline font-semibold text-tdms-ink">{context.schoolYear ?? 'Not set'}</dd>
-          </div>
-          <div className="rounded-full border border-tdms-hairline bg-white px-3 py-1">
-            <dt className="inline text-tdms-muted">Semester </dt>
-            <dd className="inline font-semibold text-tdms-ink">{context.semester ?? '—'}</dd>
-          </div>
-          {context.current && (
-            <div className={`rounded-full border px-3 py-1 ${context.current.live ? 'border-emerald-200 bg-emerald-50' : 'border-tdms-hairline bg-white'}`}>
-              <dt className="inline text-tdms-muted">{context.current.live ? 'Now: ' : 'Next: '}</dt>
-              <dd className="inline font-semibold text-tdms-ink">
-                {context.current.subject} · {context.current.time}
-              </dd>
+      <WelcomeBanner
+        firstName={firstName}
+        greeting={greeting}
+        date={context.date}
+        roleLabel={ROLE_LABELS.teacher}
+        description="Here’s your teaching overview for today."
+        meta={
+          <dl className="flex flex-wrap gap-2 text-[13px]">
+            <div className="rounded-full border border-tdms-hairline bg-white px-3 py-1">
+              <dt className="inline text-tdms-muted">School Year </dt>
+              <dd className="inline font-semibold text-tdms-ink">{context.schoolYear ?? 'Not set'}</dd>
             </div>
-          )}
-        </dl>
-      </header>
+            <div className="rounded-full border border-tdms-hairline bg-white px-3 py-1">
+              <dt className="inline text-tdms-muted">Semester </dt>
+              <dd className="inline font-semibold text-tdms-ink">{context.semester ?? '—'}</dd>
+            </div>
+            {context.current && (
+              <div className={`rounded-full border px-3 py-1 ${context.current.live ? 'border-emerald-200 bg-emerald-50' : 'border-tdms-hairline bg-white'}`}>
+                <dt className="inline text-tdms-muted">{context.current.live ? 'Now: ' : 'Next: '}</dt>
+                <dd className="inline font-semibold text-tdms-ink">
+                  {context.current.subject} · {context.current.time}
+                </dd>
+              </div>
+            )}
+          </dl>
+        }
+      />
 
       {!context.schoolYear && (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">

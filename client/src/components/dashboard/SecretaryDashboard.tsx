@@ -1,12 +1,15 @@
 import type { SecretaryWorkspace } from '@shared/types/dashboard';
 import { EmptyState } from './RoleDashboardParts';
-import { ActivityFeed, KpiTiles, Panel, ProgramTable, SecretaryHeader, StatusBreakdown, UpcomingEvents, WorkQueue } from './SecretaryParts';
+import { Plus } from 'lucide-react';
+import Link from '@/lib/link';
+import { ActivityFeed, KpiTiles, Panel, ProgramTable, StatusBreakdown, UpcomingEvents, WorkQueue } from './SecretaryParts';
+import WelcomeBanner, { BANNER_PRIMARY } from './WelcomeBanner';
 
 /**
  * The TVET Secretary — records and administrative operations.
  * "Are student records, applications and enrollment processed?"
  *
- *   header ............. greeting, role, the campus, Add Student
+ *   banner ............. the shared WelcomeBanner, with Add Student when permitted
  *   key figures ........ six counts, each opening the list it counts
  *   workspace .......... Work Queue (tabs by stream, oldest-waiting age) · Recent Activity
  *   status ............. Application Status · Document Status · Upcoming Events
@@ -32,19 +35,24 @@ export default function SecretaryDashboard({
   /** The same workspace serves the Processing Officer under their own title. */
   roleLabel?: string;
 }) {
-  const programs = (w.enrollmentByProgram ?? []).map(({ id, code, name }) => ({ id, code, name }));
   const statusPanels = [w.pipeline, w.documents].filter(Boolean).length + 1;
 
   return (
     <div className="space-y-6">
-      <SecretaryHeader
+      <WelcomeBanner
         firstName={firstName}
         greeting={greeting}
         date={date}
         roleLabel={roleLabel}
         description={description}
-        programs={programs}
-        canAddStudent={w.canAddStudent}
+        actions={
+          w.canAddStudent ? (
+            <Link href="/students?new=1" className={BANNER_PRIMARY}>
+              <Plus className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+              Add Student
+            </Link>
+          ) : undefined
+        }
       />
 
       <KpiTiles metrics={w.metrics} />

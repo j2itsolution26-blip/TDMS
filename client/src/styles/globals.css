@@ -902,3 +902,84 @@ body:has(.tdms-workspace) * {
     scrollbar-width: thin;
     scrollbar-color: #B9CCC4 transparent;
 }
+
+/*
+ * The dark theme's browser surfaces (src/lib/theme.ts, theme.palette.ts).
+ *
+ * The colours come from the palette variables; these are the parts no class
+ * reaches: selection, caret, focus outline, scrollbars, and the form controls
+ * @tailwindcss/forms paints white. Scoped like the variables: the workspace,
+ * with the dark theme on.
+ *
+ *   selection: #E6EEEA on #1F5A44 ........ 8.1:1
+ *   focus outline: #5FD3A4 on #151E1B .... 9.0:1
+ */
+html[data-theme="dark"][data-shell="app"] body {
+    accent-color: #2BA77C;
+    caret-color: #5FD3A4;
+}
+
+/* Focus rings' offset gap matches the surface instead of white. Zero specificity: ring-offset-* classes still win. */
+:where(html[data-theme="dark"][data-shell="app"]) *,
+:where(html[data-theme="dark"][data-shell="app"]) ::before,
+:where(html[data-theme="dark"][data-shell="app"]) ::after {
+    --tw-ring-offset-color: rgb(var(--c-card));
+}
+
+html[data-theme="dark"][data-shell="app"] ::selection {
+    background: #1F5A44;
+    color: #E6EEEA;
+}
+
+html[data-theme="dark"][data-shell="app"] :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline-color: #5FD3A4;
+}
+
+html[data-theme="dark"][data-shell="app"],
+html[data-theme="dark"][data-shell="app"] body * {
+    scrollbar-color: #3A4A44 transparent;
+}
+
+/* Inputs without a background class of their own (the forms plugin's white). */
+html[data-theme="dark"][data-shell="app"] :where(input:not([type]), [type='text'], [type='email'], [type='url'], [type='password'], [type='number'], [type='date'], [type='datetime-local'], [type='month'], [type='search'], [type='tel'], [type='time'], [type='week'], [multiple], textarea, select) {
+    background-color: rgb(var(--c-card));
+    border-color: rgb(var(--c-border));
+    color: rgb(var(--t-ink));
+}
+
+html[data-theme="dark"][data-shell="app"] :where([type='checkbox'], [type='radio']):not(:checked) {
+    background-color: rgb(var(--c-card));
+    border-color: rgb(var(--c-slate-400));
+}
+
+/*
+ * Dark counterparts for the screens' one-off hex classes (border-[#D6E2DD] and
+ * friends: near-white surfaces, hairlines and pale tints written as literal
+ * colours). Light keeps the literal; dark maps each by its role. Solid greens
+ * (bg-[#0B6A45], bg-[#34A27D]) need nothing.
+ */
+html[data-theme="dark"][data-shell="app"] :is(.bg-\[\#EEF2F1\], .bg-\[\#E8EEEC\], .bg-\[\#E4EAE8\], .bg-\[\#F1F3F3\], .bg-\[\#EDF1F0\]),
+html[data-theme="dark"][data-shell="app"] .hover\:bg-\[\#E3E9E7\]:hover { background-color: #1C2724; }
+html[data-theme="dark"][data-shell="app"] :is(.bg-\[\#F8FBFA\], .bg-\[\#F6F9F8\]),
+html[data-theme="dark"][data-shell="app"] .hover\:bg-\[\#FBFDFC\]:hover { background-color: #18221F; }
+html[data-theme="dark"][data-shell="app"] .bg-\[\#CBD5D1\] { background-color: #3A4A44; }
+html[data-theme="dark"][data-shell="app"] :is(.bg-\[\#F4FBF8\], .bg-\[\#F1FAF6\]),
+html[data-theme="dark"][data-shell="app"] .hover\:bg-\[\#F4FBF8\]:hover { background-color: #12261E; }
+html[data-theme="dark"][data-shell="app"] .bg-\[\#FDF1E7\] { background-color: #2A2618; }
+html[data-theme="dark"][data-shell="app"] .bg-\[\#EAF4FE\] { background-color: #172235; }
+html[data-theme="dark"][data-shell="app"] .bg-\[\#F1EEFE\] { background-color: #221D33; }
+
+html[data-theme="dark"][data-shell="app"] :is(.border-\[\#D6E2DD\], .border-\[\#B9C9C2\]) { border-color: #3A4A44; }
+html[data-theme="dark"][data-shell="app"] :is(.border-\[\#E2EAE6\], .border-\[\#E8EEEC\]),
+html[data-theme="dark"][data-shell="app"] .divide-\[\#E8EEEC\] > :not([hidden]) ~ :not([hidden]) { border-color: #2A3833; }
+html[data-theme="dark"][data-shell="app"] .border-b-\[\#7D8F88\] { border-bottom-color: #55675F; }
+html[data-theme="dark"][data-shell="app"] .border-\[\#C8EEDD\],
+html[data-theme="dark"][data-shell="app"] .hover\:border-\[\#CDE3D8\]:hover { border-color: #1D4535; }
+
+html[data-theme="dark"][data-shell="app"] .ring-\[\#C8EEDD\] { --tw-ring-color: #1D4535; }
+html[data-theme="dark"][data-shell="app"] .ring-\[\#E6EAEA\] { --tw-ring-color: #2A3833; }
+html[data-theme="dark"][data-shell="app"] .ring-\[\#F8E0CB\] { --tw-ring-color: #4A3A22; }
+html[data-theme="dark"][data-shell="app"] .ring-\[\#E4DDFC\] { --tw-ring-color: #3A2F5C; }
+html[data-theme="dark"][data-shell="app"] .ring-\[\#D6E8FB\] { --tw-ring-color: #24395A; }
+
+html[data-theme="dark"][data-shell="app"] .placeholder\:text-\[\#677872\]::placeholder { color: #7E918A; }

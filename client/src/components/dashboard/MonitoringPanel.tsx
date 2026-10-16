@@ -56,7 +56,7 @@ export default function MonitoringPanel({ m }: { m: InstitutionMonitoring }) {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-5">
-        <div className="xl:col-span-3">
+        <div className="min-w-0 xl:col-span-3">
           <Card title="Per course" description="Students by course" padded={false}>
             {m.perCourse.length === 0 ? <div className="p-6"><Empty title="No active courses" /></div> : (
               <Table label="Students per course" head={<><th className={TH}>Course</th><th className={`${TH} text-right`}>Active</th><th className={`${TH} text-right`}>Dropped</th><th className={`${TH} text-right`}>On record</th></>}>
@@ -72,7 +72,7 @@ export default function MonitoringPanel({ m }: { m: InstitutionMonitoring }) {
             )}
           </Card>
         </div>
-        <div className="space-y-6 xl:col-span-2">
+        <div className="min-w-0 space-y-6 xl:col-span-2">
           <Card title="Staff by role" padded={false}>
             <Table label="Staff by role" head={<><th className={TH}>Role</th><th className={`${TH} text-right`}>Active</th><th className={`${TH} text-right`}>Deactivated</th></>}>
               {m.staffByRole.map((r) => (

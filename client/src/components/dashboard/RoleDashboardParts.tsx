@@ -32,7 +32,6 @@ import type {
   WorkSegment,
   WorkTone,
 } from '@shared/types/dashboard';
-import GreetingHeading from './GreetingHeading';
 
 /**
  * The parts the Director, Coordinator and Secretary dashboards are built
@@ -41,8 +40,8 @@ import GreetingHeading from './GreetingHeading';
  *
  * White cards on the light green-grey canvas, a hairline border and a soft
  * shadow. Green is the brand; the KPI accents (ACCENT below) say what a figure
- * counts, and status colours say what state it is in. One gradient, in the
- * welcome banner; motion is a small hover lift, off under reduced motion.
+ * counts, and status colours say what state it is in. The welcome banner is
+ * the shared WelcomeBanner; motion is a small hover lift, off under reduced motion.
  *
  * Server components throughout. Accessibility, once, here: every card is a
  * <section> named by its heading; statuses are words, never colour alone;
@@ -94,39 +93,6 @@ export const TONE: Record<WorkTone, { text: string; tint: string; dot: string; b
   info: { text: 'text-blue-700', tint: 'bg-blue-50', dot: 'bg-blue-600', bar: 'bg-blue-600' },
   neutral: { text: 'text-slate-700', tint: 'bg-slate-100', dot: 'bg-slate-400', bar: 'bg-slate-400' },
 };
-
-// --- Header ---------------------------------------------------------------------------------
-
-export function DashboardHeader({
-  firstName,
-  greeting,
-  date,
-  roleLabel,
-  description,
-}: {
-  firstName: string;
-  greeting: string;
-  date: string;
-  roleLabel: string;
-  description: string;
-}) {
-  // The welcome banner: the one gradient on the page, light enough that the
-  // text keeps its full contrast.
-  return (
-    <header className="relative overflow-hidden rounded-[18px] border border-primary-100 bg-gradient-to-br from-primary-50 via-white to-accent-blue-50 px-5 py-6 shadow-card sm:px-7 sm:py-7">
-      <div aria-hidden="true" className="pointer-events-none absolute -right-10 -top-16 h-56 w-56 rounded-full bg-primary-200/40 blur-2xl" />
-      <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 right-1/4 h-40 w-40 rounded-full bg-accent-violet/10 blur-2xl" />
-      <div className="relative flex flex-col gap-1.5">
-        <p className="flex flex-wrap items-center gap-2 text-[13px] font-semibold">
-          <span className="rounded-full bg-white/80 px-2.5 py-0.5 text-primary-700 ring-1 ring-inset ring-primary-100">{roleLabel}</span>
-          <span className="font-medium text-tdms-muted">{date}</span>
-        </p>
-        <GreetingHeading firstName={firstName} initialGreeting={greeting} />
-        <p className="max-w-3xl text-[15px] text-tdms-muted">{description}</p>
-      </div>
-    </header>
-  );
-}
 
 // --- Cards ----------------------------------------------------------------------------------
 

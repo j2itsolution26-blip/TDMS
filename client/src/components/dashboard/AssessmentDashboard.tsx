@@ -4,6 +4,8 @@ import type { assessmentDashboard } from '@/server/services/assessment-center/op
 import { ACTIVITY_TYPE_LABELS, type ActivityType } from '@shared/lib/assessment-center';
 import { BTN, BTN_SECONDARY, Card, Empty, FOCUS, Stat, TD, TH, Table } from '@/components/teaching/kit';
 import { BatchStatusChip, TotalsCards, rate } from '@/components/assessment/parts';
+import WelcomeBanner from '@/components/dashboard/WelcomeBanner';
+import { ROLE_LABELS } from '@shared/types/domain';
 
 type Data = Awaited<ReturnType<typeof assessmentDashboard>>;
 
@@ -18,18 +20,20 @@ export default function AssessmentDashboard({ data, firstName, greeting, date }:
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-[13px] font-semibold text-tdms-text">{greeting}, {firstName} · {date}</p>
-          <h1 className="text-2xl font-bold tracking-[-0.02em] text-tdms-ink sm:text-[28px]">Assessment Center</h1>
-          <p className="mt-1 text-[15px] text-tdms-muted">Assessment batches, results, the training calendar and batch reports.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href="/assessment/results" className={BTN}><ClipboardCheck className="h-4 w-4" aria-hidden="true" /> Results</Link>
-          <Link href="/assessment/calendar" className={BTN_SECONDARY}><CalendarDays className="h-4 w-4" aria-hidden="true" /> Calendar</Link>
-          <Link href="/assessment/reports" className={BTN_SECONDARY}><FileText className="h-4 w-4" aria-hidden="true" /> Reports</Link>
-        </div>
-      </header>
+      <WelcomeBanner
+        firstName={firstName}
+        greeting={greeting}
+        date={date}
+        roleLabel={ROLE_LABELS.assessment_center_manager}
+        description="Assessment batches, results, the training calendar and batch reports."
+        actions={
+          <>
+            <Link href="/assessment/results" className={BTN}><ClipboardCheck className="h-4 w-4" aria-hidden="true" /> Results</Link>
+            <Link href="/assessment/calendar" className={BTN_SECONDARY}><CalendarDays className="h-4 w-4" aria-hidden="true" /> Calendar</Link>
+            <Link href="/assessment/reports" className={BTN_SECONDARY}><FileText className="h-4 w-4" aria-hidden="true" /> Reports</Link>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Open batches" value={counts.openBatches} hint="Results being recorded" tone="info" />

@@ -128,7 +128,7 @@ export default function ApplicationsScreen({
               <button key={s || 'all'} type="button" onClick={() => go({ status: s })} aria-pressed={on}
                 className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 ${on ? 'bg-primary-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>
                 {s ? APPLICATION_STATUS_LABELS[s] : 'All'}
-                <span className={`rounded-full px-1.5 text-[11px] tabular-nums ${on ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>{s ? counts[s] ?? 0 : counts.total}</span>
+                <span className={`rounded-full px-1.5 text-[11px] tabular-nums ${on ? 'bg-[#fff]/20' : 'bg-slate-100 text-slate-500'}`}>{s ? counts[s] ?? 0 : counts.total}</span>
               </button>
             );
           })}

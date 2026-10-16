@@ -12,7 +12,6 @@ import {
   Layers,
   Plus,
   Presentation,
-  ShieldCheck,
   Undo2,
   UserPlus,
   UserRound,
@@ -32,13 +31,14 @@ import type {
   SetupProgress,
   SetupStepKey,
 } from '@shared/types/dashboard';
-import LocalGreeting from './LocalGreeting';
+import WelcomeBanner, { BANNER_PRIMARY, BANNER_SECONDARY, BannerFact } from './WelcomeBanner';
+import { ROLE_LABELS } from '@shared/types/domain';
 
 /**
  * The Admin's workspace.
  *
  * Every figure arrives from the dashboard's server loader, which sends
- * nothing a role may not see. The only browser code is LocalGreeting, which puts the
+ * nothing a role may not see. The only browser code is the shared WelcomeBanner, which puts the
  * greeting and date in the viewer's own timezone.
  *
  * ONE SETUP STATE
@@ -123,34 +123,10 @@ function heroCopy(setup: SetupProgress | null, pending: PendingItem[]) {
   };
 }
 
-function FloatingCard({
-  icon: Icon,
-  tile,
-  title,
-  status,
-  className,
-}: {
-  icon: LucideIcon;
-  tile: string;
-  title: string;
-  status: string;
-  className: string;
-}) {
-  return (
-    <li
-      className={`flex w-[232px] items-center gap-3 rounded-2xl bg-white p-3.5 pr-5 shadow-[0_18px_40px_-12px_rgba(6,40,28,0.45)] ${className}`}
-    >
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tile}`}>
-        <Icon className="h-5 w-5" {...ICON} />
-      </span>
-      <span className="min-w-0">
-        <span className="block truncate text-sm font-bold text-tdms-ink">{title}</span>
-        <span className="block truncate text-xs text-tdms-muted">{status}</span>
-      </span>
-    </li>
-  );
-}
-
+/**
+ * The Admin's welcome: the shared banner, with this dashboard's own sentence
+ * (the next setup step, or what is waiting) and its two actions.
+ */
 function Hero({
   firstName,
   greeting,
@@ -164,82 +140,30 @@ function Hero({
 }) {
   const { setup, pending, term } = panels;
   const copy = heroCopy(setup, pending.items);
-  const step = (key: SetupStepKey) => setup?.steps.find((s) => s.key === key);
-  const admin = step('admin');
-  const program = step('program');
-  const applications = step('applications');
   const secondary =
     setup?.current === 'staff' ? { label: 'View programs', href: '/programs' } : { label: 'Invite staff', href: '/staff?new=1' };
 
   return (
-    <section
-      aria-label="Welcome"
-      className="relative isolate overflow-hidden rounded-[26px] px-6 py-8 text-white shadow-[0_24px_48px_-20px_rgba(14,77,55,0.55)] sm:px-10 sm:py-10"
-      style={{ background: 'linear-gradient(118deg, #0B3A2C 0%, #104C3A 34%, #087F5B 70%, #2BA77C 100%)' }}
-    >
-      {/* Dot grid, fading in from the right; two soft glows. */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 -z-10"
-        style={{
-          backgroundImage: 'radial-gradient(rgba(255,255,255,0.22) 1.2px, transparent 1.2px)',
-          backgroundSize: '18px 18px',
-          maskImage: 'linear-gradient(to left, black 0%, rgba(0,0,0,0.5) 35%, transparent 65%)',
-          WebkitMaskImage: 'linear-gradient(to left, black 0%, rgba(0,0,0,0.5) 35%, transparent 65%)',
-        }}
-      />
-      <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-24 -z-10 h-72 w-72 rounded-full bg-primary-300/30 blur-3xl" />
-      <div aria-hidden="true" className="pointer-events-none absolute -bottom-28 right-1/3 -z-10 h-64 w-64 rounded-full bg-primary-200/20 blur-3xl" />
-
-      <div className="flex flex-col gap-10 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0 max-w-xl">
-          <LocalGreeting firstName={firstName} term={term} initialGreeting={greeting} initialDate={date} />
-          <p className="mt-3 max-w-lg text-[15px] leading-relaxed text-white/90">{copy.subtitle}</p>
-          <div className="mt-7 flex flex-wrap gap-3">
-            <Link
-              href={copy.primary.href}
-              className={`inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-tdms-deep shadow-lg shadow-black/10 transition hover:bg-primary-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#0F6B49]`}
-            >
-              {/^(Create|Add|Record)/.test(copy.primary.label) && <Plus className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />}
-              {copy.primary.label}
-            </Link>
-            <Link
-              href={secondary.href}
-              className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-5 py-3 text-sm font-semibold text-white ring-1 ring-inset ring-white/30 backdrop-blur-sm transition hover:bg-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
-            >
-              {secondary.label === 'Invite staff' && <UserPlus className="h-4 w-4" {...ICON} />}
-              {secondary.label}
-            </Link>
-          </div>
-        </div>
-
-        {setup && admin && program && applications && (
-          <ul aria-label="Setup status" className="relative hidden h-[216px] w-[300px] shrink-0 lg:block">
-            <FloatingCard
-              icon={ShieldCheck}
-              tile="bg-emerald-50 text-emerald-600"
-              title="Admin ready"
-              status={admin.done ? 'Account verified' : 'Password change needed'}
-              className="absolute left-0 top-0 -rotate-[4deg]"
-            />
-            <FloatingCard
-              icon={Layers}
-              tile="bg-violet-50 text-violet-600"
-              title="First program"
-              status={program.done ? 'Created' : 'Up next'}
-              className="absolute right-0 top-[72px] rotate-[3deg]"
-            />
-            <FloatingCard
-              icon={FileText}
-              tile="bg-amber-50 text-amber-600"
-              title="Applications"
-              status={applications.done ? 'Open' : 'Opens after setup'}
-              className="absolute bottom-0 left-4 -rotate-[2deg]"
-            />
-          </ul>
-        )}
-      </div>
-    </section>
+    <WelcomeBanner
+      firstName={firstName}
+      greeting={greeting}
+      date={date}
+      roleLabel={ROLE_LABELS.admin}
+      description={copy.subtitle}
+      actions={
+        <>
+          <Link href={copy.primary.href} className={BANNER_PRIMARY}>
+            {/^(Create|Add|Record)/.test(copy.primary.label) && <Plus className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />}
+            {copy.primary.label}
+          </Link>
+          <Link href={secondary.href} className={BANNER_SECONDARY}>
+            {secondary.label === 'Invite staff' && <UserPlus className="h-4 w-4" {...ICON} />}
+            {secondary.label}
+          </Link>
+        </>
+      }
+      meta={term ? <BannerFact label="Term" value={term} /> : undefined}
+    />
   );
 }
 

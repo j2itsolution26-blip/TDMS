@@ -13,6 +13,7 @@ import { autoActivateNewGoogleUsers } from '@/server/services/google-auth-servic
 import { googleConfigured } from '@/server/auth/google/oauth';
 import { describeStaticCodePolicy } from '@/server/auth/super-admin-code';
 import { describeVault } from '@/server/auth/credential-vault';
+import { describeStorage } from '@/server/lib/storage';
 import {
   accessCodeTtlMinutes,
   accessCodeMaxAttempts,
@@ -49,7 +50,8 @@ import {
 
 /** Names only — see the note above. */
 const REQUIRED_ENV = ['DATABASE_URL'] as const;
-const OPTIONAL_ENV = ['SESSION_LIFETIME_MINUTES', 'BCRYPT_ROUNDS'] as const;
+// BLOB_READ_WRITE_TOKEN: whether uploads can be stored (Vercel Blob). Presence only, like the rest.
+const OPTIONAL_ENV = ['SESSION_LIFETIME_MINUTES', 'BCRYPT_ROUNDS', 'BLOB_READ_WRITE_TOKEN'] as const;
 
 function prismaErrorCode(error: unknown): string | null {
   const e = error as { code?: unknown; name?: unknown };
@@ -211,6 +213,8 @@ export async function GET() {
        */
       domainPolicy: describeDomainPolicy(),
       googleSignIn: googleConfigured() ? 'configured' : 'not configured',
+      /* Where uploads go, or why they are refused — the cause of "File storage is not configured". */
+      fileStorage: describeStorage(),
       /*
        * The Super Admin security code and the Admin access-code policy.
        *

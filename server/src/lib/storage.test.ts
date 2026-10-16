@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { put } from '@vercel/blob';
-import { checkUpload, storeUpload } from './storage';
+import { checkUpload, describeStorage, storeUpload } from './storage';
 
 vi.mock('@vercel/blob', () => ({ put: vi.fn(), get: vi.fn(), del: vi.fn() }));
 
@@ -64,5 +64,19 @@ describe('when Vercel Blob is configured', () => {
     vi.mocked(put).mockRejectedValue(new Error('Blob store unavailable'));
     const upload = await checkUpload(file('%PDF-1.4\n', 'birth-certificate.pdf'));
     await expect(storeUpload('students/7/credentials', upload)).rejects.toThrow('Blob store unavailable');
+  });
+});
+
+describe('describeStorage (for /api/health)', () => {
+  it('production without a Blob token: not configured — the cause of the upload error', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('BLOB_READ_WRITE_TOKEN', '');
+    vi.stubEnv('FILE_STORAGE', '');
+    expect(describeStorage()).toEqual({ driver: 'not configured', access: null });
+  });
+  it('with a Blob token: Vercel Blob, private by default', () => {
+    vi.stubEnv('BLOB_READ_WRITE_TOKEN', 'test-token');
+    vi.stubEnv('BLOB_ACCESS', '');
+    expect(describeStorage()).toEqual({ driver: 'vercel-blob', access: 'private' });
   });
 });

@@ -38,6 +38,16 @@ function driver(): 'blob' | 'local' {
   );
 }
 
+/** For /api/health: where uploads are stored, or that they are refused. Never a token or a path. */
+export function describeStorage(): { driver: 'vercel-blob' | 'local-disk' | 'not configured'; access: 'private' | 'public' | null } {
+  try {
+    const d = driver();
+    return { driver: d === 'blob' ? 'vercel-blob' : 'local-disk', access: d === 'blob' ? access() : null };
+  } catch {
+    return { driver: 'not configured', access: null };
+  }
+}
+
 function access(): 'private' | 'public' {
   return process.env.BLOB_ACCESS === 'public' ? 'public' : 'private';
 }

@@ -8,7 +8,8 @@ import {
 import { createSession } from '@/server/auth/session';
 import { loadRolesAndPermissions } from '@/server/auth/rbac';
 import { requiresAdminAccessCode } from '@/server/auth/policies';
-import { recordAudit } from './audit-log';
+import { recordAudit, actorLabel } from './audit-log';
+import { accountTarget } from './account-activity';
 import type { GoogleIdentity } from '@/server/auth/google/oauth';
 
 /**
@@ -160,6 +161,7 @@ export async function signInWithGoogle(
       ipAddress: context.ip,
       userAgent: context.userAgent,
     });
+    await recordSignIn(created.id, email, context);
     return { kind: 'signed_in', userId: created.id, redirectTo: '/dashboard' };
   }
 
@@ -229,6 +231,7 @@ export async function signInWithGoogle(
     ipAddress: context.ip,
     userAgent: context.userAgent,
   });
+  await recordSignIn(existing.id, actorLabel(existing), context);
 
   if (needsLink || promote) {
     await recordAudit({
@@ -282,4 +285,19 @@ async function placeholderPassword(): Promise<string> {
   const { hashPassword } = await import('@/server/auth/password');
   const { randomUUID } = await import('node:crypto');
   return hashPassword(`${randomUUID()}${randomUUID()}`);
+}
+
+/** For the person's own Activity history (account-activity.ts). Never fails the sign-in. */
+async function recordSignIn(userId: bigint, actor: string, context: SignInContext) {
+  try {
+    await recordAudit({
+      action: 'LOGIN_SUCCESS',
+      actor,
+      target: accountTarget(userId),
+      details: { method: 'google' },
+      context: { ip: context.ip, userAgent: context.userAgent },
+    });
+  } catch {
+    // The sign-in stands even if its history row could not be written.
+  }
 }

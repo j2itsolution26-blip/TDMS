@@ -42,16 +42,40 @@ function stored(): string | null {
 
 const systemQuery = () => window.matchMedia('(prefers-color-scheme: dark)');
 
+const THEME_EVENT = 'tdms:theme';
+
+/** Apply a theme, and tell every useTheme() on the page (the header button, My Profile). */
 function apply(theme: Theme) {
   document.documentElement.dataset.theme = theme;
+  window.dispatchEvent(new Event(THEME_EVENT));
 }
 
 /**
  * The current theme and a toggle. The first switch is remembered; until then
  * the theme follows the device, live.
  */
-export function useTheme(): { theme: Theme; toggle: () => void } {
+export type ThemePreference = Theme | 'system';
+
+export function useTheme(): { theme: Theme; toggle: () => void; preference: ThemePreference; choose: (preference: ThemePreference) => void } {
   const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'));
+  const [preference, setPreference] = useState<ThemePreference>(() => {
+    const s = stored();
+    return s === 'dark' || s === 'light' ? s : 'system';
+  });
+
+  /** My Profile → Preferences: light, dark, or follow the device (the remembered choice is cleared). */
+  const choose = useCallback((next: ThemePreference) => {
+    try {
+      if (next === 'system') window.localStorage.removeItem(THEME_KEY);
+      else window.localStorage.setItem(THEME_KEY, next);
+    } catch {
+      // Private mode: the choice still applies for this visit.
+    }
+    const applied = resolveTheme(next === 'system' ? null : next, systemQuery().matches);
+    apply(applied);
+    setTheme(applied);
+    setPreference(next);
+  }, []);
 
   useEffect(() => {
     const query = systemQuery();
@@ -62,7 +86,17 @@ export function useTheme(): { theme: Theme; toggle: () => void } {
       setTheme(next);
     };
     query.addEventListener('change', onChange);
-    return () => query.removeEventListener('change', onChange);
+    // Another useTheme() changed it: follow.
+    const onApplied = () => {
+      setTheme(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
+      const s = stored();
+      setPreference(s === 'dark' || s === 'light' ? s : 'system');
+    };
+    window.addEventListener(THEME_EVENT, onApplied);
+    return () => {
+      query.removeEventListener('change', onChange);
+      window.removeEventListener(THEME_EVENT, onApplied);
+    };
   }, []);
 
   const toggle = useCallback(() => {
@@ -74,11 +108,12 @@ export function useTheme(): { theme: Theme; toggle: () => void } {
       } catch {
         // Private mode: the switch still applies for this visit.
       }
+      setPreference(next);
       return next;
     });
   }, []);
 
-  return { theme, toggle };
+  return { theme, toggle, preference, choose };
 }
 
 /** Marks the document as the workspace while the signed-in layout is mounted. */

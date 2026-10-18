@@ -173,9 +173,10 @@ export const changeTemporaryPasswordSchema = z
     path: ['passwordConfirmation'],
   });
 
+// email: optional and checked, but it cannot change the address (profile-service: read-only).
 export const updateProfileSchema = z.object({
   name: z.string().trim().min(1, 'Please enter your name.').max(255),
-  email: institutionalEmail,
+  email: institutionalEmail.optional(),
 });
 
 /**

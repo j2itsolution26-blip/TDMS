@@ -15,7 +15,8 @@ import {
 import { loadRolesAndPermissions } from '@/server/auth/rbac';
 import { requiresAdminAccessCode } from '@/server/auth/policies';
 import { beginAdminVerification } from './admin-login-service';
-import { recordAudit } from './audit-log';
+import { recordAudit, actorLabel } from './audit-log';
+import { accountTarget } from './account-activity';
 
 /**
  * Authentication service.
@@ -249,6 +250,19 @@ export async function login(input: LoginInput, context: LoginContext): Promise<L
   await prisma.user
     .update({ where: { id: user.id }, data: { lastLoginAt: new Date() } })
     .catch(() => undefined);
+
+  // For the person's own Activity history (account-activity.ts). Never fails the sign-in.
+  try {
+    await recordAudit({
+      action: 'LOGIN_SUCCESS',
+      actor: actorLabel(user),
+      target: accountTarget(user.id),
+      details: { method: 'password' },
+      context: { ip: context.ip, userAgent: context.userAgent },
+    });
+  } catch {
+    // The sign-in stands even if its history row could not be written.
+  }
 
   logAuthDebug({
     column,

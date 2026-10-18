@@ -57,7 +57,8 @@
     "test:enrollment-gaps": "node scripts/e2e/enrollment-gaps.mjs",
     "test:enrollment-term": "node scripts/e2e/enrollment-term.mjs",
     "test:credential-files": "node scripts/e2e/credential-files.mjs",
-    "test:program-enrollment": "node scripts/e2e/program-enrollment.mjs"
+    "test:program-enrollment": "node scripts/e2e/program-enrollment.mjs",
+    "test:profile": "node scripts/e2e/profile.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

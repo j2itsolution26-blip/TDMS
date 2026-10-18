@@ -4,34 +4,43 @@ import { hashPassword, verifyPassword } from '@/server/auth/password';
 import { destroyAllSessionsFor, destroyCurrentSession } from '@/server/auth/session';
 import { checkRateLimit, consumeRateLimit, clearRateLimit } from '@/server/auth/rate-limit';
 import { consumeTemporaryCredential } from './admin-account-service';
+import { recordAudit, actorLabel, type AuditContext } from './audit-log';
+import { accountTarget } from './account-activity';
 
 /** Port of the three profile/* Volt components. */
 
-export async function updateProfileInformation(userId: bigint, input: { name: string; email: string }) {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+export const EMAIL_READ_ONLY_MESSAGE = 'Your email address can’t be changed here. Contact an administrator to change it.';
+
+/**
+ * My Profile saves the person's display name. The email address is read-only
+ * here: changing it cleared the verified flag, no verification email was sent,
+ * and sign-in refuses an unverified address — so a self-service change locked
+ * the person out. An administrator changes it from the account screens.
+ * A request that still carries a different address is refused, not ignored.
+ */
+export async function updateProfileInformation(userId: bigint, input: { name: string; email?: string }, context?: AuditContext) {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
   if (!user) throw new AppError('Account not found.', 404);
 
-  // Laravel rule: lowercase|email|unique ignoring self.
-  const email = input.email.toLowerCase();
+  if (input.email !== undefined && input.email.toLowerCase() !== user.email.toLowerCase()) {
+    throw new AppError(EMAIL_READ_ONLY_MESSAGE, 422, { email: [EMAIL_READ_ONLY_MESSAGE] }, 'EMAIL_READ_ONLY');
+  }
 
-  const clash = await prisma.user.findFirst({
-    where: { email: { equals: email, mode: 'insensitive' }, id: { not: userId } },
-    select: { id: true },
-  });
-  if (clash) throw new AppError('That email address is already in use.', 422, { email: ['That email address is already in use.'] });
-
-  // isDirty('email') -> re-verification is required after a change.
-  const emailChanged = user.email.toLowerCase() !== email;
-
-  return prisma.user.update({
+  const updated = await prisma.user.update({
     where: { id: userId },
-    data: {
-      name: input.name,
-      email,
-      ...(emailChanged ? { emailVerifiedAt: null } : {}),
-      updatedAt: new Date(),
-    },
+    data: { name: input.name, updatedAt: new Date() },
   });
+
+  if (updated.name !== user.name) {
+    await recordAudit({
+      action: 'PROFILE_UPDATED',
+      actor: actorLabel(updated),
+      target: accountTarget(userId),
+      details: { name: { from: user.name, to: updated.name } },
+      context,
+    });
+  }
+  return updated;
 }
 
 /**
@@ -45,8 +54,9 @@ export async function updateProfileInformation(userId: bigint, input: { name: st
 export async function updatePassword(
   userId: bigint,
   input: { currentPassword: string; password: string },
+  context?: AuditContext,
 ) {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { password: true } });
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { password: true, name: true, email: true } });
   if (!user) throw new AppError('Account not found.', 404);
 
   const currentValid = await verifyPassword(input.currentPassword, user.password);
@@ -81,6 +91,9 @@ export async function updatePassword(
    * The new password is the user's own and is never stored recoverably.
    */
   await consumeTemporaryCredential(userId);
+
+  // That it happened, never a password or a hash.
+  await recordAudit({ action: 'PASSWORD_CHANGED', actor: actorLabel(user), target: accountTarget(userId), context });
 }
 
 // --- Replacing a temporary password ----------------------------------------

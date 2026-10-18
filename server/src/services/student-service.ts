@@ -29,7 +29,7 @@ export function fullName(p: { firstName: string; middleName: string | null; last
   return `${p.firstName} ${p.middleName ?? ''} ${p.lastName}`.replace(/\s+/g, ' ').trim();
 }
 
-export async function listStudents(options: { page?: number; search?: string; programId?: bigint; yearLevel?: number; status?: string; withoutEnrollment?: boolean } = {}) {
+export async function listStudents(options: { page?: number; search?: string; programId?: bigint; yearLevel?: number; status?: string; withoutEnrollment?: boolean; currentlyEnrolled?: Prisma.StudentWhereInput } = {}) {
   const page = options.page ?? 1;
   const search = options.search?.trim() ?? '';
 
@@ -55,6 +55,8 @@ export async function listStudents(options: { page?: number; search?: string; pr
     ...(options.status ? { status: options.status } : {}),
     // Records with no enrollment at all (enrollment-gaps.ts).
     ...(options.withoutEnrollment ? WITHOUT_ENROLLMENT : {}),
+    // Students currently enrolled (program-enrollment.ts) — what the Programs page counts.
+    ...(options.currentlyEnrolled ? { AND: [options.currentlyEnrolled] } : {}),
   };
 
   const [rows, total] = await Promise.all([

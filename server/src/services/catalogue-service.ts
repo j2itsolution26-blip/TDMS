@@ -11,6 +11,7 @@ import type {
 } from '@/server/schemas/schemas';
 import type { Prisma } from '@prisma/client';
 import { LOCKING_GRADE_STATUSES, normaliseHours } from '@shared/lib/subjects';
+import { currentTerm, enrolledCountsByProgram } from './program-enrollment';
 
 /**
  * Programs, curricula and subjects — the academic catalogue.
@@ -75,6 +76,52 @@ export async function listPrograms(page = 1): Promise<Paginated<ProgramRow>> {
     total,
     page,
   );
+}
+
+export interface ProgramOverviewRow extends ProgramRow {
+  /** Students currently enrolled (program-enrollment.ts), counted once each. */
+  enrolled: number;
+  /** Every student record in the program, whatever its status. */
+  students: number;
+  /** Active curriculum versions, newest first ("v2026"). */
+  activeCurricula: string[];
+}
+
+/**
+ * The Programs page: every program (a handful — searched and filtered in the
+ * browser) with its currently enrolled count, all from two queries: the
+ * programs with their curricula, and one grouped count of enrolled students.
+ */
+export async function programOverview() {
+  const term = await currentTerm();
+  const [programs, enrolled] = await Promise.all([
+    prisma.program.findMany({
+      orderBy: { name: 'asc' },
+      include: {
+        curricula: { select: { versionLabel: true, isActive: true }, orderBy: { effectiveSchoolYear: 'desc' } },
+        _count: { select: { students: true } },
+      },
+    }),
+    enrolledCountsByProgram(term),
+  ]);
+  const rows: ProgramOverviewRow[] = programs.map((p) => ({
+    id: p.id.toString(),
+    code: p.code,
+    name: p.name,
+    description: p.description,
+    isActive: p.isActive,
+    curriculaCount: p.curricula.length,
+    activeCurricula: p.curricula.filter((c) => c.isActive).map((c) => c.versionLabel),
+    students: p._count.students,
+    enrolled: enrolled.get(p.id.toString()) ?? 0,
+  }));
+  return {
+    rows,
+    term: term?.label ?? null,
+    // Each student has one program, so the per-program counts add up to distinct students.
+    totalEnrolled: rows.reduce((sum, r) => sum + r.enrolled, 0),
+    activePrograms: rows.filter((r) => r.isActive).length,
+  };
 }
 
 /** Active programs, for the <select> options on student/application forms. */

@@ -41,7 +41,10 @@ interface Props {
   filters: { program: string; yearLevel: string; status: string; enrollment: string };
   /** Student records with no enrollment at all, whatever the filters. */
   withoutEnrollment: number;
-  programs: ProgramOption[];
+  /** Every program for the filter (inactive ones marked); the form offers active ones only. */
+  programs: (ProgramOption & { isActive: boolean })[];
+  /** With "Enrolled this term": which term that is (null when no school year is active). */
+  currentTerm: string | null;
   /** Open school years, for a new student's first enrollment. */
   schoolYears: SchoolYearOption[];
   canCreate: boolean;
@@ -49,7 +52,7 @@ interface Props {
 }
 
 export default function StudentsScreen({
-  rows, page, lastPage, total, search, filters, withoutEnrollment, programs, schoolYears, canCreate, canUpdate,
+  rows, page, lastPage, total, search, filters, withoutEnrollment, programs, currentTerm, schoolYears, canCreate, canUpdate,
 }: Props) {
   const router = useRouter();
   useOpenOnNew(canCreate, openCreate);
@@ -113,7 +116,7 @@ export default function StudentsScreen({
           <label className="sr-only" htmlFor="students-program">Program</label>
           <select id="students-program" className={`${SELECT} 2xl:max-w-[14rem]`} value={filters.program} onChange={(e) => go({ program: e.target.value })}>
             <option value="">All programs</option>
-            {programs.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}
+            {programs.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}{p.isActive ? '' : ' (inactive)'}</option>)}
           </select>
           <label className="sr-only" htmlFor="students-year">Year level</label>
           <select id="students-year" className={SELECT} value={filters.yearLevel} onChange={(e) => go({ yearLevel: e.target.value })}>
@@ -128,10 +131,19 @@ export default function StudentsScreen({
           <label className="sr-only" htmlFor="students-enrollment">Enrollment</label>
           <select id="students-enrollment" className={SELECT} value={filters.enrollment} onChange={(e) => go({ enrollment: e.target.value })}>
             <option value="">Any enrollment</option>
+            <option value="current">Enrolled this term</option>
             <option value="none">Not enrolled ({withoutEnrollment})</option>
           </select>
         </div>
       </form>
+
+      {filters.enrollment === 'current' && (
+        <p className="text-sm text-slate-600" role="status">
+          {currentTerm
+            ? <>Active students with an approved enrollment for <span className="font-semibold text-ink">{currentTerm}</span> — the count shown on Programs.</>
+            : 'No school year is active, so no one is enrolled this term.'}
+        </p>
+      )}
 
       {/* A record with no enrollment never reaches Enrollments: say so, and where to fix it. */}
       {withoutEnrollment > 0 && filters.enrollment !== 'none' && (
@@ -152,7 +164,7 @@ export default function StudentsScreen({
           <EmptyState
             title={filtered ? 'No students match these filters' : 'No students yet'}
             description={filtered
-              ? `Nothing for ${[filters.program && programs.find((p) => p.id === filters.program)?.code, filters.yearLevel && yearLevelLabel(Number(filters.yearLevel)), filters.status && STUDENT_STATUS_LABELS[filters.status as keyof typeof STUDENT_STATUS_LABELS], filters.enrollment === 'none' && 'not enrolled', search && `“${search}”`].filter(Boolean).join(' · ')}. Change or clear the filters.`
+              ? `Nothing for ${[filters.program && programs.find((p) => p.id === filters.program)?.code, filters.yearLevel && yearLevelLabel(Number(filters.yearLevel)), filters.status && STUDENT_STATUS_LABELS[filters.status as keyof typeof STUDENT_STATUS_LABELS], filters.enrollment === 'none' && 'not enrolled', filters.enrollment === 'current' && (currentTerm ? `enrolled in ${currentTerm}` : 'enrolled this term (no school year is active)'), search && `“${search}”`].filter(Boolean).join(' · ')}. Change or clear the filters.`
               : 'Add a student record with New Student.'}
           />
         ) : (
@@ -217,7 +229,7 @@ export default function StudentsScreen({
       <StudentFormModal
         open={showForm}
         editing={editing}
-        programs={programs}
+        programs={programs.filter((p) => p.isActive)}
         schoolYears={schoolYears}
         onClose={() => setShowForm(false)}
         onSaved={(text) => {
